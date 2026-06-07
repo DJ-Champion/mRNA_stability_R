@@ -6,6 +6,12 @@
 .RData
 .RDataTmp
 
+# Data, figures, models directories
+data/*
+figures/*
+models/*
+
+
 # User-specific files
 .Ruserdata
 
