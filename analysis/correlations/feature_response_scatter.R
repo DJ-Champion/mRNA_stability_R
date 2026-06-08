@@ -68,6 +68,11 @@ suppressPackageStartupMessages({
 #' @param collapse       "none" (one point per column, default), "region" (one
 #'                       point per group × region — median r), or "group" (one
 #'                       point per group — median r across all members).
+#' @param top_n          Integer or NULL (default). When set, keep at most this
+#'                       many points per (species, group) by distance from
+#'                       origin. Useful for dense groups like codons: top_n = 3
+#'                       shows only the three most informative members per group.
+#'                       Applied after noise_filter, before label selection.
 #' @param noise_filter   Numeric. Drop points with distance-from-origin below
 #'                       this. 0 (default) = no filter. Try 0.1 to declutter.
 #' @param label_quantile Numeric in [0, 1]. Label the top (1 - q) fraction by
@@ -100,6 +105,7 @@ feature_response_scatter <- function(df,
                                      drop           = list(),
                                      collapse       = c("none", "region",
                                                         "group"),
+                                     top_n          = NULL,
                                      noise_filter   = 0,
                                      label_quantile = 0.9,
                                      standalones    = c("cai",
@@ -128,6 +134,10 @@ feature_response_scatter <- function(df,
   }
   if (label_quantile < 0 || label_quantile >= 1) {
     stop("label_quantile must be in [0, 1)")
+  }
+  if (!is.null(top_n) && (!is.numeric(top_n) || length(top_n) != 1 ||
+                          top_n < 1 || top_n != floor(top_n))) {
+    stop("top_n must be a positive integer or NULL")
   }
 
   # Don't exclude a response if the user is correlating against it
@@ -289,6 +299,19 @@ feature_response_scatter <- function(df,
     stop("All points filtered out — noise_filter too high?")
   }
 
+  # --- top_n filter: keep top N per (species, group) by distance -----------
+  if (!is.null(top_n)) {
+    result <- result |>
+      dplyr::group_by(species, group) |>
+      dplyr::slice_max(order_by = distance_from_origin,
+                       n = top_n, with_ties = FALSE) |>
+      dplyr::ungroup()
+  }
+
+  if (nrow(result) == 0) {
+    stop("All points filtered out — top_n too restrictive?")
+  }
+
   # --- Label selection by quantile ----------------------------------------
   # Per species: threshold at the requested quantile of distance.
   result <- result |>
@@ -357,6 +380,10 @@ feature_response_scatter <- function(df,
   if (noise_filter > 0) {
     subtitle_bits <- c(subtitle_bits,
                        sprintf("noise filter |r| >= %.2f", noise_filter))
+  }
+  if (!is.null(top_n)) {
+    subtitle_bits <- c(subtitle_bits,
+                       sprintf("top %d per group", as.integer(top_n)))
   }
   subtitle_bits <- c(subtitle_bits,
                      sprintf("top %d%% labelled",
