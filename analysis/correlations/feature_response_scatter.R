@@ -141,6 +141,8 @@ feature_response_scatter <- function(df,
 
   # Build a column -> group attribution map. First-match wins, so aliases
   # (already removed from FEATURE_PATTERNS) don't cause double-assignment.
+  # Columns in the "standalone" FEATURE_PATTERNS group are included naturally;
+  # the standalones= argument is a fallback for columns not reached by groups.
   col_to_group <- list()
   for (g in expanded) {
     # Refine via the shared helper so bundle- and caller-supplied pick/drop
@@ -151,10 +153,10 @@ feature_response_scatter <- function(df,
     }
   }
 
-  # Add standalone columns of interest (not already in a group)
+  # Fallback: standalones= for columns not reached by any group expansion.
   for (co in standalones) {
     if (co %in% names(df) && is.null(col_to_group[[co]])) {
-      col_to_group[[co]] <- co        # standalone: group key = column name
+      col_to_group[[co]] <- co        # group key = column name (legacy)
     }
   }
 

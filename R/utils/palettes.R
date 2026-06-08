@@ -54,7 +54,6 @@ FEATURE_GROUP_COLOURS <- c(
 
   # --- Splicing: reds + browns ---
   junctions              = "#E31A1C",  # vivid red
-  distances              = "#FB9A99",  # pinkish red
   architecture           = "#8C510A",  # earth brown
   nmd                    = "#B15928",  # rust
 
@@ -62,8 +61,9 @@ FEATURE_GROUP_COLOURS <- c(
   uorfs                  = "#6A3D9A",  # deep purple
   orfs                   = "#CAB2D6",  # light purple
 
-  # --- Standalone columns: greys and black ---
-  cai                    = "#000000",  # pure black
+  # --- Standalone columns (other supergroup): greys and black ---
+  standalone             = "#525252",  # dark grey (group-level colour)
+  cai                    = "#000000",  # pure black (per-column override)
   translation_efficiency = "#525252",  # dark grey
   expression             = "#7F7F7F",  # medium grey
   orfexondensity         = "#9E9E9E",  # mid-light grey
@@ -133,11 +133,11 @@ REGION_DISPLAYS <- c(
 FEATURE_GROUP_DISPLAY_NAMES <- c(
   rnafold_scores         = "MFE",
   rnafold_zscores        = "MFE z-score",
-  rnafold_per_nt         = "MFE/nt",  
+  rnafold_per_nt         = "MFE/nt",
   mfe_deltas             = "MFE Delta",
   mfe_expected           = "MFE expected",
-  rnalfold_scores            = "Local MFE",
-  rnalfold_zscores           = "Local MFE z-score",
+  rnalfold_scores        = "Local MFE",
+  rnalfold_zscores       = "Local MFE z-score",
   rnaup                  = "RNAup",
   probing                = "Probing",
   lengths                = "Length",
@@ -148,11 +148,11 @@ FEATURE_GROUP_DISPLAY_NAMES <- c(
   nuc_ratios             = "Nucleotide ratios",
   skews                  = "Skews",
   junctions              = "Junctions",
-  distances              = "EEJ distance",
   architecture           = "Architecture",
   nmd                    = "NMD fragility",
   uorfs                  = "uORFs",
   orfs                   = "ORFs",
+  standalone             = "Standalone",
   other                  = "Other"
 )
 
@@ -164,10 +164,11 @@ FEATURE_GROUP_DISPLAY_NAMES <- c(
 # via format_col_name(). `other` stays here: it is a display bucket that sits
 # alongside group keys in facets/legends, not a column.
 
-#' Supergroup name -> display label. The four supergroups are clean words; the
-#' toTitleCase fallback in format_group_name() renders them ("structure" ->
-#' "Structure"), so this is seeded only for exceptions (currently none).
+#' Supergroup name -> display label. The toTitleCase fallback in
+#' format_group_name() handles clean single words ("structure" -> "Structure");
+#' this is seeded for multi-word exceptions.
 SUPERGROUP_DISPLAY_NAMES <- c(
+  other = "Other"
 )
 
 #' Bundle name -> display label.

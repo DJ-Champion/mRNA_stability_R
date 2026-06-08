@@ -87,15 +87,15 @@ Patterns listed left to right: regex (used by `FEATURE_PATTERNS`) → example co
 |--------------------------------------------|---------------------------------|---------------------------------|
 | `lengths` → `^length_`                     | `length_cds`                    | `Length CDS`                    |
 | `gc` → `^gc_`                              | `gc_content_5utr`               | `GC content 5' UTR`             |
-| `rnafold_scores`  → `^rnafold_score_`   | `rnafold_score_mrna`            | `MFE mRNA`                      |
-| `rnafold_zscores`  → `^rnafold_zscore_` | `rnafold_zscore_5utr`           | `MFE z-score 5' UTR`            |
+| `rnafold_scores`  → `^rnafold_score_`      | `rnafold_score_mrna`            | `MFE mRNA`                      |
+| `rnafold_zscores`  → `^rnafold_zscore_`   | `rnafold_zscore_5utr`           | `MFE z-score 5' UTR`            |
+| `rnafold_per_nt` → `^rnafold_per_nt_`      | `rnafold_per_nt_cds`            | `MFE/nt CDS`                    |
 | `mfe_expected` → `^mfe_expected_`          | `mfe_expected_cds`              | `MFE expected CDS`              |
 | `mfe_deltas` → `^mfe_delta_`               | `mfe_delta_3utr`                | `MFE Δ 3' UTR`                  |
-| `rnal_scores` → `^rnal_score_`             | `rnal_score_5utr`               | `Local MFE 5' UTR`              |
-| `rnal_zscores` → `^rnal_zscore_`           | `rnal_zscore_cds`               | `Local MFE z-score CDS`         |
+| `rnalfold_scores` → `^rnalfold_score_`     | `rnalfold_score_5utr`           | `Local MFE 5' UTR`              |
+| `rnalfold_zscores` → `^rnalfold_zscore_`   | `rnalfold_zscore_cds`           | `Local MFE z-score CDS`         |
 | `rnaup` → `^rnaup_`                        | `rnaup_score_utrpair`           | `RNAup UTR interactions`        |
-| `junctions` → `^junctions_`                | `junctions_count_cds`           | `Junction count CDS`            |
-| `distances` → `^eej_dist_`                 | `eej_dist_last_stop`            | `Last EEJ dist. from stop codon`|
+| `junctions` → `^(junctions_\|eej_dist_)`   | `junctions_count_cds`, `eej_dist_last_stop` | `Junction count CDS`, `Last EEJ dist. from stop codon` |
 | `uorfs` → `^(uorf_\|dist_cap_)`            | `uorf_count_mrna`               | `uORF count mRNA`               |
 | `orfs` → `^orf_`                           | `orf_length_5utr`               | `uORF length 5' UTR`            |
 | `stopfree` → `^stopfree_`                  | `stopfree_3utr`                 | `Stop-free 3' UTR`              |
@@ -105,9 +105,10 @@ Patterns listed left to right: regex (used by `FEATURE_PATTERNS`) → example co
 | `codon_freqs` → `^codon_`                  | `codon_aaa_freq_cds`            | `Codon freq. CDS aaa`           |
 | `aa_freqs` → `^aa_`                        | `aa_freq_leu`                   | `AA freq. leu`                  |
 | `nuc_ratios` → `^(frac_\|purine_\|amino_)` | `purine_ratio_cds`              | `Purine ratio CDS`              |
-| `probing` → `^(shape\|keth)_`              | `shape_score_mrna`              | `icSHAPE score mRNA`            |
+| `probing` → `^gini_`                       | `gini_nucleoplasm_cds`          | `icSHAPE Gini nucleoplasm CDS`  |
+| `standalone` → `^(cai\|translation_efficiency\|expression\|orfexondensity)$` | `cai` | `CAI` |
 
-Reserved single-token columns: `halflife`, `gene_id`, `gene_name`, `transcript_id`, `species`, `translation_efficiency`, `saluki_prediction`, `prediction_difference`, `cai`, `expression`, `orfexondensity`.
+Reserved single-token columns: `halflife`, `gene_id`, `gene_name`, `transcript_id`, `species`, `saluki_prediction`, `prediction_difference`. Note: `cai`, `translation_efficiency`, `expression`, and `orfexondensity` are now selectable via the `standalone` FEATURE_PATTERNS group (or the `other` supergroup).
 
 > **v4 note.** Whole-transcript scalar metrics — architecture (`intron_length_mean_mrna`, `exon_length_first_mrna`, …), uORF (`uorf_count_mrna`, …) and NMD fragility (`nmd_fragile_codon_density_mrna`, …) — carry the real `mrna` region suffix. The v3 `transcript` pseudo-region and the `window`/`core`/`full` NMD pseudo-regions have been retired; there is now a single NMD fragility model and "NMD" appears only as a metric-name prefix in the display string.
 
@@ -234,6 +235,8 @@ These are the functions every extender code should rely on. DO NOT reach into in
 | `select_features(df, groups, pick, drop)` | `R/utils/feature_groups.R` | Resolve groups/supergroups/bundles + pick/drop → column names |
 | `resolve_selection(groups, pick, drop)`   | `R/utils/feature_groups.R` | Normalise a selection → `(groups, pick, drop)` triple         |
 | `expand_groups(groups)`                   | `R/utils/feature_groups.R` | Group/supergroup/bundle names → `FEATURE_PATTERNS` keys        |
+| `lookup_key(key)`                         | `R/utils/feature_groups.R` | Tell which namespace a string belongs to: "supergroup" / "bundle" / "group" / "unknown" |
+| `list_selection_keys(kind)`               | `R/utils/feature_groups.R` | Browse all groups, supergroups, and bundles with display names |
 | `SUPERGROUPS`                             | constant in `R/config.R`   | Coarse group → member-group categorisation                     |
 | `GROUP_BUNDLES`                           | constant in `R/config.R`   | Reusable named selections (intent, not schema)                 |
 | `format_col_name(x)`              | `R/utils/naming.R`                         | Canonical column name → display string (vectorised) |
@@ -271,7 +274,7 @@ DO NOT read `.rds` cache files directly. DO NOT call loaders. DO NOT bypass the 
 
 **DO:**
 ```r
-df |> select(halflife, fg("rnafold_zscores"), fg("rnal_zscores"))
+df |> select(halflife, fg("rnafold_zscores"), fg("rnalfold_zscores"))
 ```
 
 **DO NOT:**
@@ -336,13 +339,17 @@ Display strings live in three maps in `R/utils/palettes.R` —
 — seeded where the `tools::toTitleCase` fallback would be wrong. Add a map entry
 rather than hardcoding a label in the plot.
 
-**Standalones are columns, not group keys.** `cai`, `translation_efficiency`,
-`expression`, and `orfexondensity` are NOT in the group table — they are
-labelled by `format_col_name()`. A plot whose group column mixes selection keys
-with standalones (e.g. `feature_response_scatter.R`) dispatches per element:
-selection keys via `format_group_name()`, everything else via
-`format_col_name()`. `group_panel_sweep.R` is the single-group exception and
-labels columns only — it does NOT use `format_group_name()`.
+**Standalones are now a group.** `cai`, `translation_efficiency`, `expression`,
+and `orfexondensity` are selectable via the `standalone` FEATURE_PATTERNS group
+(part of the `other` supergroup). Use `select_features(df, "standalone")` or
+`select_features(df, "other")` to reach them. They have no region suffix and are
+always mapped to the `mrna` slot in region-aware plots. Their labels still come
+from `format_col_name()` rather than `format_group_name()`, because each is a
+distinct column, not a family. A plot whose group column contains standalone
+column names dispatches per element: group/supergroup/bundle keys via
+`format_group_name()`, everything else via `format_col_name()`.
+`group_panel_sweep.R` is the single-group exception and labels columns only —
+it does NOT use `format_group_name()`.
  
 **Exception — single-group tools.** A tool whose entire premise is "one panel
 per schema family" (e.g. `feature_group_panel_sweep()`) operates on raw
@@ -1038,9 +1045,12 @@ data/
 - **The `species` column is added before `engineer_features()` is called.** Any engineering step that operates row-wise has access to `species` if it needs species-specific behaviour. Use this sparingly — most logic should be species-agnostic.
 - **v4 retired the pseudo-region tokens.** Whole-transcript scalars (architecture, uORF, NMD) now end in the real `mrna` suffix; the v3 `transcript` token and the `window`/`core`/`full` NMD tokens no longer exist. There is one NMD fragility model — `load_nmd_fragility(species)` takes no `type` argument and reads `nmd_fragility.tsv`. Any analysis script written against the v3 names (`*_transcript`, `nmd_*_window`, …) will silently select nothing — `fg()` returns an empty set rather than erroring.
 - **Subset feature groups do not belong in `FEATURE_PATTERNS`.** The deleted `*_some` / `mfe_scores` / `mfe_zscores` keys were subsets and aliases living in the schema layer; they double-assigned columns and forced ad-hoc exclusion lists. Reusable subsets are `GROUP_BUNDLES` bundles; one-off subsets are per-call `pick`/`drop`. Neither needs a `CACHE_VERSION` bump.
-     
+- **`distances` was removed from `FEATURE_PATTERNS`.** It was a pure subset of `junctions` (both matched `eej_dist_*`), causing double-assignment in any plot that builds a column→group map. All `eej_dist_*` columns continue to be covered by the `junctions` group (regex `^(junctions_|eej_dist_)`). Remove `"distances"` from any `groups` argument that still names it — it will produce a warning and be skipped.
+- **`standalone` is now a group.** `cai`, `translation_efficiency`, `expression`, and `orfexondensity` are reachable via `select_features(df, "standalone")` or the `other` supergroup. They are genuinely region-less and map to the `mrna` slot in region-aware plots. The `standalones=` parameter on the dotplot and response-scatter is kept for backward compatibility but is now a fallback only (used when `standalone` is not in the expanded group list).
+- **Not sure which namespace a string belongs to?** Call `lookup_key("mytoken")` — it returns `"supergroup"`, `"bundle"`, `"group"`, or `"unknown"`. Call `list_selection_keys()` to print all of them in one table.
+
 ---
 
 ## 11. When in doubt
 
-Read the source file first (it's ~50–200 lines per module, all heavily commented). Run `fg_columns(df, "<group>")` and `format_col_name("<column>")` to inspect what the schema actually produces in the current dataframe. The pipeline is small enough to read end-to-end in under an hour — do that before writing anything that fights against it.
+Call `lookup_key("mytoken")` to find out which namespace a string belongs to, or `list_selection_keys()` to browse everything. Run `fg_columns(df, "<group>")` and `format_col_name("<column>")` to inspect what the schema actually produces in the current dataframe. Read the source file for deeper context (each module is ~50–200 lines).

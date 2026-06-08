@@ -184,6 +184,115 @@ refine_group_columns <- function(members, pick_g = NULL, drop_g = NULL) {
 }
 
 
+# --- Discovery helpers -------------------------------------------------------
+
+#' Identify which namespace a selection key belongs to.
+#'
+#' Returns "supergroup", "bundle", "group", or "unknown". Useful interactively
+#' when you have a string and aren't sure which function to reach for.
+#'
+#' @param key Character scalar — a token you want to use as a selection key.
+#' @return Character scalar: one of "supergroup", "bundle", "group", "unknown".
+#' @examples
+#' lookup_key("structure")       # "supergroup"
+#' lookup_key("nmd_reported")    # "bundle"
+#' lookup_key("rnafold_zscores") # "group"
+#' lookup_key("typo")            # "unknown"
+#' @export
+lookup_key <- function(key) {
+  stopifnot(is.character(key), length(key) == 1)
+  bundles <- .group_bundles()
+  if (exists("SUPERGROUPS", inherits = TRUE) && key %in% names(SUPERGROUPS)) {
+    return("supergroup")
+  }
+  if (key %in% names(bundles)) return("bundle")
+  if (key %in% names(FEATURE_PATTERNS))  return("group")
+  "unknown"
+}
+
+
+#' List every known selection key with its namespace and display name.
+#'
+#' Prints (and invisibly returns) a data.frame of all supergroups, bundles,
+#' and groups. Call this interactively to browse what you can pass to
+#' `select_features()`, `fg()`, or any plot's `groups =` argument.
+#'
+#' @param kind Character vector. Which namespace(s) to show. Any combination
+#'   of "supergroup", "bundle", "group". Default shows all three.
+#' @param verbose Logical. If TRUE (default) print a formatted table.
+#' @return Invisibly, a data.frame with columns `key`, `kind`, `display`.
+#' @examples
+#' list_selection_keys()                       # everything
+#' list_selection_keys(kind = "group")         # only FEATURE_PATTERNS keys
+#' list_selection_keys(kind = c("supergroup", "bundle"))
+#' @export
+list_selection_keys <- function(kind = c("supergroup", "bundle", "group"),
+                                verbose = TRUE) {
+  kind <- match.arg(kind, several.ok = TRUE)
+  rows <- list()
+
+  if ("supergroup" %in% kind) {
+    sgs <- if (exists("SUPERGROUPS", inherits = TRUE)) names(SUPERGROUPS) else character()
+    for (k in sgs) {
+      members <- paste(SUPERGROUPS[[k]], collapse = ", ")
+      display <- format_group_name(k, "supergroup")
+      rows[[length(rows) + 1]] <- data.frame(
+        key = k, kind = "supergroup", display = display,
+        members = members, stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if ("bundle" %in% kind) {
+    bundles <- .group_bundles()
+    for (k in names(bundles)) {
+      b       <- .as_bundle(bundles[[k]])
+      display <- format_group_name(k, "bundle")
+      members <- paste(b$groups, collapse = ", ")
+      if (length(b$pick) > 0) members <- paste0(members, " [pick]")
+      if (length(b$drop) > 0) members <- paste0(members, " [drop]")
+      rows[[length(rows) + 1]] <- data.frame(
+        key = k, kind = "bundle", display = display,
+        members = members, stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if ("group" %in% kind) {
+    for (k in names(FEATURE_PATTERNS)) {
+      display <- format_group_name(k, "group")
+      sg      <- supergroup_of(k)
+      sg_str  <- if (is.na(sg)) "(no supergroup)" else sg
+      rows[[length(rows) + 1]] <- data.frame(
+        key = k, kind = "group", display = display,
+        members = sg_str, stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+
+  if (verbose && nrow(out) > 0) {
+    # Print grouped by kind, with aligned columns.
+    for (k in intersect(c("supergroup", "bundle", "group"), unique(out$kind))) {
+      sub <- out[out$kind == k, , drop = FALSE]
+      cat(sprintf("\n--- %ss ---\n", k))
+      fmt <- paste0("  %-25s  %-28s  %s\n")
+      cat(sprintf(fmt, "key", "display", if (k == "group") "supergroup" else "members"))
+      cat(sprintf(fmt,
+                  strrep("-", 25), strrep("-", 28), strrep("-", 20)))
+      for (i in seq_len(nrow(sub))) {
+        cat(sprintf(fmt, sub$key[i], sub$display[i], sub$members[i]))
+      }
+    }
+    cat("\n")
+  }
+
+  invisible(out)
+}
+
+
 #' Resolve a feature selection into an ordered vector of column names
 #'
 #' The single entry point for "which columns does this analysis use". Accepts

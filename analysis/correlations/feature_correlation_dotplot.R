@@ -256,6 +256,12 @@ feature_correlation_dotplot <- function(df,
         col_to_group[[co]] <- g
         col_region[[co]]   <- last
         col_stem[[co]]     <- paste(tokens[-length(tokens)], collapse = "_")
+      } else if (identical(g, "standalone")) {
+        # Standalone group: genuinely region-less columns. Map to "mrna" so
+        # they appear on the dotplot axis (in the "other" supergroup facet).
+        col_to_group[[co]] <- g
+        col_region[[co]]   <- "mrna"
+        col_stem[[co]]     <- co
       } else {
         # No region token — cannot sit on the region-dodged axis.
         dropped <- c(dropped, co)
@@ -263,14 +269,12 @@ feature_correlation_dotplot <- function(df,
     }
   }
 
-  # --- v4 tier 1: reserved single-token scalar columns --------------------
-  # cai / expression / translation_efficiency / orfexondensity are genuinely
-  # region-less. Map them to the `mrna` region so they appear on the dotplot
-  # (in the "other" supergroup facet) rather than being silently excluded.
-  # supergroup_of() returns NA for these -> coalesced to "other".
+  # --- Tier 1 fallback: standalones= argument for columns not in any group --
+  # Handles backward-compatible usage (e.g. groups="structure", standalones=c("cai"))
+  # and any column not reached by the standalone FEATURE_PATTERNS group above.
   for (co in standalones) {
     if (co %in% names(df) && is.null(col_to_group[[co]])) {
-      col_to_group[[co]] <- co            # standalone: group key = column name
+      col_to_group[[co]] <- co            # group key = column name (legacy)
       col_region[[co]]   <- "mrna"
       col_stem[[co]]     <- co
     }
