@@ -80,25 +80,25 @@ FEATURE_PATTERNS <- list(
   lengths        = "^length_",
   gc             = "^gc_",
   nmd            = "^nmd_",
-  architecture   = "^(intron_|exon_|noncoding_)", 
+  architecture   = "^(intron_|exon_|noncoding_)",
   rnafold_scores = "^rnafold_score_",
   rnafold_zscores = "^rnafold_zscore_",
   rnafold_per_nt = "^rnafold_per_nt_",
   mfe_deltas     = "^mfe_delta_",
   mfe_expected   = "^mfe_expected_",
-  rnalfold_scores    = "^rnalfold_score_", 
+  rnalfold_scores    = "^rnalfold_score_",
   rnalfold_zscores   = "^rnalfold_zscore_",
   rnaup          = "^rnaup_",
-  junctions      = "^(junctions_|eej_dist_)", 
-  uorfs          = "^(uorf_|dist_cap_)", 
+  junctions      = "^(junctions_|eej_dist_)",
+  uorfs          = "^(uorf_|dist_cap_)",
   orfs           = "^orf_",
   stopfree       = "^stopfree_",
   skews          = "^(gc|at)_skew_",
-  distances      = "^eej_dist_",
   codon_freqs    = "^codon_",
   aa_freqs       = "^aa_",
   nuc_ratios     = "^(frac_|purine_|amino_)",
-  probing        = "^gini_"
+  probing        = "^gini_",
+  standalone     = "^(cai|translation_efficiency|expression|orfexondensity)$"
 )
 
 
@@ -119,9 +119,11 @@ SUPERGROUPS <- list(
 
   intrinsic  = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs", "nuc_ratios"),
 
-  splicing   = c("junctions", "distances", "architecture", "nmd"),
+  splicing   = c("junctions", "architecture", "nmd"),
 
-  regulatory = c("uorfs", "orfs")
+  regulatory = c("uorfs", "orfs"),
+
+  other      = c("standalone")
 )
 
 GROUP_BUNDLES <- list(
