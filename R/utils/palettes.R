@@ -40,8 +40,8 @@ FEATURE_GROUP_COLOURS <- c(
   mfe_expected           = "#8073AC",  # muted purple
   rnalfold_scores            = "#FF7F00",  # vivid orange
   rnalfold_zscores           = "#B35806",  # burnt orange
-  rnaup                  = "#FDB863",  # light orange
-  probing                = "#FFD92F",  # bright yellow
+  rnaup                  = "#FFD9FF",
+  probing                = "#FDB863",
 
   # --- Intrinsic: blues + greens + teals ---
   lengths                = "#002642",  # midnight blue

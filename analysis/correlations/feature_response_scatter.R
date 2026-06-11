@@ -403,7 +403,7 @@ feature_response_scatter <- function(df,
     ) +
     ggrepel::geom_text_repel(
       ggplot2::aes(label = label_text, colour = group_f),
-      size = 3, max.overlaps = 50,
+      size = 4, max.overlaps = 50,
       box.padding = 0.5, min.segment.length = 0,
       show.legend = FALSE,
       na.rm = TRUE
@@ -433,9 +433,10 @@ feature_response_scatter <- function(df,
       plot.subtitle    = ggplot2::element_text(size = 10, colour = "grey30"),
       legend.position  = "right",
       legend.title     = ggplot2::element_text(face = "bold"),
-      legend.text      = ggplot2::element_text(size = 8),
+      legend.text      = ggplot2::element_text(size = 12),
       legend.key.size  = ggplot2::unit(0.8, "lines"),
-      panel.grid.minor = ggplot2::element_blank()
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.background  = ggplot2::element_rect(fill = "grey95")
     ) +
     ggplot2::guides(
       colour = ggplot2::guide_legend(order = 1, ncol = 1,
@@ -511,6 +512,49 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
               "feature_response_scatter_te_vs_halflife_collapsed.csv"),
     row.names = FALSE
   )
+  
+  # Top view: top n
+  out_top_n <- feature_response_scatter(
+    df,
+    top_n = 3,
+    label_quantile = 0.3
+    # noise_filter = 0.1
+  )
+  print(out_top_n$plot)
+  ggplot2::ggsave(
+    file.path(OUTPUT_DIR, "plots",
+              "feature_response_scatter_te_vs_halflife_top_3.jpg"),
+    plot = out_top_n$plot,
+    width = 250, height = 180, units = "mm", dpi = 300
+  )
+  write.csv(
+    out_top_n$table,
+    file.path(OUTPUT_DIR, "tables",
+              "feature_response_scatter_te_vs_halflife_top_3.csv"),
+    row.names = FALSE
+  )
+  
+  # Top view: top 1
+  out_top <- feature_response_scatter(
+    df,
+    top_n = 1,
+    label_quantile = 0
+    # noise_filter = 0.1
+  )
+  print(out_top$plot)
+  ggplot2::ggsave(
+    file.path(OUTPUT_DIR, "plots",
+              "feature_response_scatter_te_vs_halflife_top_1.jpg"),
+    plot = out_top$plot,
+    width = 250, height = 180, units = "mm", dpi = 300
+  )
+  write.csv(
+    out_top$table,
+    file.path(OUTPUT_DIR, "tables",
+              "feature_response_scatter_te_vs_halflife_top_1.csv"),
+    row.names = FALSE
+  )
+  
 
   message("\nFeature response scatter complete:")
   message("  ", file.path(OUTPUT_DIR, "plots"),
