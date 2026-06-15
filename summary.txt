@@ -1,0 +1,27 @@
+data/raw/human/sequence_basic.tsv: transcript_id	gene_id	region	length	gc_content	frac_A	frac_C	frac_G	frac_U	frac_other	gc_skew	at_skew	purine_ratio	amino_ratio
+data/raw/human/architecture.tsv: transcript_id	gene_id	strand	n_exons	n_internal_exons	first_exon_length	last_exon_length	internal_exon_mean	internal_exon_median	internal_exon_sd	intron_mean	intron_median	intron_sd
+data/raw/human/nmd_fragility.tsv: transcript_id	gene_id	strand	model	cds_length	zone_length	n_transition_fragile_codons	n_transversion_fragile_codons	n_snv_fragile_codons	n_alt_stop_codons	transition_fragile_codon_density	transversion_fragile_codon_density	snv_fragile_codon_density	alt_stop_codon_density	transition_fraction_of_snv_fragile
+data/raw/human/transcripts.csv: gene_name,gene_id,transcript_id
+data/raw/human/agarwal_features.csv: gene_id,expression,orfexondensity
+data/raw/human/junction_distance.csv: transcript_id,region,eej_distance,direction
+data/raw/human/cai.csv: transcript_id,CAI
+data/raw/human/uorfs.csv: sequence_id,strand,frame,start,end,length,length_fraction,total_orfs_in_sequence,sequence_length
+data/raw/human/rnafold_UTR_pair_results.csv: transcript_id,region,RNAfold_score,RNAfold_median,RNAfold_pval,RNAfold_zscore
+data/raw/human/codon_aa_counts.tsv: transcript_id	codon_AAA	codon_AAC	codon_AAG	codon_AAU	codon_ACA	codon_ACC	codon_ACG	codon_ACU	codon_AGA	codon_AGC	codon_AGG	codon_AGU	codon_AUA	codon_AUC	codon_AUG	codon_AUU	codon_CAA	codon_CAC	codon_CAG	codon_CAU	codon_CCA	codon_CCC	codon_CCG	codon_CCU	codon_CGA	codon_CGC	codon_CGG	codon_CGU	codon_CUA	codon_CUC	codon_CUG	codon_CUU	codon_GAA	codon_GAC	codon_GAG	codon_GAU	codon_GCA	codon_GCC	codon_GCG	codon_GCU	codon_GGA	codon_GGC	codon_GGG	codon_GGU	codon_GUA	codon_GUC	codon_GUG	codon_GUU	codon_UAA	codon_UAC	codon_UAG	codon_UAU	codon_UCA	codon_UCC	codon_UCG	codon_UCU	codon_UGA	codon_UGC	codon_UGG	codon_UGU	codon_UUA	codon_UUC	codon_UUG	codon_UUU	codon_other	aa_A	aa_C	aa_D	aa_E	aa_F	aa_G	aa_H	aa_I	aa_K	aa_L	aa_M	aa_N	aa_P	aa_Q	aa_R	aa_S	aa_T	aa_V	aa_W	aa_Y	cds_length_codons	n_codons_scored	n_stops	aa_total
+data/raw/human/skews.csv: transcript_id,region,skew_au,skew_gc
+data/raw/human/cai.tsv: transcript_id	cai	n_codons_cai
+data/raw/human/rnalfold_results.csv: transcript_id,region,RNALfold_score,RNALfold_median,RNALfold_pval,RNALfold_zscore
+data/raw/human/junction_count.csv: transcript_id,region,junctions
+data/raw/human/stopfree.tsv: transcript_id	region	stopfree_length	stopfree_fraction	stopcodon_fraction
+data/raw/human/uorf.tsv: transcript_id	gene_id	utr5_length	n_uorfs	n_overlapping_uorfs	has_uorf	total_classical_uorf_codons	max_classical_uorf_codons	dist_cap_to_first_uatg	dist_last_uorf_stop_to_main_atg
+data/raw/human/nuc_counts_wide.csv: transcript_id,nuc_A_ratio_3UTR,nuc_A_ratio_5UTR,nuc_A_ratio_CDS,nuc_A_ratio_LAST100,nuc_A_ratio_MRNA,nuc_A_ratio_START,nuc_A_ratio_STOP,nuc_C_ratio_3UTR,nuc_C_ratio_5UTR,nuc_C_ratio_CDS,nuc_C_ratio_LAST100,nuc_C_ratio_MRNA,nuc_C_ratio_START,nuc_C_ratio_STOP,nuc_G_ratio_3UTR,nuc_G_ratio_5UTR,nuc_G_ratio_CDS,nuc_G_ratio_LAST100,nuc_G_ratio_MRNA,nuc_G_ratio_START,nuc_G_ratio_STOP,nuc_U_ratio_3UTR,nuc_U_ratio_5UTR,nuc_U_ratio_CDS,nuc_U_ratio_LAST100,nuc_U_ratio_MRNA,nuc_U_ratio_START,nuc_U_ratio_STOP
+data/raw/human/length_gc.csv: transcript_id,region,length,gc
+data/raw/human/translation_efficiency.csv: gene_id,tx_id,mean_te
+data/raw/human/rnafold_results.csv: transcript_id,region,RNAfold_score,RNAfold_median,RNAfold_pval,RNAfold_zscore
+data/raw/human/halflife.csv: gene_id,halflife
+data/raw/human/amino_acid_frequencies.csv: transcript_id,K,N,T,R,S,I,M,Q,H,P,L,E,D,A,G,V,Y,C,W,F
+data/raw/human/codon_freqs.csv: transcript_id,AAA,AAC,AAG,AAU,ACA,ACC,ACG,ACU,AGA,AGC,AGG,AGU,AUA,AUC,AUG,AUU,CAA,CAC,CAG,CAU,CCA,CCC,CCG,CCU,CGA,CGC,CGG,CGU,CUA,CUC,CUG,CUU,GAA,GAC,GAG,GAU,GCA,GCC,GCG,GCU,GGA,GGC,GGG,GGU,GUA,GUC,GUG,GUU,UAC,UAU,UCA,UCC,UCG,UCU,UGC,UGG,UGU,UUA,UUC,UUG,UUU
+data/raw/human/rnaplfold_results.csv: transcript_id,region,score
+data/raw/human/compositional_ratios.csv: transcript_id,amino_ratio_3UTR,amino_ratio_5UTR,amino_ratio_CDS,amino_ratio_last100,amino_ratio_mRNA,amino_ratio_start,amino_ratio_stop,purine_ratio_3UTR,purine_ratio_5UTR,purine_ratio_CDS,purine_ratio_last100,purine_ratio_mRNA,purine_ratio_start,purine_ratio_stop
+data/raw/human/extended_skew_wide.csv: Human_ensembl_gene_id,skew_AT_3UTR,skew_AT_5UTR,skew_AT_CDS,skew_AT_FIRST_CDS_EXON,skew_AT_LAST100,skew_AT_LAST_CDS_EXON,skew_AT_START_pm30,skew_AT_STOP_pm30,skew_GC_3UTR,skew_GC_5UTR,skew_GC_CDS,skew_GC_FIRST_CDS_EXON,skew_GC_LAST100,skew_GC_LAST_CDS_EXON,skew_GC_START_pm30,skew_GC_STOP_pm30
+data/raw/human/junctions.tsv: transcript_id	gene_id	strand	n_exons	n_5UTR_junctions	n_CDS_junctions	n_3UTR_junctions	stop_dist_closest_upstream	stop_dist_closest_downstream	stop_dist_last_downstream	start_dist_closest_upstream	start_dist_closest_downstream

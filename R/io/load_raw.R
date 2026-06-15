@@ -312,9 +312,11 @@ load_stopfree <- function(species) {
 #' Load Codon Adaptation Index.
 #' Expected columns: transcript_id, cai.
 load_cai <- function(species) {
-  df <- read_if_exists(species_path(species, "cai.csv"))
+  df <- read_if_exists(species_path(species, "cai.tsv"))
   if (is.null(df)) return(NULL)
-  df |> lowercase_names()
+  df |> 
+    dplyr::select(-dplyr::any_of(c("gene_id", "n_codons_cai"))) |>
+    lowercase_names()
 }
 
 
