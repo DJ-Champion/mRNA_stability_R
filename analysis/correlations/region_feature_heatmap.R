@@ -6,16 +6,16 @@
 # you can read off every feature's relationship with the predictor, while also
 # seeing how features co-vary with each other.
 #
-# Layout choices (all controllable via arguments):
+# Layout:
 #   * One PDF per region.
 #   * Features ordered by group (FEATURE_PATTERNS/SUPERGROUPS canonical order)
 #     then by |ρ with response| descending within each group.
-#   * Response column sits at the bottom-right, visually separated.
+#   * Response column sits at the bottom-right, separated by a heavier line.
 #   * Diverging blue (−1) → white (0) → red (+1) fill; limits fixed at ±1.
-#   * Spearman ρ printed in every off-diagonal cell; BH significance stars
-#     (* q<0.05, ** q<0.01, *** q<0.001) appended when show_significance=TRUE.
-#   * Group separator lines and left-margin group labels with group colours.
-#   * Diagonal cells rendered in neutral grey (self-correlation is trivial).
+#   * Spearman ρ printed in every off-diagonal cell (2 decimal places).
+#   * Square tiles enforced via coord_fixed().
+#   * Region suffix stripped from axis labels (format_metric_name()).
+#   * Group separator lines mark group boundaries; no colour annotation.
 #
 # Usage:
 #   source("R/load_all.R")
@@ -50,20 +50,8 @@ suppressPackageStartupMessages({
 # Internal helpers
 # -----------------------------------------------------------------------------
 
-.sig_stars <- function(q) {
-  dplyr::case_when(
-    is.na(q)  ~ "",
-    q < 0.001 ~ "***",
-    q < 0.01  ~ "**",
-    q < 0.05  ~ "*",
-    TRUE      ~ ""
-  )
-}
-
-
 #' Compute Spearman ρ and p-value for every unique pair in `cols`.
-#' Returns a long data frame with columns:
-#'   feature_x, feature_y, rho, p_value, n
+#' Returns a long tibble: feature_x, feature_y, rho, p_value, n.
 .compute_corr_pairs <- function(df, cols, min_n = 30) {
   pairs <- utils::combn(cols, 2, simplify = FALSE)
 
@@ -144,44 +132,37 @@ suppressPackageStartupMessages({
 #' @param pick             Named list: group key → column allow-list.
 #' @param drop             Named list: group key → columns to remove.
 #' @param regions          Character vector of region tokens to plot
-#'                         (NULL = every region present in the resolved features,
-#'                         in REGIONS canonical order).
+#'                         (NULL = every region present in the resolved
+#'                         features, in REGIONS canonical order).
 #' @param min_n            Minimum non-NA pairs needed to compute a correlation
 #'                         (default 30).
 #' @param color_limits     Numeric length-2: fill scale limits (default c(-1,1)).
-#' @param show_significance Logical. Append BH significance stars to the ρ
-#'                         label in significant cells (default TRUE).
-#' @param sig_threshold    Q-value threshold used for the subtitle annotation
-#'                         (default 0.05; stars always use 0.05/0.01/0.001).
 #' @param cell_text_size   Size passed to geom_text for in-cell labels
-#'                         (default 3). Reduce for large feature sets.
+#'                         (default 3.2). Reduce for large feature sets.
 #' @param base_size        Base font size in points (default 14).
 #' @param output_dir       If non-NULL, write one PDF per region here.
 #' @param file_prefix      Filename prefix for saved PDFs
 #'                         (default "region_heatmap").
-#' @param width_mm         PDF width in mm. NULL = auto (scales with N features).
-#' @param height_mm        PDF height in mm. NULL = auto.
+#' @param size_mm          Square side length of each PDF in mm. NULL = auto
+#'                         (scales with number of features).
 #' @return Named list keyed by region (or "{region}_{species}" for multi-species
 #'   datasets). Each value is list(plot = ggplot, table = tibble).
 #'   Table columns: feature_x, feature_y, rho, p_value, q_value, n.
 #'   Returned invisibly; call print() on $plot to display.
 #' @export
 region_feature_heatmap <- function(df,
-                                   response          = "halflife",
-                                   groups            = NULL,
-                                   pick              = list(),
-                                   drop              = list(),
-                                   regions           = NULL,
-                                   min_n             = 30,
-                                   color_limits      = c(-1, 1),
-                                   show_significance = TRUE,
-                                   sig_threshold     = 0.05,
-                                   cell_text_size    = 3,
-                                   base_size         = 14,
-                                   output_dir        = NULL,
-                                   file_prefix       = "region_heatmap",
-                                   width_mm          = NULL,
-                                   height_mm         = NULL) {
+                                   response      = "halflife",
+                                   groups        = NULL,
+                                   pick          = list(),
+                                   drop          = list(),
+                                   regions       = NULL,
+                                   min_n         = 30,
+                                   color_limits  = c(-1, 1),
+                                   cell_text_size = 3.2,
+                                   base_size     = 14,
+                                   output_dir    = NULL,
+                                   file_prefix   = "region_heatmap",
+                                   size_mm       = NULL) {
 
   # --- Guards ---------------------------------------------------------------
   if (!response %in% names(df)) {
@@ -200,7 +181,7 @@ region_feature_heatmap <- function(df,
   }
 
   # Map each feature column → its group key and region token
-  sel         <- resolve_selection(groups, pick, drop)
+  sel           <- resolve_selection(groups, pick, drop)
   col_to_group  <- list()
   col_to_region <- list()
 
@@ -253,24 +234,22 @@ region_feature_heatmap <- function(df,
       return(NULL)
     }
 
-    # Drop rows where response is NA
     sub_df <- sub_df[!is.na(sub_df[[response]]), , drop = FALSE]
 
     feat_order <- .order_region_features(
       reg_features, response, col_to_group, sub_df
     )
-    all_cols <- feat_order  # includes response at end
+    all_cols <- feat_order  # response is last element
 
-    n_cols <- length(all_cols)
+    n_cols  <- length(all_cols)
     n_pairs <- choose(n_cols, 2)
     sp_str  <- if (!is.null(sp_label)) paste0(" [", sp_label, "]") else ""
     message("  Region ", reg, sp_str, ": ",
-            n_cols - 1, " features + response → ",
-            n_pairs, " pairs")
+            n_cols - 1, " features + response → ", n_pairs, " pairs")
 
     pairs_df <- .compute_corr_pairs(sub_df, all_cols, min_n = min_n)
 
-    # Symmetrise: add reverse pairs + diagonal (NA fill → grey)
+    # Symmetrise + add diagonal (NA fill → neutral grey via na.value)
     sym_df <- dplyr::bind_rows(
       dplyr::mutate(pairs_df, is_diag = FALSE),
       dplyr::mutate(
@@ -289,7 +268,7 @@ region_feature_heatmap <- function(df,
       )
     )
 
-    # BH correction across all off-diagonal non-NA p-values
+    # BH correction (retained in the table; not shown in cells)
     sym_df <- sym_df |>
       dplyr::mutate(
         q_value = dplyr::if_else(
@@ -299,33 +278,26 @@ region_feature_heatmap <- function(df,
         )
       )
 
-    # Cell label: ρ + optional significance stars
+    # Cell label: ρ only, 2 decimal places; blank on diagonal
     sym_df <- sym_df |>
       dplyr::mutate(
-        rho_str    = dplyr::if_else(
+        cell_label = dplyr::if_else(
           is_diag | is.na(rho), "",
           sprintf("%.2f", rho)
         ),
-        stars      = dplyr::if_else(
-          !is_diag & show_significance,
-          .sig_stars(q_value),
-          ""
-        ),
-        cell_label = paste0(rho_str, stars),
-        # White text on strongly coloured tiles; black on pale tiles
+        # White text on strongly coloured tiles; dark text on pale tiles
         text_color = dplyr::case_when(
-          is_diag             ~ "grey60",
-          is.na(rho)          ~ "grey60",
-          abs(rho) > 0.62     ~ "white",
-          TRUE                ~ "grey10"
+          is_diag | is.na(rho) ~ "grey55",
+          abs(rho) > 0.62      ~ "white",
+          TRUE                 ~ "grey10"
         )
       )
 
-    # Factor levels control axis order
+    # Factor levels → axis order
     sym_df$feature_x <- factor(sym_df$feature_x, levels = all_cols)
     sym_df$feature_y <- factor(sym_df$feature_y, levels = all_cols)
 
-    # --- Group annotation geometry -----------------------------------------
+    # --- Group separator geometry -------------------------------------------
     feat_grp <- vapply(all_cols, function(f) {
       if (f == response) "response" else {
         g <- col_to_group[[f]]
@@ -333,65 +305,35 @@ region_feature_heatmap <- function(df,
       }
     }, character(1))
 
-    rle_grp   <- rle(feat_grp)
-    grp_ends  <- cumsum(rle_grp$lengths)
-    grp_starts <- c(1L, head(grp_ends, -1L) + 1L)
-    grp_mids  <- (grp_starts + grp_ends) / 2
+    rle_grp  <- rle(feat_grp)
+    grp_ends <- cumsum(rle_grp$lengths)
 
-    # Separator line positions: between groups (not at response boundary —
-    # the response gets its own thicker separator added separately)
-    is_resp_boundary <- which(
+    boundary_pos  <- grp_ends[-length(grp_ends)] + 0.5
+    is_resp_bound <- which(
       rle_grp$values == "response" |
       c(rle_grp$values[-1] == "response", FALSE)
     )
-    boundary_pos <- grp_ends[-length(grp_ends)] + 0.5
-    resp_boundary <- boundary_pos[is_resp_boundary]
+    resp_boundary <- boundary_pos[is_resp_bound]
     feat_boundary <- setdiff(boundary_pos, resp_boundary)
 
-    grp_colors <- ifelse(
-      rle_grp$values == "response",
-      "grey20",
-      feature_colour(rle_grp$values)
-    )
-    grp_labels <- ifelse(
-      rle_grp$values == "response",
-      format_col_name(response),
-      format_group_name(rle_grp$values)
+    # --- Axis labels: region suffix stripped for features -------------------
+    axis_labels <- setNames(
+      c(format_metric_name(all_cols[-length(all_cols)]),
+        format_col_name(response)),
+      all_cols
     )
 
-    bar_df <- data.frame(
-      ymin  = grp_starts - 0.5,
-      ymax  = grp_ends   + 0.5,
-      color = grp_colors,
-      label = grp_labels,
-      ymid  = grp_mids,
-      stringsAsFactors = FALSE
-    )
+    # --- PDF dimensions (square) -------------------------------------------
+    tile_mm <- max(12, min(22, 280 / n_cols))
+    pdf_sq  <- if (!is.null(size_mm)) size_mm else n_cols * tile_mm + 80
 
-    # Axis display labels
-    axis_labels <- setNames(format_col_name(all_cols), all_cols)
-
-    # Auto-size PDF dimensions (mm) from feature count
-    tile_mm <- max(12, min(20, 260 / n_cols))
-    pdf_w   <- if (!is.null(width_mm))  width_mm  else n_cols * tile_mm + 90
-    pdf_h   <- if (!is.null(height_mm)) height_mm else n_cols * tile_mm + 90
-
-    # Left margin: determined by longest group label (rough heuristic)
-    max_label_nchar <- max(nchar(grp_labels))
-    left_margin_mm  <- max(40, max_label_nchar * 2.2 + 12)
-
-    # Positions for left-margin annotations (discrete axis: tile i sits at x = i)
-    # With coord_cartesian(clip = "off"), negative x positions draw into the margin.
-    bar_xmax <- -0.65
-    bar_xmin <- bar_xmax - 0.35
-    lbl_x    <- bar_xmin - 0.15
-
-    # Build title
+    # --- Titles -------------------------------------------------------------
     region_disp <- REGION_DISPLAYS[[reg]]
     sp_title    <- if (!is.null(sp_label)) paste0(" — ", sp_label) else ""
-    hm_title    <- sprintf("Feature correlation matrix — %s%s", region_disp, sp_title)
+    hm_title    <- sprintf("Feature correlation matrix — %s%s",
+                           region_disp, sp_title)
     hm_subtitle <- sprintf(
-      "Spearman ρ; %d features + %s; group order → |ρ| with %s; BH correction",
+      "Spearman ρ; %d features + %s; group order → |ρ| with %s",
       n_cols - 1, format_col_name(response), format_col_name(response)
     )
 
@@ -406,13 +348,15 @@ region_feature_heatmap <- function(df,
         na.rm  = TRUE
       ) +
 
-      # Diagonal grey tiles (rho = NA → na.value; this just makes it explicit)
+      # Diagonal tiles (neutral grey)
       ggplot2::geom_tile(
-        data    = dplyr::filter(sym_df, is_diag),
-        fill    = "grey88", colour = "white", linewidth = 0.25
+        data      = dplyr::filter(sym_df, is_diag),
+        fill      = "grey88",
+        colour    = "white",
+        linewidth = 0.25
       ) +
 
-      # In-cell labels
+      # In-cell ρ labels
       ggplot2::geom_text(
         ggplot2::aes(label = cell_label, colour = text_color),
         size     = cell_text_size,
@@ -420,17 +364,17 @@ region_feature_heatmap <- function(df,
         na.rm    = TRUE
       ) +
 
-      # Feature group separator lines (between groups, moderate weight)
+      # Feature group separator lines
       {if (length(feat_boundary) > 0)
         list(
           ggplot2::geom_hline(yintercept = feat_boundary,
-                              colour = "grey30", linewidth = 0.7),
+                              colour = "grey40", linewidth = 0.7),
           ggplot2::geom_vline(xintercept = feat_boundary,
-                              colour = "grey30", linewidth = 0.7)
+                              colour = "grey40", linewidth = 0.7)
         )
       } +
 
-      # Response separator lines (heavier)
+      # Response separator (heavier)
       {if (length(resp_boundary) > 0)
         list(
           ggplot2::geom_hline(yintercept = resp_boundary,
@@ -440,29 +384,6 @@ region_feature_heatmap <- function(df,
         )
       } +
 
-      # Left margin: coloured group bars (drawn as thick line segments at x < 1)
-      ggplot2::annotate(
-        "rect",
-        xmin  = rep(bar_xmin, nrow(bar_df)),
-        xmax  = rep(bar_xmax, nrow(bar_df)),
-        ymin  = bar_df$ymin,
-        ymax  = bar_df$ymax,
-        fill  = bar_df$color,
-        colour = NA
-      ) +
-
-      # Left margin: group name labels
-      ggplot2::annotate(
-        "text",
-        x        = rep(lbl_x, nrow(bar_df)),
-        y        = bar_df$ymid,
-        label    = bar_df$label,
-        hjust    = 1, vjust = 0.5,
-        size     = base_size * 0.28,
-        fontface = "bold",
-        colour   = bar_df$color
-      ) +
-
       # Fill scale
       ggplot2::scale_fill_gradient2(
         low      = "#2166AC",
@@ -470,7 +391,6 @@ region_feature_heatmap <- function(df,
         high     = "#B2182B",
         midpoint = 0,
         limits   = color_limits,
-        oob      = scales::squish,
         na.value = "grey88",
         name     = "Spearman ρ",
         guide    = ggplot2::guide_colorbar(
@@ -481,13 +401,15 @@ region_feature_heatmap <- function(df,
         )
       ) +
 
-      # Text colour scale (identity: the column contains literal colour strings)
+      # Text colour: identity scale (column holds literal colour strings)
       ggplot2::scale_colour_identity(guide = "none") +
 
+      # Axis labels (region suffix stripped)
       ggplot2::scale_x_discrete(labels = axis_labels) +
       ggplot2::scale_y_discrete(labels = axis_labels) +
 
-      ggplot2::coord_cartesian(clip = "off") +
+      # Square tiles
+      ggplot2::coord_fixed(ratio = 1) +
 
       ggplot2::labs(
         title    = hm_title,
@@ -497,27 +419,27 @@ region_feature_heatmap <- function(df,
 
       ggplot2::theme_bw(base_size = base_size) +
       ggplot2::theme(
-        axis.text.x       = ggplot2::element_text(
+        axis.text.x      = ggplot2::element_text(
           angle = 45, vjust = 1, hjust = 1,
           size  = base_size - 2
         ),
-        axis.text.y       = ggplot2::element_text(size = base_size - 2),
-        plot.title        = ggplot2::element_text(
+        axis.text.y      = ggplot2::element_text(size = base_size - 2),
+        plot.title       = ggplot2::element_text(
           size = base_size + 2, face = "bold"
         ),
-        plot.subtitle     = ggplot2::element_text(
+        plot.subtitle    = ggplot2::element_text(
           size = base_size - 2, colour = "grey30"
         ),
-        panel.grid        = ggplot2::element_blank(),
-        panel.border      = ggplot2::element_rect(
+        panel.grid       = ggplot2::element_blank(),
+        panel.border     = ggplot2::element_rect(
           colour = "grey30", fill = NA, linewidth = 0.6
         ),
-        legend.position   = "right",
-        legend.title      = ggplot2::element_text(
+        legend.position  = "right",
+        legend.title     = ggplot2::element_text(
           size = base_size - 2, face = "bold"
         ),
-        plot.margin       = ggplot2::margin(
-          t = 8, r = 15, b = 8, l = left_margin_mm, unit = "mm"
+        plot.margin      = ggplot2::margin(
+          t = 8, r = 15, b = 8, l = 8, unit = "mm"
         )
       )
 
@@ -532,22 +454,22 @@ region_feature_heatmap <- function(df,
       pdf_path <- file.path(output_dir, fname)
       ggplot2::ggsave(
         pdf_path, plot = p,
-        width = pdf_w, height = pdf_h,
+        width = pdf_sq, height = pdf_sq,
         units = "mm", device = "pdf"
       )
       message("  Saved: ", pdf_path)
     }
 
-    # --- Return table (off-diagonal pairs only) ----------------------------
+    # --- Return table (upper triangle, no diagonal) -------------------------
     table_out <- sym_df |>
       dplyr::filter(!is_diag) |>
-      dplyr::select(feature_x, feature_y, rho, p_value, q_value, n) |>
-      dplyr::filter(as.integer(feature_x) < as.integer(feature_y))  # upper triangle
+      dplyr::filter(as.integer(feature_x) < as.integer(feature_y)) |>
+      dplyr::select(feature_x, feature_y, rho, p_value, q_value, n)
 
     list(plot = p, table = table_out)
   }
 
-  # --- Loop over regions (and species if multi-species) -------------------
+  # --- Loop over regions (and species if multi-species) --------------------
   results <- list()
 
   for (reg in regions_to_plot) {
@@ -588,10 +510,10 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   message("\n=== Structure × core regions ===")
   out_struct <- region_feature_heatmap(
     df,
-    response   = "halflife",
-    groups     = "structure",
-    regions    = c("5utr", "cds", "3utr"),
-    output_dir = out_dir,
+    response    = "halflife",
+    groups      = "structure",
+    regions     = c("5utr", "cds", "3utr"),
+    output_dir  = out_dir,
     file_prefix = "region_heatmap_structure"
   )
 
@@ -599,11 +521,11 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   message("\n=== All groups × core regions ===")
   out_all <- region_feature_heatmap(
     df,
-    response   = "halflife",
-    groups     = c("structure", "intrinsic", "splicing", "regulatory",
-                   "lengths_core", "nmd_reported"),
-    regions    = c("5utr", "cds", "3utr"),
-    output_dir = out_dir,
+    response    = "halflife",
+    groups      = c("structure", "intrinsic", "splicing", "regulatory",
+                    "lengths_core", "nmd_reported"),
+    regions     = c("5utr", "cds", "3utr"),
+    output_dir  = out_dir,
     file_prefix = "region_heatmap_all"
   )
 
