@@ -158,15 +158,15 @@ suppressPackageStartupMessages({
 
 #' Order features for display in the heatmap.
 #'
-#' Features listed in `feature_order` appear first (in that order); any
-#' remaining features are appended at the end sorted by |ρ with response|
-#' descending. Response column is always last.
+#' Response is placed first (bottom-left corner). Features listed in
+#' `feature_order` follow (in order); any remaining selected features are
+#' appended sorted by |ρ with response| descending.
 #'
 #' @param reg_features   Character vector of feature columns for this region.
 #' @param response       Response column name.
 #' @param feature_order  Character vector of preferred column names (or NULL).
 #' @param df_sub         Data subset for computing |ρ|.
-#' @return Ordered character vector including response as last element.
+#' @return Ordered character vector with response first.
 .arrange_features <- function(reg_features, response, feature_order, df_sub) {
   if (!is.null(feature_order)) {
     in_order  <- feature_order[feature_order %in% reg_features]
@@ -183,7 +183,8 @@ suppressPackageStartupMessages({
     remaining <- remaining[order(-rho_vals)]
   }
 
-  c(in_order, remaining, response)
+  # Response first → position 1 on both axes → bottom-left corner
+  c(response, in_order, remaining)
 }
 
 
@@ -195,7 +196,7 @@ suppressPackageStartupMessages({
 #'
 #' Each heatmap shows the full feature × feature correlation matrix for the
 #' columns belonging to one region, with the response variable included as a
-#' special row/column. The response sits at the bottom-right.
+#' special row/column. The response sits at the bottom-left corner.
 #'
 #' @param df               Dataframe from build_dataset() or build_all().
 #' @param response         Response column to include in the matrix
@@ -217,6 +218,12 @@ suppressPackageStartupMessages({
 #'                         every group) or a named list (group key → integer).
 #'                         Groups absent from a named list are not filtered.
 #'                         NULL (default) = no filtering.
+#' @param triangle         Which part of the symmetric matrix to display.
+#'                         "full" (default) = complete matrix; "lower" = lower-
+#'                         left triangle + diagonal (response appears as a row
+#'                         at the bottom); "upper" = upper-right triangle +
+#'                         diagonal. Excluded cells are left blank (panel
+#'                         background shows through).
 #' @param min_n            Minimum non-NA pairs needed to compute a correlation
 #'                         (default 30).
 #' @param color_limits     Numeric length-2: fill scale limits (default c(-1,1)).
@@ -240,6 +247,7 @@ region_feature_heatmap <- function(df,
                                    regions        = NULL,
                                    feature_order  = NULL,
                                    top_n          = NULL,
+                                   triangle       = c("full", "lower", "upper"),
                                    min_n          = 30,
                                    color_limits   = c(-1, 1),
                                    cell_text_size = 3.2,
@@ -247,6 +255,8 @@ region_feature_heatmap <- function(df,
                                    output_dir     = NULL,
                                    file_prefix    = "region_heatmap",
                                    size_mm        = NULL) {
+
+  triangle <- match.arg(triangle)
 
   # --- Guards ---------------------------------------------------------------
   if (!response %in% names(df)) {
@@ -391,6 +401,22 @@ region_feature_heatmap <- function(df,
     sym_df$feature_x <- factor(sym_df$feature_x, levels = all_cols)
     sym_df$feature_y <- factor(sym_df$feature_y, levels = all_cols)
 
+    # --- Triangle masking ---------------------------------------------------
+    # Mark cells that belong to the excluded half so their geoms can be skipped.
+    # With response at position 1 (bottom-left), the diagonal runs bottom-left
+    # to top-right. "lower" keeps x_pos >= y_pos; "upper" keeps x_pos <= y_pos.
+    sym_df <- sym_df |>
+      dplyr::mutate(
+        .xp = as.integer(feature_x),
+        .yp = as.integer(feature_y),
+        is_shown = is_diag | dplyr::case_when(
+          triangle == "lower" ~ .xp >= .yp,
+          triangle == "upper" ~ .xp <= .yp,
+          TRUE                ~ TRUE
+        )
+      ) |>
+      dplyr::select(-.xp, -.yp)
+
     # --- Group separator geometry -------------------------------------------
     feat_grp <- vapply(all_cols, function(f) {
       if (f == response) "response" else {
@@ -411,9 +437,10 @@ region_feature_heatmap <- function(df,
     feat_boundary <- setdiff(boundary_pos, resp_boundary)
 
     # --- Axis labels: region suffix stripped for features -------------------
+    # Response is first (position 1); features follow.
     axis_labels <- setNames(
-      c(format_metric_name(all_cols[-length(all_cols)]),
-        format_col_name(response)),
+      c(format_col_name(response),
+        format_metric_name(all_cols[-1])),
       all_cols
     )
 
@@ -432,26 +459,32 @@ region_feature_heatmap <- function(df,
       }
     } else ""
 
+    tri_str     <- if (triangle != "full") paste0("; ", triangle, " triangle") else ""
     hm_title    <- sprintf("Feature correlation matrix — %s%s",
                            region_disp, sp_title)
     hm_subtitle <- sprintf(
-      "Spearman ρ; %d features + %s%s",
-      n_cols - 1, format_col_name(response), tn_str
+      "Spearman ρ; %d features + %s%s%s",
+      n_cols - 1, format_col_name(response), tn_str, tri_str
     )
 
     # --- Build ggplot -------------------------------------------------------
+    # For triangle modes, only the shown cells are passed to fill/text geoms;
+    # the unused half is left blank (panel background shows through).
+    shown_df <- dplyr::filter(sym_df, is_shown & !is_diag)
+
     p <- ggplot2::ggplot(sym_df,
                          ggplot2::aes(x = feature_x, y = feature_y)) +
 
-      # Correlation tiles
+      # Correlation tiles (shown cells only, excluding diagonal)
       ggplot2::geom_tile(
+        data      = shown_df,
         ggplot2::aes(fill = rho),
         colour    = "white",
         linewidth = 0.25,
         na.rm     = TRUE
       ) +
 
-      # Diagonal tiles (neutral grey)
+      # Diagonal tiles (neutral grey; always shown)
       ggplot2::geom_tile(
         data      = dplyr::filter(sym_df, is_diag),
         fill      = "grey88",
@@ -459,8 +492,9 @@ region_feature_heatmap <- function(df,
         linewidth = 0.25
       ) +
 
-      # In-cell ρ labels
+      # In-cell ρ labels (shown cells only)
       ggplot2::geom_text(
+        data     = shown_df,
         ggplot2::aes(label = cell_label, colour = text_color),
         size     = cell_text_size,
         fontface = "bold",
@@ -567,7 +601,9 @@ region_feature_heatmap <- function(df,
       message("  Saved: ", pdf_path)
     }
 
-    # --- Return table (upper triangle, no diagonal) -------------------------
+    # --- Return table (unique pairs only, no diagonal) ----------------------
+    # Response is at position 1 so x_pos < y_pos captures all unique pairs
+    # with the response in the feature_x column (consistent key direction).
     table_out <- sym_df |>
       dplyr::filter(!is_diag) |>
       dplyr::filter(as.integer(feature_x) < as.integer(feature_y)) |>
