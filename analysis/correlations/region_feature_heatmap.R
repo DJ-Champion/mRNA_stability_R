@@ -8,29 +8,38 @@
 #
 # Layout:
 #   * One PDF per region.
-#   * Features ordered by group (FEATURE_PATTERNS/SUPERGROUPS canonical order)
-#     then by |ρ with response| descending within each group.
+#   * Feature order: user-supplied vector first (in order), then any remaining
+#     features appended at the end sorted by |ρ with response| descending.
 #   * Response column sits at the bottom-right, separated by a heavier line.
 #   * Diverging blue (−1) → white (0) → red (+1) fill; limits fixed at ±1.
 #   * Spearman ρ printed in every off-diagonal cell (2 decimal places).
-#   * Square tiles enforced via coord_fixed().
+#   * Square tiles via theme(aspect.ratio = 1).
 #   * Region suffix stripped from axis labels (format_metric_name()).
-#   * Group separator lines mark group boundaries; no colour annotation.
+#   * Group separator lines mark boundaries where the group changes.
+#
+# top_n mode:
+#   Pass top_n = list(structure = 3, intrinsic = 2) (or a single integer to
+#   apply the same cap to every group) to produce a focused heatmap showing
+#   only the top-N features per group (by |ρ with response|), all combined.
 #
 # Usage:
 #   source("R/load_all.R")
 #   source("analysis/correlations/region_feature_heatmap.R")
 #   df  <- build_dataset("human")
 #
-#   # Structure features, CDS only
-#   out <- region_feature_heatmap(df, groups = "structure", regions = "cds")
+#   # Structure features, CDS, custom order
+#   out <- region_feature_heatmap(
+#     df, groups = "structure", regions = "cds",
+#     feature_order = c("rnafold_zscore_cds", "mfe_delta_cds", "rnalfold_score_cds")
+#   )
 #   print(out[["cds"]]$plot)
 #
-#   # Core regions, explicit group + bundle selection, save PDFs
+#   # Top-3 per group across core regions
 #   out <- region_feature_heatmap(
 #     df,
-#     groups     = c("structure", "intrinsic", "lengths_core"),
-#     regions    = c("5utr", "cds", "3utr"),
+#     groups    = c("structure", "intrinsic"),
+#     regions   = c("5utr", "cds", "3utr"),
+#     top_n     = 3,
 #     output_dir = "data/outputs/plots/heatmaps"
 #   )
 # =============================================================================
@@ -83,33 +92,98 @@ suppressPackageStartupMessages({
 }
 
 
-#' Determine feature order for one region's heatmap.
-#' Primary sort: group position in FEATURE_PATTERNS canonical order.
-#' Secondary sort within group: |ρ with response| descending.
-#' Returns the ordered character vector; response is always last.
-.order_region_features <- function(reg_features, response, col_to_group, df_sub) {
-  group_order <- names(FEATURE_PATTERNS)
-  resp_vals   <- df_sub[[response]]
+#' Absolute Spearman ρ of a single column with the response.
+.abs_rho_with_response <- function(df, col, response) {
+  x  <- df[[col]]
+  y  <- df[[response]]
+  ok <- !is.na(x) & !is.na(y)
+  if (sum(ok) < 5) return(0)
+  abs(suppressWarnings(stats::cor(x[ok], y[ok], method = "spearman")))
+}
 
-  group_rank <- vapply(reg_features, function(f) {
+
+#' Apply top-N per-group filter to `reg_features`.
+#'
+#' @param reg_features Character vector of feature column names for this region.
+#' @param col_to_group Named list: column → group key.
+#' @param top_n        Single integer, or named list (group → integer).
+#'                     Groups absent from the list are not filtered.
+#' @param response     Response column name (used for |ρ| ranking).
+#' @param df_sub       Data subset (used for |ρ| computation).
+#' @return Filtered character vector preserving group structure.
+.apply_top_n <- function(reg_features, col_to_group, top_n, response, df_sub) {
+  if (is.null(top_n)) return(reg_features)
+
+  # Normalise to a named list: group → n (NULL entry = no cap for that group)
+  all_groups <- unique(vapply(reg_features, function(f) {
     g <- col_to_group[[f]]
-    if (is.null(g)) Inf else {
-      idx <- match(g, group_order)
-      if (is.na(idx)) Inf else idx
+    if (is.null(g)) "other" else g
+  }, character(1)))
+
+  if (is.numeric(top_n) && length(top_n) == 1 && is.null(names(top_n))) {
+    n_map <- setNames(
+      rep(list(as.integer(top_n)), length(all_groups)),
+      all_groups
+    )
+  } else if (is.list(top_n) || !is.null(names(top_n))) {
+    n_map <- as.list(top_n)
+  } else {
+    warning("top_n must be a single integer or a named list — ignored")
+    return(reg_features)
+  }
+
+  kept <- character(0)
+  for (g in all_groups) {
+    g_features <- reg_features[vapply(reg_features, function(f) {
+      identical(
+        {grp <- col_to_group[[f]]; if (is.null(grp)) "other" else grp},
+        g
+      )
+    }, logical(1))]
+
+    n_keep <- n_map[[g]]
+    if (is.null(n_keep) || length(g_features) <= n_keep) {
+      kept <- c(kept, g_features)
+      next
     }
-  }, numeric(1))
 
-  abs_rho_with_resp <- vapply(reg_features, function(f) {
-    x  <- df_sub[[f]]
-    ok <- !is.na(x) & !is.na(resp_vals)
-    if (sum(ok) < 5) return(0)
-    abs(suppressWarnings(
-      stats::cor(x[ok], resp_vals[ok], method = "spearman")
-    ))
-  }, numeric(1))
+    rho_vals <- vapply(g_features,
+                       .abs_rho_with_response, numeric(1), df = df_sub, response = response)
+    kept <- c(kept, g_features[order(-rho_vals)][seq_len(n_keep)])
+  }
 
-  ord <- order(group_rank, -abs_rho_with_resp)
-  c(reg_features[ord], response)
+  kept
+}
+
+
+#' Order features for display in the heatmap.
+#'
+#' Features listed in `feature_order` appear first (in that order); any
+#' remaining features are appended at the end sorted by |ρ with response|
+#' descending. Response column is always last.
+#'
+#' @param reg_features   Character vector of feature columns for this region.
+#' @param response       Response column name.
+#' @param feature_order  Character vector of preferred column names (or NULL).
+#' @param df_sub         Data subset for computing |ρ|.
+#' @return Ordered character vector including response as last element.
+.arrange_features <- function(reg_features, response, feature_order, df_sub) {
+  if (!is.null(feature_order)) {
+    in_order  <- feature_order[feature_order %in% reg_features]
+    remaining <- setdiff(reg_features, in_order)
+  } else {
+    in_order  <- character(0)
+    remaining <- reg_features
+  }
+
+  # Sort remaining by |ρ with response| descending
+  if (length(remaining) > 0) {
+    rho_vals <- vapply(remaining,
+                       .abs_rho_with_response, numeric(1), df = df_sub, response = response)
+    remaining <- remaining[order(-rho_vals)]
+  }
+
+  c(in_order, remaining, response)
 }
 
 
@@ -121,8 +195,7 @@ suppressPackageStartupMessages({
 #'
 #' Each heatmap shows the full feature × feature correlation matrix for the
 #' columns belonging to one region, with the response variable included as a
-#' special row/column. Features are ordered by group then |ρ with response|;
-#' the response sits at the bottom-right.
+#' special row/column. The response sits at the bottom-right.
 #'
 #' @param df               Dataframe from build_dataset() or build_all().
 #' @param response         Response column to include in the matrix
@@ -132,37 +205,48 @@ suppressPackageStartupMessages({
 #' @param pick             Named list: group key → column allow-list.
 #' @param drop             Named list: group key → columns to remove.
 #' @param regions          Character vector of region tokens to plot
-#'                         (NULL = every region present in the resolved
+#'                         (NULL = all regions present in the resolved
 #'                         features, in REGIONS canonical order).
+#' @param feature_order    Character vector of column names specifying the
+#'                         display order. These are placed first (in order);
+#'                         any remaining selected features are appended at
+#'                         the end sorted by |ρ with response| descending.
+#'                         NULL (default) = all features sorted by |ρ|.
+#' @param top_n            Retain only the top-N features per group before
+#'                         plotting. Can be a single integer (same cap for
+#'                         every group) or a named list (group key → integer).
+#'                         Groups absent from a named list are not filtered.
+#'                         NULL (default) = no filtering.
 #' @param min_n            Minimum non-NA pairs needed to compute a correlation
 #'                         (default 30).
 #' @param color_limits     Numeric length-2: fill scale limits (default c(-1,1)).
-#' @param cell_text_size   Size passed to geom_text for in-cell labels
-#'                         (default 3.2). Reduce for large feature sets.
+#' @param cell_text_size   geom_text size for in-cell labels (default 3.2).
 #' @param base_size        Base font size in points (default 14).
 #' @param output_dir       If non-NULL, write one PDF per region here.
 #' @param file_prefix      Filename prefix for saved PDFs
 #'                         (default "region_heatmap").
-#' @param size_mm          Square side length of each PDF in mm. NULL = auto
-#'                         (scales with number of features).
+#' @param size_mm          Square side length for saved PDFs in mm.
+#'                         NULL = auto (scales with number of features).
 #' @return Named list keyed by region (or "{region}_{species}" for multi-species
 #'   datasets). Each value is list(plot = ggplot, table = tibble).
 #'   Table columns: feature_x, feature_y, rho, p_value, q_value, n.
-#'   Returned invisibly; call print() on $plot to display.
+#'   Returned invisibly.
 #' @export
 region_feature_heatmap <- function(df,
-                                   response      = "halflife",
-                                   groups        = NULL,
-                                   pick          = list(),
-                                   drop          = list(),
-                                   regions       = NULL,
-                                   min_n         = 30,
-                                   color_limits  = c(-1, 1),
+                                   response       = "halflife",
+                                   groups         = NULL,
+                                   pick           = list(),
+                                   drop           = list(),
+                                   regions        = NULL,
+                                   feature_order  = NULL,
+                                   top_n          = NULL,
+                                   min_n          = 30,
+                                   color_limits   = c(-1, 1),
                                    cell_text_size = 3.2,
-                                   base_size     = 14,
-                                   output_dir    = NULL,
-                                   file_prefix   = "region_heatmap",
-                                   size_mm       = NULL) {
+                                   base_size      = 14,
+                                   output_dir     = NULL,
+                                   file_prefix    = "region_heatmap",
+                                   size_mm        = NULL) {
 
   # --- Guards ---------------------------------------------------------------
   if (!response %in% names(df)) {
@@ -236,8 +320,19 @@ region_feature_heatmap <- function(df,
 
     sub_df <- sub_df[!is.na(sub_df[[response]]), , drop = FALSE]
 
-    feat_order <- .order_region_features(
-      reg_features, response, col_to_group, sub_df
+    # Apply top-N per group filter (uses |ρ| to rank within each group)
+    reg_features <- .apply_top_n(
+      reg_features, col_to_group, top_n, response, sub_df
+    )
+
+    if (length(reg_features) == 0) {
+      message("  No features remain after top_n filter for region '", reg, "'")
+      return(NULL)
+    }
+
+    # Arrange features in display order
+    feat_order <- .arrange_features(
+      reg_features, response, feature_order, sub_df
     )
     all_cols <- feat_order  # response is last element
 
@@ -268,7 +363,7 @@ region_feature_heatmap <- function(df,
       )
     )
 
-    # BH correction (retained in the table; not shown in cells)
+    # BH correction (kept in table; not displayed in cells)
     sym_df <- sym_df |>
       dplyr::mutate(
         q_value = dplyr::if_else(
@@ -278,14 +373,13 @@ region_feature_heatmap <- function(df,
         )
       )
 
-    # Cell label: ρ only, 2 decimal places; blank on diagonal
+    # Cell label: ρ only; blank on diagonal
     sym_df <- sym_df |>
       dplyr::mutate(
         cell_label = dplyr::if_else(
           is_diag | is.na(rho), "",
           sprintf("%.2f", rho)
         ),
-        # White text on strongly coloured tiles; dark text on pale tiles
         text_color = dplyr::case_when(
           is_diag | is.na(rho) ~ "grey55",
           abs(rho) > 0.62      ~ "white",
@@ -330,11 +424,19 @@ region_feature_heatmap <- function(df,
     # --- Titles -------------------------------------------------------------
     region_disp <- REGION_DISPLAYS[[reg]]
     sp_title    <- if (!is.null(sp_label)) paste0(" — ", sp_label) else ""
+    tn_str      <- if (!is.null(top_n)) {
+      if (is.numeric(top_n) && length(top_n) == 1 && is.null(names(top_n))) {
+        sprintf("; top %d per group", as.integer(top_n))
+      } else {
+        "; top-N per group"
+      }
+    } else ""
+
     hm_title    <- sprintf("Feature correlation matrix — %s%s",
                            region_disp, sp_title)
     hm_subtitle <- sprintf(
-      "Spearman ρ; %d features + %s; group order → |ρ| with %s",
-      n_cols - 1, format_col_name(response), format_col_name(response)
+      "Spearman ρ; %d features + %s%s",
+      n_cols - 1, format_col_name(response), tn_str
     )
 
     # --- Build ggplot -------------------------------------------------------
@@ -344,8 +446,9 @@ region_feature_heatmap <- function(df,
       # Correlation tiles
       ggplot2::geom_tile(
         ggplot2::aes(fill = rho),
-        colour = "white", linewidth = 0.25,
-        na.rm  = TRUE
+        colour    = "white",
+        linewidth = 0.25,
+        na.rm     = TRUE
       ) +
 
       # Diagonal tiles (neutral grey)
@@ -394,22 +497,25 @@ region_feature_heatmap <- function(df,
         na.value = "grey88",
         name     = "Spearman ρ",
         guide    = ggplot2::guide_colorbar(
-          title.position = "top",
-          barwidth       = ggplot2::unit(0.8, "cm"),
-          barheight      = ggplot2::unit(5.5, "cm"),
+          title.position  = "top",
+          barwidth        = ggplot2::unit(0.8, "cm"),
+          barheight       = ggplot2::unit(5.5, "cm"),
           ticks.linewidth = 0.5
         )
       ) +
 
-      # Text colour: identity scale (column holds literal colour strings)
+      # Text colour: identity (column holds literal colour strings)
       ggplot2::scale_colour_identity(guide = "none") +
 
       # Axis labels (region suffix stripped)
-      ggplot2::scale_x_discrete(labels = axis_labels) +
-      ggplot2::scale_y_discrete(labels = axis_labels) +
-
-      # Square tiles
-      ggplot2::coord_fixed(ratio = 1) +
+      ggplot2::scale_x_discrete(
+        labels = axis_labels,
+        expand = expansion(add = 0.5)
+      ) +
+      ggplot2::scale_y_discrete(
+        labels = axis_labels,
+        expand = expansion(add = 0.5)
+      ) +
 
       ggplot2::labs(
         title    = hm_title,
@@ -419,6 +525,7 @@ region_feature_heatmap <- function(df,
 
       ggplot2::theme_bw(base_size = base_size) +
       ggplot2::theme(
+        aspect.ratio     = 1,
         axis.text.x      = ggplot2::element_text(
           angle = 45, vjust = 1, hjust = 1,
           size  = base_size - 2
@@ -432,7 +539,7 @@ region_feature_heatmap <- function(df,
         ),
         panel.grid       = ggplot2::element_blank(),
         panel.border     = ggplot2::element_rect(
-          colour = "grey30", fill = NA, linewidth = 0.6
+          colour = "grey20", fill = NA, linewidth = 0.6
         ),
         legend.position  = "right",
         legend.title     = ggplot2::element_text(
@@ -506,7 +613,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 
-  # ---- Job 1: Structure features, core regions ----------------------------
+  # ---- Job 1: Structure features, core regions, default ordering ----------
   message("\n=== Structure × core regions ===")
   out_struct <- region_feature_heatmap(
     df,
@@ -517,22 +624,23 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     file_prefix = "region_heatmap_structure"
   )
 
-  # ---- Job 2: All supergroups, each core region ---------------------------
-  message("\n=== All groups × core regions ===")
-  out_all <- region_feature_heatmap(
+  # ---- Job 2: Top-3 per group, core regions --------------------------------
+  message("\n=== Top-3 per group × core regions ===")
+  out_top3 <- region_feature_heatmap(
     df,
     response    = "halflife",
     groups      = c("structure", "intrinsic", "splicing", "regulatory",
                     "lengths_core", "nmd_reported"),
     regions     = c("5utr", "cds", "3utr"),
+    top_n       = 3,
     output_dir  = out_dir,
-    file_prefix = "region_heatmap_all"
+    file_prefix = "region_heatmap_top3"
   )
 
   # Export tables
-  for (key in names(out_all)) {
-    csv_path <- file.path(tab_dir, sprintf("region_heatmap_%s.csv", key))
-    write.csv(out_all[[key]]$table, csv_path, row.names = FALSE)
+  for (key in names(out_top3)) {
+    csv_path <- file.path(tab_dir, sprintf("region_heatmap_top3_%s.csv", key))
+    write.csv(out_top3[[key]]$table, csv_path, row.names = FALSE)
     message("Table: ", csv_path)
   }
 
