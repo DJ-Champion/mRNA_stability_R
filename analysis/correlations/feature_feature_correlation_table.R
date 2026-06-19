@@ -6,8 +6,8 @@
 # redundancy triage pass before modelling.
 #
 # Output: one long-form TSV per species, sorted by descending |rho|.
-# Columns: species, feature_a, feature_b, group_a, group_b,
-#          region_a, region_b, n, rho.
+# Columns: species, feature_a, display_a, feature_b, display_b,
+#          group_a, group_b, region_a, region_b, n, rho.
 #
 # Excluded by default: codon_freqs and aa_freqs (within-group correlations
 # are a mathematical artefact — they sum to ~1 within a region), plus the
@@ -112,7 +112,9 @@ suppressPackageStartupMessages({
 #'   pairwise table of hundreds of pairs; plot = NULL signals this. Table has
 #'   one row per unordered feature pair (upper triangle, no diagonal, no A-B
 #'   and B-A duplicates), sorted descending by abs(rho). Columns:
-#'   species, feature_a, feature_b, group_a, group_b, region_a, region_b, n, rho.
+#'   species, feature_a, display_a, feature_b, display_b, group_a, group_b,
+#'   region_a, region_b, n, rho. display_a/display_b are the format_col_name()
+#'   display strings (R4) matching what appears on plot axes.
 #' @export
 compute_feature_correlation_table <- function(df,
                                               groups = NULL,
@@ -206,7 +208,9 @@ compute_feature_correlation_table <- function(df,
   result <- tibble::tibble(
     species   = sp_label,
     feature_a = col_a,
+    display_a = format_col_name(col_a),
     feature_b = col_b,
+    display_b = format_col_name(col_b),
     group_a   = unname(maps$group[col_a]),
     group_b   = unname(maps$group[col_b]),
     region_a  = unname(maps$region[col_a]),
