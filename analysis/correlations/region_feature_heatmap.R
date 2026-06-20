@@ -264,6 +264,9 @@ suppressPackageStartupMessages({
 #'                         (default 30).
 #' @param color_limits     Numeric length-2: fill scale limits (default c(-1,1)).
 #' @param cell_text_size   geom_text size for in-cell labels (default 3.2).
+#' @param label_threshold  Numeric in [0, 1]. Only print the ρ value in a cell
+#'                         when |ρ| >= this threshold. Cell fill colours are
+#'                         always shown. 0 (default) = label every cell.
 #' @param base_size        Base font size in points (default 14).
 #' @param output_dir       If non-NULL, write one PDF per region here.
 #' @param file_prefix      Filename prefix for saved PDFs
@@ -287,8 +290,9 @@ region_feature_heatmap <- function(df,
                                    triangle       = c("full", "lower", "upper"),
                                    min_n          = 30,
                                    color_limits   = c(-1, 1),
-                                   cell_text_size = 3.2,
-                                   base_size      = 14,
+                                   cell_text_size  = 3.2,
+                                   label_threshold = 0,
+                                   base_size       = 14,
                                    output_dir     = NULL,
                                    file_prefix    = "region_heatmap",
                                    size_mm        = NULL) {
@@ -420,11 +424,11 @@ region_feature_heatmap <- function(df,
         )
       )
 
-    # Cell label: ρ only; blank on diagonal
+    # Cell label: ρ only; blank on diagonal and when below label_threshold
     sym_df <- sym_df |>
       dplyr::mutate(
         cell_label = dplyr::if_else(
-          is_diag | is.na(rho), "",
+          is_diag | is.na(rho) | abs(rho) < label_threshold, "",
           sprintf("%.2f", rho)
         ),
         text_color = dplyr::case_when(
@@ -500,11 +504,13 @@ region_feature_heatmap <- function(df,
 
     tri_str     <- if (triangle != "full") paste0("; ", triangle, " triangle") else ""
     clust_str   <- if (cluster) "; clustered by ρ" else ""
+    lbl_str     <- if (label_threshold > 0)
+      sprintf("; labels |ρ| ≥ %.2f", label_threshold) else ""
     hm_title    <- sprintf("Feature correlation matrix — %s%s",
                            region_disp, sp_title)
     hm_subtitle <- sprintf(
-      "Spearman ρ; %d features + %s%s%s%s",
-      n_cols - 1, format_col_name(response), tn_str, tri_str, clust_str
+      "Spearman ρ; %d features + %s%s%s%s%s",
+      n_cols - 1, format_col_name(response), tn_str, tri_str, clust_str, lbl_str
     )
 
     # --- Build ggplot -------------------------------------------------------
