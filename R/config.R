@@ -165,6 +165,16 @@ GROUP_BUNDLES <- list(
                 stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
                              "stopfree_length_cds", "stopfree_length_mrna"))
   ),
+  intrinsic_select = list(
+    groups = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
+               "nuc_ratios", "nuc_combos", "cai"),
+    pick = list(lengths = c("length_5utr", "length_cds",
+                            "length_3utr", "length_mrna"),
+                stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
+                             "stopfree_length_cds", "stopfree_length_mrna"),
+                codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
+                aa_freqs = c("aa_s_cds", "aa_vc_cds"))
+  ),
   translation_core = list(
     groups = c("uorfs", "exon_density"),
     pick = list(uorfs = c("uorf_present_mrna"))
