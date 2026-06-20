@@ -372,7 +372,7 @@ feature_response_scatter <- function(df,
           ifelse(region == "none", "",
                  paste0(" — ", format_col_name(region)))
         ),
-        TRUE                 ~ formatter(variable)
+        TRUE                 ~ format_metric_name(variable)
       ),
       label_text = ifelse(labelled, display_label, NA_character_)
     )
