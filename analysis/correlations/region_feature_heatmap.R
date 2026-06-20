@@ -158,16 +158,48 @@ suppressPackageStartupMessages({
 
 #' Order features for display in the heatmap.
 #'
-#' Response is placed first (bottom-left corner). Features listed in
-#' `feature_order` follow (in order); any remaining selected features are
-#' appended sorted by |ρ with response| descending.
+#' Response is placed first (bottom-left corner). When cluster = TRUE, features
+#' are ordered by hierarchical clustering on their pairwise Spearman ρ matrix
+#' (distance = (1 - ρ) / 2, average linkage); feature_order is ignored.
+#' When cluster = FALSE, features listed in `feature_order` come first (in
+#' order); any remaining features are appended sorted by |ρ with response|.
 #'
 #' @param reg_features   Character vector of feature columns for this region.
 #' @param response       Response column name.
 #' @param feature_order  Character vector of preferred column names (or NULL).
 #' @param df_sub         Data subset for computing |ρ|.
+#' @param cluster        Logical. If TRUE, order by hierarchical clustering.
 #' @return Ordered character vector with response first.
-.arrange_features <- function(reg_features, response, feature_order, df_sub) {
+.arrange_features <- function(reg_features, response, feature_order, df_sub,
+                               cluster = FALSE) {
+  if (cluster && length(reg_features) >= 2) {
+    n_f     <- length(reg_features)
+    rho_mat <- diag(1, n_f, n_f)
+    dimnames(rho_mat) <- list(reg_features, reg_features)
+
+    for (i in seq_len(n_f - 1L)) {
+      for (j in seq(i + 1L, n_f)) {
+        x  <- df_sub[[reg_features[i]]]
+        y  <- df_sub[[reg_features[j]]]
+        ok <- !is.na(x) & !is.na(y)
+        r  <- if (sum(ok) >= 5 &&
+                  length(unique(x[ok])) >= 2 &&
+                  length(unique(y[ok])) >= 2) {
+          suppressWarnings(stats::cor(x[ok], y[ok], method = "spearman"))
+        } else {
+          0   # treat uncomputable pairs as uncorrelated for clustering
+        }
+        rho_mat[i, j] <- r
+        rho_mat[j, i] <- r
+      }
+    }
+    rho_mat[is.na(rho_mat)] <- 0
+    dist_mat <- stats::as.dist((1 - rho_mat) / 2)
+    hc       <- stats::hclust(dist_mat, method = "average")
+    return(c(response, reg_features[hc$order]))
+  }
+
+  # --- Original ordering (feature_order then |ρ| sort) ----------------------
   if (!is.null(feature_order)) {
     in_order  <- feature_order[feature_order %in% reg_features]
     remaining <- setdiff(reg_features, in_order)
@@ -176,14 +208,12 @@ suppressPackageStartupMessages({
     remaining <- reg_features
   }
 
-  # Sort remaining by |ρ with response| descending
   if (length(remaining) > 0) {
     rho_vals <- vapply(remaining,
                        .abs_rho_with_response, numeric(1), df = df_sub, response = response)
     remaining <- remaining[order(-rho_vals)]
   }
 
-  # Response first → position 1 on both axes → bottom-left corner
   c(response, in_order, remaining)
 }
 
@@ -212,12 +242,18 @@ suppressPackageStartupMessages({
 #'                         display order. These are placed first (in order);
 #'                         any remaining selected features are appended at
 #'                         the end sorted by |ρ with response| descending.
+#'                         Ignored when cluster = TRUE.
 #'                         NULL (default) = all features sorted by |ρ|.
 #' @param top_n            Retain only the top-N features per group before
 #'                         plotting. Can be a single integer (same cap for
 #'                         every group) or a named list (group key → integer).
 #'                         Groups absent from a named list are not filtered.
 #'                         NULL (default) = no filtering.
+#' @param cluster          Logical. If TRUE (default FALSE), order features by
+#'                         hierarchical clustering on their pairwise Spearman ρ
+#'                         matrix (distance = (1 - ρ) / 2, average linkage).
+#'                         Groups are interleaved so group separator lines are
+#'                         suppressed; only the response separator is drawn.
 #' @param triangle         Which part of the symmetric matrix to display.
 #'                         "full" (default) = complete matrix; "lower" = lower-
 #'                         left triangle + diagonal (response appears as a row
@@ -247,6 +283,7 @@ region_feature_heatmap <- function(df,
                                    regions        = NULL,
                                    feature_order  = NULL,
                                    top_n          = NULL,
+                                   cluster        = FALSE,
                                    triangle       = c("full", "lower", "upper"),
                                    min_n          = 30,
                                    color_limits   = c(-1, 1),
@@ -342,7 +379,7 @@ region_feature_heatmap <- function(df,
 
     # Arrange features in display order
     feat_order <- .arrange_features(
-      reg_features, response, feature_order, sub_df
+      reg_features, response, feature_order, sub_df, cluster = cluster
     )
     all_cols <- feat_order  # response is last element
 
@@ -434,7 +471,9 @@ region_feature_heatmap <- function(df,
       c(rle_grp$values[-1] == "response", FALSE)
     )
     resp_boundary <- boundary_pos[is_resp_bound]
-    feat_boundary <- setdiff(boundary_pos, resp_boundary)
+    # When clustering, groups are interleaved so suppress group lines —
+    # only keep the response separator.
+    feat_boundary <- if (cluster) character(0) else setdiff(boundary_pos, resp_boundary)
 
     # --- Axis labels: region suffix stripped for features -------------------
     # Response is first (position 1); features follow.
@@ -460,11 +499,12 @@ region_feature_heatmap <- function(df,
     } else ""
 
     tri_str     <- if (triangle != "full") paste0("; ", triangle, " triangle") else ""
+    clust_str   <- if (cluster) "; clustered by ρ" else ""
     hm_title    <- sprintf("Feature correlation matrix — %s%s",
                            region_disp, sp_title)
     hm_subtitle <- sprintf(
-      "Spearman ρ; %d features + %s%s%s",
-      n_cols - 1, format_col_name(response), tn_str, tri_str
+      "Spearman ρ; %d features + %s%s%s%s",
+      n_cols - 1, format_col_name(response), tn_str, tri_str, clust_str
     )
 
     # --- Build ggplot -------------------------------------------------------
@@ -649,18 +689,19 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
 
-  # ---- Job 1: Structure features, core regions, default ordering ----------
+  # ---- Job 1: Structure features, core regions, clustered ------------------
   message("\n=== Structure × core regions ===")
   out_struct <- region_feature_heatmap(
     df,
     response    = "halflife",
     groups      = "structure",
     regions     = c("5utr", "cds", "3utr"),
+    cluster     = TRUE,
     output_dir  = out_dir,
     file_prefix = "region_heatmap_structure"
   )
 
-  # ---- Job 2: Top-3 per group, core regions --------------------------------
+  # ---- Job 2: Top-3 per group, core regions, clustered --------------------
   message("\n=== Top-3 per group × core regions ===")
   out_top3 <- region_feature_heatmap(
     df,
@@ -669,6 +710,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
                     "lengths_core", "nmd_reported"),
     regions     = c("5utr", "cds", "3utr"),
     top_n       = 3,
+    cluster     = TRUE,
     output_dir  = out_dir,
     file_prefix = "region_heatmap_top3"
   )
