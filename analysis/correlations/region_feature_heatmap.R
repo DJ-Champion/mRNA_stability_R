@@ -694,7 +694,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   tab_dir <- file.path(OUTPUT_DIR, "tables")
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   dir.create(tab_dir, showWarnings = FALSE, recursive = TRUE)
-  included_groups <- c("nmd_core", "splicing_core", "structure_core", "intrinsic_select", "translation_core")
+  
   # ---- Job 1: Structure features, core regions, clustered ------------------
   message("\n=== Structure × core regions ===")
   out_struct <- region_feature_heatmap(
@@ -712,7 +712,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   out_top3 <- region_feature_heatmap(
     df,
     response    = "halflife",
-    groups      = included_groups,
+    groups      = INCLUDED_GROUPS,
     regions     = c("5utr", "cds", "3utr", "mrna", "start", "stop", "last100"),
     label_threshold = 0.3,
     #top_n       = 3,

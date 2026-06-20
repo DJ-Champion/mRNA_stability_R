@@ -589,20 +589,18 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # additionally name the bundles so the bundles' pick lists attach to the
   # `lengths`/`nmd` group keys those supergroups bring in.
 
-  included_groups <- c("nmd_core", "splicing_core", "structure_core", "intrinsic_core", "translation_core")
-
   jobs <- list(
     list(response = "halflife",
          suffix   = "halflife",
          sig      = 0.02,
-         groups   = included_groups,
+         groups   = INCLUDED_GROUPS,
          absolute = TRUE,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 380),
     list(response = "translation_efficiency",
          suffix   = "translation_efficiency",
          sig      = 0.02,
-         groups   = included_groups,
+         groups   = INCLUDED_GROUPS,
          absolute = TRUE,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 380),

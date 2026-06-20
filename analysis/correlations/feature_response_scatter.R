@@ -503,14 +503,9 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   dir.create(file.path(OUTPUT_DIR, "tables"),
              showWarnings = FALSE, recursive = TRUE)
 
-  # Curated bundle set matching the first dotplot job — one representative
-  # column per biological theme, with pick lists applied via the bundles.
-  included_groups <- c("nmd_core", "splicing_core", "structure_core",
-                       "intrinsic_core", "translation_core")
-
   out_included <- feature_response_scatter(
     df,
-    groups          = included_groups,
+    groups          = INCLUDED_GROUPS,
     top_n_per_group = list(codon_freqs = 2, aa_freqs = 2),
     noise_filter    = 0,
     label_quantile  = 0.8

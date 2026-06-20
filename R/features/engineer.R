@@ -216,8 +216,17 @@ add_codon_aa_fractions <- function(df) {
   if (length(aa_cols)    >= 2) normalise(aa_cols)
   # Drop the aa_total column
   df$aa_total_cds <- NULL
+  # drop frac other
+  df$frac_other_5utr <- NULL
+  df$frac_other_cds <- NULL
+  df$frac_other_3utr <- NULL
+  df$frac_other_start <- NULL
+  df$frac_other_stop <- NULL
+  df$frac_other_last100 <- NULL
+  df$frac_other_mrna <- NULL
   df
 }
+
 
 # --- Drop all-NA columns ----------------------------------------------------
 

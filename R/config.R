@@ -173,13 +173,16 @@ GROUP_BUNDLES <- list(
                 stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
                              "stopfree_length_cds", "stopfree_length_mrna"),
                 codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
-                aa_freqs = c("aa_s_cds", "aa_vc_cds"))
+                aa_freqs = c("aa_s_cds", "aa_v_cds"))
   ),
   translation_core = list(
     groups = c("uorfs", "exon_density"),
     pick = list(uorfs = c("uorf_present_mrna"))
   )
 )
+
+# The main set of groups we've decided to focus on for almost everything
+INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core", "intrinsic_select", "translation_core")
 
 # --- Helpers -----------------------------------------------------------------
 
