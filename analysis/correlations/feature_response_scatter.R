@@ -73,6 +73,12 @@ suppressPackageStartupMessages({
 #'                       origin. Useful for dense groups like codons: top_n = 3
 #'                       shows only the three most informative members per group.
 #'                       Applied after noise_filter, before label selection.
+#' @param top_n_per_group Named list: group key -> integer. Like top_n but
+#'                       per-group, so you can cap codon_freqs at 2 while
+#'                       leaving other groups unconstrained. Ranking uses max
+#'                       distance from origin across species so panel selections
+#'                       stay consistent. Applied after noise_filter, before
+#'                       the global top_n filter.
 #' @param noise_filter   Numeric. Drop points with distance-from-origin below
 #'                       this. 0 (default) = no filter. Try 0.1 to declutter.
 #' @param label_quantile Numeric in [0, 1]. Label the top (1 - q) fraction by
@@ -106,6 +112,7 @@ feature_response_scatter <- function(df,
                                      collapse       = c("none", "region",
                                                         "group"),
                                      top_n          = NULL,
+                                     top_n_per_group = list(),
                                      noise_filter   = 0,
                                      label_quantile = 0.9,
                                      standalones    = c("cai",
@@ -299,6 +306,27 @@ feature_response_scatter <- function(df,
     stop("All points filtered out — noise_filter too high?")
   }
 
+  # --- Per-group top_n filter ----------------------------------------------
+  # Rank by max distance across species so panel selections stay consistent.
+  if (length(top_n_per_group) > 0) {
+    for (g in names(top_n_per_group)) {
+      n_keep <- top_n_per_group[[g]]
+      if (!any(result$group == g)) next
+
+      keep_vars <- result |>
+        dplyr::filter(group == g) |>
+        dplyr::group_by(variable) |>
+        dplyr::summarise(max_dist = max(distance_from_origin, na.rm = TRUE),
+                         .groups = "drop") |>
+        dplyr::arrange(dplyr::desc(max_dist)) |>
+        dplyr::slice_head(n = n_keep) |>
+        dplyr::pull(variable)
+
+      result <- result |>
+        dplyr::filter(group != g | variable %in% keep_vars)
+    }
+  }
+
   # --- top_n filter: keep top N per (species, group) by distance -----------
   if (!is.null(top_n)) {
     result <- result |>
@@ -344,7 +372,7 @@ feature_response_scatter <- function(df,
           ifelse(region == "none", "",
                  paste0(" — ", format_col_name(region)))
         ),
-        TRUE                 ~ formatter(variable)
+        TRUE                 ~ format_metric_name(variable)
       ),
       label_text = ifelse(labelled, display_label, NA_character_)
     )
@@ -474,6 +502,32 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
              showWarnings = FALSE, recursive = TRUE)
   dir.create(file.path(OUTPUT_DIR, "tables"),
              showWarnings = FALSE, recursive = TRUE)
+
+  # Curated bundle set matching the first dotplot job — one representative
+  # column per biological theme, with pick lists applied via the bundles.
+  included_groups <- c("nmd_core", "splicing_core", "structure_core",
+                       "intrinsic_core", "translation_core")
+
+  out_included <- feature_response_scatter(
+    df,
+    groups          = included_groups,
+    top_n_per_group = list(codon_freqs = 2, aa_freqs = 2),
+    noise_filter    = 0,
+    label_quantile  = 0.8
+  )
+  print(out_included$plot)
+  ggplot2::ggsave(
+    file.path(OUTPUT_DIR, "plots",
+              "feature_response_scatter_te_vs_halflife_included.jpg"),
+    plot = out_included$plot,
+    width = 280, height = 200, units = "mm", dpi = 300
+  )
+  write.csv(
+    out_included$table,
+    file.path(OUTPUT_DIR, "tables",
+              "feature_response_scatter_te_vs_halflife_included.csv"),
+    row.names = FALSE
+  )
 
   # Default view: TE vs halflife, all features, per-column
   out_full <- feature_response_scatter(df)

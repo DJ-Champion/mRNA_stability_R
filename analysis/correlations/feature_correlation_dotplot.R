@@ -588,9 +588,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # here. The broad jobs pull the full `intrinsic`/`splicing` supergroups and
   # additionally name the bundles so the bundles' pick lists attach to the
   # `lengths`/`nmd` group keys those supergroups bring in.
-  broad_groups <- c("structure", "intrinsic", "splicing",
-                    "codon_freqs", "aa_freqs", "nuc_ratios",
-                    "nmd_core", "lengths_core")
+
   included_groups <- c("nmd_core", "splicing_core", "structure_core", "intrinsic_core", "translation_core")
 
   jobs <- list(
