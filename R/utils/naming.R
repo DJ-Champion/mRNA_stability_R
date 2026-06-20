@@ -40,13 +40,9 @@
 #     all prefix rules have consumed the leading portion of the column name.
 REPLACEMENTS <- list(
   # --- NMD Patterns (v4: single model, metric prefix, mrna region suffix) ---
-  list("^nmd_fragile_codon_density_", "NMD fragile codon density "),
-  list("^nmd_alt_stop_density_",      "NMD alt-stop density "),
-  list("^nmd_fragile_codon_count_",   "NMD fragile codon count "),
-  list("^nmd_alt_stop_count_",        "NMD alt-stop count "),  
   list("nmd_transversion_fragile_codon_density_", "NMD transversion fragile codon density "),
-  list("nmd_snv_fragile_codon_density_",         "NMD fragile codon density "),
-  list("nmd_alt_stop_codon_density_", "NMD alt-stop count "),
+  list("nmd_snv_fragile_codon_density_",         "NMD frag. "),
+  list("nmd_alt_stop_codon_density_", "NMD alt-stop "),
   list("nmd_transition_fraction_of_snv_fragile_", "NMD transition fragile codon fraction "),
   list("nmd_transition_fragile_codon_density_", "NMD transition fragile codon density "),
   
@@ -58,24 +54,25 @@ REPLACEMENTS <- list(
   list("^noncoding_length_fraction_",  "Non-coding length fraction "),
   
   # --- Sequence Basic ---
-  list("^frac_a",                "Adenine fraction"),
-  list("^frac_c",                "Cytosine fraction"),
-  list("^frac_g",                "Guanine fraction"),
-  list("^frac_u",                "Uracil fraction"),
-  list("^at_skew_",                    "AT skew "),
-  list("^gc_skew_",                    "GC skew "),
-  list("^purine_ratio_",               "Purine ratio "),
-  list("^amino_ratio_",                "Amino ratio "),
-  list("^gc_content_",                 "GC content "),
+  list("^frac_a",                "nt.A% "),
+  list("^frac_c",                "nt.C% "),
+  list("^frac_g",                "nt.G% "),
+  list("^frac_u",                "nt.U% "),
+  list("^at_skew_",                    "AT-skew "),
+  list("^gc_skew_",                    "GC-skew "),
+  list("^purine_ratio_",               "A+G% "),
+  list("^amino_ratio_",                "A+C% "),
+  list("^gc_content_",                 "G+C% "),
   
   # --- Junctions (v3: count is feature-first; EEJ distances metric-first) ---
   list("^junctions_count_",            "Junction count "),
-  list("^eej_dist_downstream",             "Closest EEJ dist. downstream"),
-  list("^eej_dist_upstream_",              "Closest EEJ dist. upstream "),
+  list("^eej_dist_downstream",             "EEJ dist. downstream"),
+  list("^eej_dist_upstream_",              "EEJ dist. upstream "),
+  list("^eej_dist_closest_",               "EEJ.closest "),
   
   # --- uORFs (v4: whole-transcript scalars, *_mrna suffix) ---
   list("^uorf_count_",                 "uORF count "),
-  list("^uorf_present_",               "Has uORF "),
+  list("^uorf_present_",               "uORF "),
   list("^dist_cap_to_first_uatg_",     "Dist. cap to first uATG "),
   
   # --- Identifiers / metadata ---
@@ -104,26 +101,22 @@ REPLACEMENTS <- list(
   list("^rnaup_pval_",                     "RNAup p-value "),
   list("^junctions_density_",              "Junction density "),
   list("^junctions_",                      "Junctions "),
-  list("^orf_percent_length_",             "uORF % length "),
-  list("^orf_number_",                     "uORF count "),
-  list("^orf_length_",                     "uORF length "),
+  list("^orf_percent_length_",             "ORF % length "),
+  list("^orf_number_",                     "ORF count "),
+  list("^orf_length_",                     "ORF length "),
   list("^orfj_density$",                   "ORF-J density"),
-  list("^stopfree_",                       "Stop-free "),
-  list("^distance_junction_up_start$",     "Junction upstream distance (start)"),
-  list("^distance_junction_down_start$",   "Junction downstream distance (start)"),
-  list("^distance_junction_up_stop$",      "Junction upstream distance (stop)"),
-  list("^distance_junction_down_stop$",    "Junction downstream distance (stop)"),
+  list("^stopfree_length_",                 "Stop-free "),
   list("^length_",                         "Length "),
-  list("^gc_",                             "GC%"),
+  list("^gc_",                             "GC% "),
   list("^cai$",                            "CAI"),
   list("^expression$",                     "Expression"),
-  list("^orfexondensity$",                 "ORF-exon density"),
-  list("^nuc_ratio_a",                     "nt.A%"),
-  list("^nuc_ratio_c",                     "nt.C%"),
-  list("^nuc_ratio_g",                     "nt.G%"),
-  list("^nuc_ratio_u",                     "nt.U%"),
-  list("^codon_",                          "Codon."),  # e.g. codon_aaa_cds -> "Codon freq. aaa CDS"
-  list("^aa_",                             "aa."),     # e.g. aa_l_cds      -> "AA freq. l CDS"
+  list("^orfexondensity$",                 "ORF-exon dens."),
+  list("^nuc_ratio_a",                     "nt.A% "),
+  list("^nuc_ratio_c",                     "nt.C% "),
+  list("^nuc_ratio_g",                     "nt.G% "),
+  list("^nuc_ratio_u",                     "nt.U% "),
+  list("^codon_",                          "Codon. "),  # e.g. codon_aaa_cds -> "Codon freq. aaa CDS"
+  list("^aa_",                             "aa. "),     # e.g. aa_l_cds      -> "AA freq. l CDS"
   list("^gini_nucleoplasm_",               "icSHAPE.nuc "),
   list("^gini_cytoplasm_",                 "icSHAPE.cyto "),
   # list("^shape_",                          "icSHAPE "),
@@ -182,10 +175,10 @@ format_single_name <- function(name) {
   # Cheap special-case avoids 84 exact-match rules in REPLACEMENTS and
   # avoids needing PCRE2 case-folding (which R's sub() doesn't support).
   m <- regmatches(name, regexec("^codon_([acgtu]{3})_cds$", name))[[1]]
-  if (length(m) == 2) return(paste0("Codon freq. ", toupper(m[2])))
+  if (length(m) == 2) return(paste0("Codon.", toupper(m[2]), "% "))
   
   m <- regmatches(name, regexec("^aa_([a-z])_cds$", name))[[1]]
-  if (length(m) == 2) return(paste0("AA freq. ", toupper(m[2])))
+  if (length(m) == 2) return(paste0("aa.", toupper(m[2]), "% "))
   
   for (rule in REPLACEMENTS) {
     name <- sub(rule[[1]], rule[[2]], name)

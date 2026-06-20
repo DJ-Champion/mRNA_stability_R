@@ -134,7 +134,7 @@ add_mfe_per_nt <- function(df) {
 }
 
 # --- Junction density -------------------------------------------------------
-#' Add junction-density features (junctions per kilobase)
+#' Add junction-density & exon-density features (junctions per kilobase)
 #'
 #' Reads the v3+ canonical junction-count columns `junctions_count_{region}`
 #' produced by load_junctions_wide(). (Pre-fix this guarded on the old raw
@@ -144,14 +144,17 @@ add_junction_density <- function(df) {
   # 5' UTR
   if (all(c("junctions_count_5utr", "length_5utr") %in% names(df))) {
     df$junctions_density_5utr <- 1000 * df$junctions_count_5utr / df$length_5utr
+    df$exon_density_5utr <- 1000 * (df$junctions_count_5utr + 1) / df$length_5utr
   }
   # CDS
   if (all(c("junctions_count_cds", "length_cds") %in% names(df))) {
     df$junctions_density_cds <- 1000 * df$junctions_count_cds / df$length_cds
+    df$exon_density_cds <- 1000 * (df$junctions_count_cds + 1) / df$length_cds
   }
   # 3' UTR
   if (all(c("junctions_count_3utr", "length_3utr") %in% names(df))) {
     df$junctions_density_3utr <- 1000 * df$junctions_count_3utr / df$length_3utr
+    df$exon_density_3utr <- 1000 * (df$junctions_count_3utr + 1) / df$length_3utr
   }
 
   # mRNA total: sum the regional counts. Named junctions_count_mrna (not the
@@ -165,11 +168,29 @@ add_junction_density <- function(df) {
 
     if ("length_mrna" %in% names(df)) {
       df$junctions_density_mrna <- 1000 * df$junctions_count_mrna / df$length_mrna
+      df$exon_density_mrna <- 1000 * (df$junctions_count_mrna + 1) / df$length_mrna
     }
   }
 
   df
 }
+
+# Exon-exon junction distance min
+# eej_dist_upstream_stop
+add_eej_min_distance <- function(df) {
+  if (all(c("eej_dist_downstream_start", "eej_dist_upstream_start") %in% names(df))) {
+    df$eej_dist_closest_start = pmin(df$eej_dist_downstream_start,
+                                     df$eej_dist_upstream_start,
+                                     na.rm = TRUE)
+  }
+  if (all(c("eej_dist_downstream_stop", "eej_dist_upstream_stop") %in% names(df))) {
+    df$eej_dist_closest_stop = pmin(df$eej_dist_downstream_stop,
+                                   df$eej_dist_upstream_stop,
+                                   na.rm = TRUE)
+  }
+  df
+}
+
 
 #' Convert raw codon / amino-acid counts into row-normalised fractions
 #'
@@ -193,7 +214,8 @@ add_codon_aa_fractions <- function(df) {
   
   if (length(codon_cols) >= 2) normalise(codon_cols)
   if (length(aa_cols)    >= 2) normalise(aa_cols)
-  
+  # Drop the aa_total column
+  df$aa_total_cds <- NULL
   df
 }
 
@@ -219,6 +241,7 @@ engineer_features <- function(df) {
     impute_mrna_mfe() |>
     add_mfe_per_nt() |>
     add_junction_density() |>
+    add_eej_min_distance() |>
     add_codon_aa_fractions() |>
     drop_all_na_columns()
 }

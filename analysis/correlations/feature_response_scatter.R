@@ -327,8 +327,6 @@ feature_response_scatter <- function(df,
   # --- Display labels (R4) -------------------------------------------------
   # group_label() dispatches per element: selection keys (group / supergroup /
   # other) via format_group_name(); standalone columns via format_col_name().
-  # Standalones are no longer in the group table, so this is the only correct
-  # route for them.
   group_label <- function(g) {
     ifelse(g %in% names(FEATURE_PATTERNS) |
              g %in% c("structure", "intrinsic", "splicing",

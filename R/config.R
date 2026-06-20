@@ -80,7 +80,9 @@ FEATURE_PATTERNS <- list(
   lengths        = "^length_",
   gc             = "^gc_",
   nmd            = "^nmd_",
-  architecture   = "^(intron_|exon_|noncoding_)",
+  introns        = "^intron_",
+  exons          = "^exon_",
+  noncoding      = "^noncoding_",
   rnafold_scores = "^rnafold_score_",
   rnafold_zscores = "^rnafold_zscore_",
   rnafold_per_nt = "^rnafold_per_nt_",
@@ -89,16 +91,22 @@ FEATURE_PATTERNS <- list(
   rnalfold_scores    = "^rnalfold_score_",
   rnalfold_zscores   = "^rnalfold_zscore_",
   rnaup          = "^rnaup_",
-  junctions      = "^(junctions_|eej_dist_)",
+  junctions      = "^junctions_",
+  eej_dist       = "^eej_dist_",
   uorfs          = "^(uorf_|dist_cap_)",
   orfs           = "^orf_",
+  exon_density   = "^exon_density_",
   stopfree       = "^stopfree_",
   skews          = "^(gc|at)_skew_",
   codon_freqs    = "^codon_",
   aa_freqs       = "^aa_",
-  nuc_ratios     = "^(frac_|purine_|amino_)",
+  nuc_ratios     = "^frac_",
+  nuc_combos     = "^(purine_|amino_)",
   probing        = "^gini_",
-  standalone     = "^(cai|translation_efficiency|expression|orfexondensity)$"
+  translation_e  = "^translation_efficiency",
+  express        = "^expression",
+  orfexonden     = "^orfexondensity",
+  cai            = "^cai"
 )
 
 
@@ -115,19 +123,19 @@ SUPERGROUPS <- list(
   structure  = c("rnafold_scores", "rnafold_zscores", "rnafold_per_nt",
                  "mfe_deltas", "mfe_expected",
                  "rnalfold_scores", "rnalfold_zscores",
-                 "rnaup", "probing"),
+                 "probing"),
 
-  intrinsic  = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs", "nuc_ratios"),
+  intrinsic  = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
+                 "nuc_ratios", "nuc_combos", "cai"),
 
-  splicing   = c("junctions", "architecture", "nmd"),
+  splicing   = c("junctions", "introns", "exons", "noncoding", "eej_dist"),
 
-  regulatory = c("uorfs", "orfs"),
-
-  other      = c("standalone")
+  translation = c("uorfs", "orfs", "exon_density", "translation_e", "orfexonden"),
+  decay       = c("nmd")
 )
 
 GROUP_BUNDLES <- list(
-  nmd_reported = list(
+  nmd_core = list(
     groups = "nmd",
     pick = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
                         "nmd_alt_stop_codon_density_mrna"))
@@ -136,6 +144,30 @@ GROUP_BUNDLES <- list(
     groups = "lengths",
     pick = list(lengths = c("length_5utr", "length_cds",
                             "length_3utr", "length_mrna"))
+  ),
+  splicing_core = list(
+    groups = "eej_dist",
+    pick = list(eej_dist = c("eej_dist_closest_start", "eej_dist_closest_stop"))
+  ),
+  structure_core = list(
+    groups = c("rnafold_scores", "rnafold_zscores", "rnafold_per_nt",
+                 "mfe_deltas", "mfe_expected",
+                 "rnalfold_scores", "rnalfold_zscores",
+                 "probing"),
+    pick = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
+    "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
+  ),
+  intrinsic_core = list(
+    groups = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
+               "nuc_ratios", "nuc_combos", "cai"),
+    pick = list(lengths = c("length_5utr", "length_cds",
+                            "length_3utr", "length_mrna"),
+                stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
+                             "stopfree_length_cds", "stopfree_length_mrna"))
+  ),
+  translation_core = list(
+    groups = c("uorfs", "exon_density"),
+    pick = list(uorfs = c("uorf_present_mrna"))
   )
 )
 
