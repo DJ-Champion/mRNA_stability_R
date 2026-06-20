@@ -475,6 +475,31 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   dir.create(file.path(OUTPUT_DIR, "tables"),
              showWarnings = FALSE, recursive = TRUE)
 
+  # Curated bundle set matching the first dotplot job — one representative
+  # column per biological theme, with pick lists applied via the bundles.
+  included_groups <- c("nmd_core", "splicing_core", "structure_core",
+                       "intrinsic_core", "translation_core")
+
+  out_included <- feature_response_scatter(
+    df,
+    groups         = included_groups,
+    noise_filter   = 0,
+    label_quantile = 0.8
+  )
+  print(out_included$plot)
+  ggplot2::ggsave(
+    file.path(OUTPUT_DIR, "plots",
+              "feature_response_scatter_te_vs_halflife_included.jpg"),
+    plot = out_included$plot,
+    width = 280, height = 200, units = "mm", dpi = 300
+  )
+  write.csv(
+    out_included$table,
+    file.path(OUTPUT_DIR, "tables",
+              "feature_response_scatter_te_vs_halflife_included.csv"),
+    row.names = FALSE
+  )
+
   # Default view: TE vs halflife, all features, per-column
   out_full <- feature_response_scatter(df)
   print(out_full$plot)
