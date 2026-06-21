@@ -51,15 +51,19 @@ FEATURE_GROUP_COLOURS <- c(
   aa_freqs               = "#B2DF8A",  # pale green
   nuc_ratios             = "#01665E",  # dark teal
   skews                  = "#80CDC1",  # light teal
+  compositional          = "#C7C7C7",
+  
 
   # --- Splicing: reds + browns ---
   junctions              = "#E31A1C",  # vivid red
   architecture           = "#8C510A",  # earth brown
   nmd                    = "#B15928",  # rust
+  eej_dist               = "#8C510A",
 
   # --- Regulatory: distinct purples (separate family from structure) ---
   uorfs                  = "#6A3D9A",  # deep purple
   orfs                   = "#CAB2D6",  # light purple
+  exon_density           = "#CAB2A6",
 
   # --- Standalone columns (other supergroup): greys and black ---
   standalone             = "#525252",  # dark grey (group-level colour)
@@ -146,6 +150,9 @@ FEATURE_GROUP_DISPLAY_NAMES <- c(
   codon_freqs            = "Codon frequency",
   aa_freqs               = "Amino acid frequency",
   nuc_ratios             = "Nucleotide ratios",
+  compositional          = "Compositional bias",
+  exon_density           = "Exon density",
+  eej_dist               = "EEJ distance",
   skews                  = "Skews",
   junctions              = "Junctions",
   architecture           = "Architecture",

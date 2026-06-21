@@ -570,14 +570,29 @@ feature_correlation_dotplot <- function(df,
 # -----------------------------------------------------------------------------
 
 if (sys.nframe() == 0 || identical(environment(), globalenv())) {
-
+  
   df <- build_dataset("human")
-
+  
   dir.create(file.path(OUTPUT_DIR, "plots"),
              showWarnings = FALSE, recursive = TRUE)
   dir.create(file.path(OUTPUT_DIR, "tables"),
              showWarnings = FALSE, recursive = TRUE)
-
+  
+  save_plot_jpg_pdf <- function(plot, filename_base, width, height,
+                                units = "mm", dpi = 300) {
+    ggplot2::ggsave(
+      file.path(OUTPUT_DIR, "plots", paste0(filename_base, ".jpg")),
+      plot = plot,
+      width = width, height = height, units = units, dpi = dpi
+    )
+    
+    ggplot2::ggsave(
+      file.path(OUTPUT_DIR, "plots", paste0(filename_base, ".pdf")),
+      plot = plot,
+      width = width, height = height, units = units
+    )
+  }
+  
   # Reusable runner: response, suffix for filenames, sig threshold
   # Each job: response variable, filename suffix, sig threshold, group filter,
   # top-N filter, output width (mm). The codon/AA job overrides groups to opt
@@ -588,7 +603,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # here. The broad jobs pull the full `intrinsic`/`splicing` supergroups and
   # additionally name the bundles so the bundles' pick lists attach to the
   # `lengths`/`nmd` group keys those supergroups bring in.
-
+  
   jobs <- list(
     list(response = "halflife",
          suffix   = "halflife",
@@ -619,14 +634,15 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
          top_n    = list(),
          width    = 200)
   )
-
+  
   for (job in jobs) {
     if (!job$response %in% names(df)) {
       message("Skipping: ", job$response, " not in dataset")
       next
     }
-
+    
     message("\nDotplot for: ", job$response, " (", job$suffix, ")")
+    
     out <- feature_correlation_dotplot(
       df,
       response        = job$response,
@@ -635,14 +651,16 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
       absolute        = job$absolute,
       top_n_per_group = job$top_n
     )
+    
     print(out$plot)
     
-    ggplot2::ggsave(
-      file.path(OUTPUT_DIR, "plots",
-                paste0("feature_correlation_dotplot_", job$suffix, ".jpg")),
+    save_plot_jpg_pdf(
       plot = out$plot,
-      width = job$width, height = 200, units = "mm", dpi = 300
+      filename_base = paste0("feature_correlation_dotplot_", job$suffix),
+      width = job$width,
+      height = 200
     )
+    
     write.csv(
       out$table,
       file.path(OUTPUT_DIR, "tables",
@@ -650,10 +668,12 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
       row.names = FALSE
     )
   }
-
+  
   message("\nDotplots complete:")
   message("  ", file.path(OUTPUT_DIR, "plots"),
           "/feature_correlation_dotplot_*.jpg")
+  message("  ", file.path(OUTPUT_DIR, "plots"),
+          "/feature_correlation_dotplot_*.pdf")
   message("  ", file.path(OUTPUT_DIR, "tables"),
           "/feature_correlation_dotplot_*.csv")
 }
