@@ -101,7 +101,7 @@ FEATURE_PATTERNS <- list(
   codon_freqs    = "^codon_",
   aa_freqs       = "^aa_",
   nuc_ratios     = "^frac_",
-  nuc_combos     = "^(purine_|amino_)",
+  compositional  = "^(purine_|amino_)",
   probing        = "^gini_",
   translation_e  = "^translation_efficiency",
   express        = "^expression",
@@ -126,7 +126,7 @@ SUPERGROUPS <- list(
                  "probing"),
 
   intrinsic  = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-                 "nuc_ratios", "nuc_combos", "cai"),
+                 "nuc_ratios", "compositional", "cai"),
 
   splicing   = c("junctions", "introns", "exons", "noncoding", "eej_dist"),
 
@@ -159,7 +159,7 @@ GROUP_BUNDLES <- list(
   ),
   intrinsic_core = list(
     groups = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-               "nuc_ratios", "nuc_combos", "cai"),
+               "nuc_ratios", "compositional", "cai"),
     pick = list(lengths = c("length_5utr", "length_cds",
                             "length_3utr", "length_mrna"),
                 stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
@@ -167,7 +167,7 @@ GROUP_BUNDLES <- list(
   ),
   intrinsic_select = list(
     groups = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-               "nuc_ratios", "nuc_combos", "cai"),
+               "nuc_ratios", "compositional", "cai"),
     pick = list(lengths = c("length_5utr", "length_cds",
                             "length_3utr", "length_mrna"),
                 stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",

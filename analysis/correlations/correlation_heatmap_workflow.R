@@ -747,7 +747,7 @@ plot_feature_correlation_heatmap <- function(feature_cor_mat,
   # --- Save PDF ---------------------------------------------------------------
   if (!is.null(output_path)) {
     dir.create(dirname(output_path), showWarnings = FALSE, recursive = TRUE)
-    ggplot2::ggsave(
+    ggplot2::ggsave(limitsize = FALSE,
       output_path, plot = p,
       width = pdf_sq, height = pdf_sq,
       units = "mm", device = "pdf"
@@ -1220,8 +1220,8 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     correlation_method             = "spearman",
     top_n_target_features          = c(30L, 50L, 100L),
     target_abs_rho_threshold       = NULL,
-    cluster_abs_rho_cutoff         = 0.85,
-    top_k_per_group                = 5L,
+    cluster_abs_rho_cutoff         = 0.5,
+    top_k_per_group                = 3L,
     min_features_per_group         = 1L,
     max_features_total             = 100L,
     feature_pair_abs_rho_threshold = 0.7,

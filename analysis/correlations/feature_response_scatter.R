@@ -494,15 +494,29 @@ feature_response_scatter <- function(df,
 # -----------------------------------------------------------------------------
 
 if (sys.nframe() == 0 || identical(environment(), globalenv())) {
-
+  
   df <- build_dataset("human")
-
+  
   # --- R8: outputs go under OUTPUT_DIR ------------------------------------
   dir.create(file.path(OUTPUT_DIR, "plots"),
              showWarnings = FALSE, recursive = TRUE)
   dir.create(file.path(OUTPUT_DIR, "tables"),
              showWarnings = FALSE, recursive = TRUE)
-
+  
+  save_plot_jpg_pdf <- function(plot, filename_base, width, height, units = "mm", dpi = 300) {
+    ggplot2::ggsave(
+      file.path(OUTPUT_DIR, "plots", paste0(filename_base, ".jpg")),
+      plot = plot,
+      width = width, height = height, units = units, dpi = dpi
+    )
+    
+    ggplot2::ggsave(
+      file.path(OUTPUT_DIR, "plots", paste0(filename_base, ".pdf")),
+      plot = plot,
+      width = width, height = height, units = units
+    )
+  }
+  
   out_included <- feature_response_scatter(
     df,
     groups          = INCLUDED_GROUPS,
@@ -510,70 +524,41 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     noise_filter    = 0,
     label_quantile  = 0.8
   )
+  
   print(out_included$plot)
-  ggplot2::ggsave(
-    file.path(OUTPUT_DIR, "plots",
-              "feature_response_scatter_te_vs_halflife_included.jpg"),
+  
+  save_plot_jpg_pdf(
     plot = out_included$plot,
-    width = 280, height = 200, units = "mm", dpi = 300
+    filename_base = "feature_response_scatter_te_vs_halflife_included",
+    width = 280,
+    height = 200
   )
+  
   write.csv(
     out_included$table,
     file.path(OUTPUT_DIR, "tables",
               "feature_response_scatter_te_vs_halflife_included.csv"),
     row.names = FALSE
   )
-
-  # Default view: TE vs halflife, all features, per-column
-  out_full <- feature_response_scatter(df)
-  print(out_full$plot)
-  ggplot2::ggsave(
-    file.path(OUTPUT_DIR, "plots",
-              "feature_response_scatter_te_vs_halflife_full.jpg"),
-    plot = out_full$plot,
-    width = 280, height = 200, units = "mm", dpi = 300
-  )
-  write.csv(
-    out_full$table,
-    file.path(OUTPUT_DIR, "tables",
-              "feature_response_scatter_te_vs_halflife_full.csv"),
-    row.names = FALSE
-  )
-
-  # Cleaner view: collapse to (group, region), filter noise
-  out_clean <- feature_response_scatter(
-    df,
-    collapse     = "region",
-    noise_filter = 0.05
-  )
-  print(out_clean$plot)
-  ggplot2::ggsave(
-    file.path(OUTPUT_DIR, "plots",
-              "feature_response_scatter_te_vs_halflife_collapsed.jpg"),
-    plot = out_clean$plot,
-    width = 250, height = 180, units = "mm", dpi = 300
-  )
-  write.csv(
-    out_clean$table,
-    file.path(OUTPUT_DIR, "tables",
-              "feature_response_scatter_te_vs_halflife_collapsed.csv"),
-    row.names = FALSE
-  )
   
   # Top view: top n
   out_top_n <- feature_response_scatter(
     df,
+    groups          = INCLUDED_GROUPS,
     top_n = 3,
     label_quantile = 0.3
     # noise_filter = 0.1
   )
+  
   print(out_top_n$plot)
-  ggplot2::ggsave(
-    file.path(OUTPUT_DIR, "plots",
-              "feature_response_scatter_te_vs_halflife_top_3.jpg"),
+  
+  save_plot_jpg_pdf(
     plot = out_top_n$plot,
-    width = 250, height = 180, units = "mm", dpi = 300
+    filename_base = "feature_response_scatter_te_vs_halflife_top_3",
+    width = 250,
+    height = 180
   )
+  
   write.csv(
     out_top_n$table,
     file.path(OUTPUT_DIR, "tables",
@@ -584,17 +569,21 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # Top view: top 1
   out_top <- feature_response_scatter(
     df,
+    groups          = INCLUDED_GROUPS,
     top_n = 1,
     label_quantile = 0
     # noise_filter = 0.1
   )
+  
   print(out_top$plot)
-  ggplot2::ggsave(
-    file.path(OUTPUT_DIR, "plots",
-              "feature_response_scatter_te_vs_halflife_top_1.jpg"),
+  
+  save_plot_jpg_pdf(
     plot = out_top$plot,
-    width = 250, height = 180, units = "mm", dpi = 300
+    filename_base = "feature_response_scatter_te_vs_halflife_top_1",
+    width = 250,
+    height = 180
   )
+  
   write.csv(
     out_top$table,
     file.path(OUTPUT_DIR, "tables",
@@ -602,10 +591,11 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     row.names = FALSE
   )
   
-
   message("\nFeature response scatter complete:")
   message("  ", file.path(OUTPUT_DIR, "plots"),
           "/feature_response_scatter_*.jpg")
+  message("  ", file.path(OUTPUT_DIR, "plots"),
+          "/feature_response_scatter_*.pdf")
   message("  ", file.path(OUTPUT_DIR, "tables"),
           "/feature_response_scatter_*.csv")
 }
