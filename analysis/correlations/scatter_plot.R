@@ -13,8 +13,8 @@
 #   source("R/load_all.R")
 #   source("analysis/correlations/scatter_plot.R")
 #   df <- build_dataset("human")
-#   create_scatter_plot(df, x_var = "orfexondensity", y_var = "junctions_density_cds",
-#                       color_var = "halflife", add_density_rings = TRUE)
+#   create_scatter_plot(df, x_var = "rnafold_score_mrna", y_var = "rnafold_score_mrna_imputed",
+#                       color_var = "halflife", add_density_rings = TRUE, quantile_limit = 0.95)
 # =============================================================================
 
 suppressPackageStartupMessages({

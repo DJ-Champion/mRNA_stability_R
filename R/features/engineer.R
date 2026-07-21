@@ -247,7 +247,7 @@ drop_all_na_columns <- function(df) {
 engineer_features <- function(df) {
   df |>
     add_mfe_expected_and_delta() |>
-    impute_mrna_mfe() |>
+    # impute_mrna_mfe() |>
     add_mfe_per_nt() |>
     add_junction_density() |>
     add_eej_min_distance() |>
