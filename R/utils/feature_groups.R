@@ -38,7 +38,8 @@
 # Usage:
 #   df %>% select(fg("rnafold_zscores"))
 #   df %>% select(all_of(select_features(df, groups = "structure")))
-#   select_features(df, groups = "nmd_reported")          # a bundle
+#   select_features(df, groups = "lengths")               # a group
+#   select_features(df, groups = "lengths_core")          # a bundle
 #   select_features(df, groups = "nmd",
 #                   pick = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
 #                                       "nmd_alt_stop_codon_density_mrna")))
@@ -195,7 +196,7 @@ refine_group_columns <- function(members, pick_g = NULL, drop_g = NULL) {
 #' @return Character scalar: one of "supergroup", "bundle", "group", "unknown".
 #' @examples
 #' lookup_key("structure")       # "supergroup"
-#' lookup_key("nmd_reported")    # "bundle"
+#' lookup_key("nmd_core")        # "bundle"
 #' lookup_key("rnafold_zscores") # "group"
 #' lookup_key("typo")            # "unknown"
 #' @export

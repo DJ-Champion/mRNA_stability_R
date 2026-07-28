@@ -71,17 +71,23 @@ SPECIES_CONFIG <- list(
 # SUPERGROUPS names, and GROUP_BUNDLES names — live in R/utils/palettes.R as
 # FEATURE_GROUP_DISPLAY_NAMES / SUPERGROUP_DISPLAY_NAMES / BUNDLE_DISPLAY_NAMES,
 # formatted via format_group_name(). Add a label there, not here, when a key
-# needs a nicer display string than its title-cased name. Standalone columns
-# (cai, translation_efficiency, expression, orfexondensity) are labelled as
-# columns via format_col_name() (R/utils/naming.R), not as group keys.
+# needs a nicer display string than its title-cased name. The individual
+# columns inside the `standalone` group (cai, translation_efficiency,
+# orfexondensity) are labelled as COLUMNS via format_col_name()
+# (R/utils/naming.R), not as group keys — see the note on `standalone` below.
 #
+# INVARIANT: the patterns are mutually exclusive. No column may match two
+# groups — a plot that builds a column -> group map would double-assign it.
+# When one family's prefix is a prefix of another's, anchor the broader one
+# more tightly (e.g. `gc` is `^gc_content_`, not `^gc_`, so it does not
+# swallow the `skews` columns; `exons` excludes `^exon_density_`).
 
 FEATURE_PATTERNS <- list(
   lengths        = "^length_",
-  gc             = "^gc_",
+  gc             = "^gc_content_",
   nmd            = "^nmd_",
   introns        = "^intron_",
-  exons          = "^exon_",
+  exons          = "^exon_(count|length)_",
   noncoding      = "^noncoding_",
   rnafold_scores = "^rnafold_score_",
   rnafold_zscores = "^rnafold_zscore_",
@@ -90,11 +96,9 @@ FEATURE_PATTERNS <- list(
   mfe_expected   = "^mfe_expected_",
   rnalfold_scores    = "^rnalfold_score_",
   rnalfold_zscores   = "^rnalfold_zscore_",
-  rnaup          = "^rnaup_",
   junctions      = "^junctions_",
   eej_dist       = "^eej_dist_",
   uorfs          = "^(uorf_|dist_cap_)",
-  orfs           = "^orf_",
   exon_density   = "^exon_density_",
   stopfree       = "^stopfree_",
   skews          = "^(gc|at)_skew_",
@@ -103,19 +107,22 @@ FEATURE_PATTERNS <- list(
   nuc_ratios     = "^frac_",
   compositional  = "^(purine_|amino_)",
   probing        = "^gini_",
-  translation_e  = "^translation_efficiency",
-  express        = "^expression",
-  orfexonden     = "^orfexondensity",
-  cai            = "^cai"
+
+  # Genuinely region-less whole-transcript scalars. One group rather than one
+  # group per column: they behave identically to every consumer (no region
+  # suffix, mapped to the `mrna` slot in region-aware plots) and differ only
+  # in their display label, which comes from format_col_name().
+  standalone     = "^(cai|translation_efficiency|orfexondensity)$"
 )
 
 
 # --- Feature supergroups -----------------------------------------------------
 # Coarse-grained categorisation of FEATURE_PATTERNS keys for plotting, palette
 # assignment, and any analysis that wants to colour or facet by category
-# family. Each FEATURE_PATTERNS key SHOULD belong to exactly one supergroup.
-# Standalone reserved columns (cai, translation_efficiency, expression,
-# orfexondensity) are NOT listed here — they are handled per-plot.
+# family.
+#
+# INVARIANT: every FEATURE_PATTERNS key belongs to exactly one supergroup —
+# no key omitted, no key listed twice. `standalone` lives in `other`.
 #
 # Update this when adding new groups to FEATURE_PATTERNS.
 
@@ -126,12 +133,13 @@ SUPERGROUPS <- list(
                  "probing"),
 
   intrinsic  = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-                 "nuc_ratios", "compositional", "cai"),
+                 "nuc_ratios", "compositional"),
 
   splicing   = c("junctions", "introns", "exons", "noncoding", "eej_dist"),
 
-  translation = c("uorfs", "orfs", "exon_density", "translation_e", "orfexonden"),
-  decay       = c("nmd")
+  translation = c("uorfs", "exon_density"),
+  decay       = c("nmd"),
+  other       = c("standalone")
 )
 
 GROUP_BUNDLES <- list(
@@ -150,30 +158,27 @@ GROUP_BUNDLES <- list(
     pick = list(eej_dist = c("eej_dist_closest_start", "eej_dist_closest_stop"))
   ),
   structure_core = list(
-    groups = c("rnafold_scores", "rnafold_zscores", "rnafold_per_nt",
-                 "mfe_deltas", "mfe_expected",
-                 "rnalfold_scores", "rnalfold_zscores",
-                 "probing"),
+    groups = "structure",
     pick = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
-    "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
+                            "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
   ),
   intrinsic_core = list(
-    groups = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-               "nuc_ratios", "compositional", "cai"),
+    groups = c("intrinsic", "standalone"),
     pick = list(lengths = c("length_5utr", "length_cds",
                             "length_3utr", "length_mrna"),
                 stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
-                             "stopfree_length_cds", "stopfree_length_mrna"))
+                             "stopfree_length_cds", "stopfree_length_mrna"),
+                standalone = "cai")
   ),
   intrinsic_select = list(
-    groups = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-               "nuc_ratios", "compositional", "cai"),
+    groups = c("intrinsic", "standalone"),
     pick = list(lengths = c("length_5utr", "length_cds",
                             "length_3utr", "length_mrna"),
                 stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
                              "stopfree_length_cds", "stopfree_length_mrna"),
                 codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
-                aa_freqs = c("aa_s_cds", "aa_v_cds"))
+                aa_freqs = c("aa_s_cds", "aa_v_cds"),
+                standalone = "cai")
   ),
   translation_core = list(
     groups = c("uorfs", "exon_density"),
@@ -181,8 +186,13 @@ GROUP_BUNDLES <- list(
   )
 )
 
-# The main set of groups we've decided to focus on for almost everything
-INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core", "intrinsic_select", "translation_core")
+# The main set of groups we've decided to focus on for almost everything.
+# Pass anywhere a `groups =` argument is accepted; it is the default for the
+# correlation dotplot, the response scatter, the region heatmap and the
+# correlation-heatmap workflow. Editing this changes what those plots show by
+# default — it is selection intent, so it never needs a CACHE_VERSION bump.
+INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core",
+                     "intrinsic_select", "translation_core")
 
 # --- Helpers -----------------------------------------------------------------
 

@@ -4,11 +4,12 @@
 # Hand-curated colour scheme for FEATURE_PATTERNS keys, organised by the
 # SUPERGROUPS membership defined in R/config.R:
 #
-#   structure  — purples, magentas, oranges, yellow
-#   intrinsic  — blues, greens, teals
-#   splicing   — reds, browns
-#   regulatory — distinct purples (avoids structure family clash)
-#   other      — greys (standalone columns and catch-all)
+#   structure   — purples, magentas, oranges, yellow
+#   intrinsic   — blues, greens, teals
+#   splicing    — reds, browns
+#   decay       — rust
+#   translation — distinct purples (avoids structure family clash)
+#   other       — greys (the `standalone` group and the catch-all)
 #
 # Plus Okabe-Ito colourblind-friendly palette for REGIONS, used when region
 # is the visual variable rather than the grouping (see feature_correlation_
@@ -28,7 +29,10 @@
 # Feature-group colours (used when GROUP is the visual variable)
 # -----------------------------------------------------------------------------
 
-#' Colour for each FEATURE_PATTERNS group plus a few standalone columns.
+#' Colour for each FEATURE_PATTERNS group, plus the `other` catch-all.
+#'
+#' MUST cover every FEATURE_PATTERNS key — a missing key falls back silently
+#' to the `other` grey via feature_colour(), which reads as a palette bug.
 #' @export
 FEATURE_GROUP_COLOURS <- c(
 
@@ -38,9 +42,8 @@ FEATURE_GROUP_COLOURS <- c(
   rnafold_per_nt         = "#D4115A",
   mfe_deltas             = "#542788",  # deep violet
   mfe_expected           = "#8073AC",  # muted purple
-  rnalfold_scores            = "#FF7F00",  # vivid orange
-  rnalfold_zscores           = "#B35806",  # burnt orange
-  rnaup                  = "#FFD9FF",
+  rnalfold_scores        = "#FF7F00",  # vivid orange
+  rnalfold_zscores       = "#B35806",  # burnt orange
   probing                = "#FDB863",
 
   # --- Intrinsic: blues + greens + teals ---
@@ -51,26 +54,24 @@ FEATURE_GROUP_COLOURS <- c(
   aa_freqs               = "#B2DF8A",  # pale green
   nuc_ratios             = "#01665E",  # dark teal
   skews                  = "#80CDC1",  # light teal
-  compositional          = "#C7C7C7",
-  
+  compositional          = "#5AA9A2",  # mid teal
 
   # --- Splicing: reds + browns ---
   junctions              = "#E31A1C",  # vivid red
-  architecture           = "#8C510A",  # earth brown
-  nmd                    = "#B15928",  # rust
-  eej_dist               = "#8C510A",
+  eej_dist               = "#8C510A",  # earth brown
+  introns                = "#BF812D",  # tan
+  exons                  = "#DFC27D",  # pale tan
+  noncoding              = "#A6611A",  # dark tan
 
-  # --- Regulatory: distinct purples (separate family from structure) ---
+  # --- Decay ---
+  nmd                    = "#B15928",  # rust
+
+  # --- Translation: distinct purples (separate family from structure) ---
   uorfs                  = "#6A3D9A",  # deep purple
-  orfs                   = "#CAB2D6",  # light purple
   exon_density           = "#CAB2A6",
 
-  # --- Standalone columns (other supergroup): greys and black ---
-  standalone             = "#525252",  # dark grey (group-level colour)
-  cai                    = "#000000",  # pure black (per-column override)
-  translation_efficiency = "#525252",  # dark grey
-  expression             = "#7F7F7F",  # medium grey
-  orfexondensity         = "#9E9E9E",  # mid-light grey
+  # --- Other: greys ---
+  standalone             = "#525252",  # dark grey
   other                  = "#C7C7C7"   # light grey (catch-all)
 )
 
@@ -142,7 +143,6 @@ FEATURE_GROUP_DISPLAY_NAMES <- c(
   mfe_expected           = "MFE expected",
   rnalfold_scores        = "Local MFE",
   rnalfold_zscores       = "Local MFE z-score",
-  rnaup                  = "RNAup",
   probing                = "Probing",
   lengths                = "Length",
   gc                     = "GC content",
@@ -153,23 +153,25 @@ FEATURE_GROUP_DISPLAY_NAMES <- c(
   compositional          = "Compositional bias",
   exon_density           = "Exon density",
   eej_dist               = "EEJ distance",
+  introns                = "Introns",
+  exons                  = "Exons",
+  noncoding              = "Non-coding fraction",
   skews                  = "Skews",
   junctions              = "Junctions",
-  architecture           = "Architecture",
   nmd                    = "NMD fragility",
   uorfs                  = "uORFs",
-  orfs                   = "ORFs",
   standalone             = "Standalone",
   other                  = "Other"
 )
 
-# Standalone reserved columns (cai, translation_efficiency, expression,
+# The COLUMNS inside the `standalone` group (cai, translation_efficiency,
 # orfexondensity) are deliberately NOT in this table: they are columns, not
 # group keys, and are labelled via format_col_name() in R/utils/naming.R. A
-# plot whose `group` column can hold a standalone (e.g. the response scatter)
-# dispatches per element — group keys via format_group_name(), everything else
-# via format_col_name(). `other` stays here: it is a display bucket that sits
-# alongside group keys in facets/legends, not a column.
+# plot whose `group` column can hold a standalone column name (e.g. the
+# response scatter) dispatches per element — group keys via
+# format_group_name(), everything else via format_col_name(). The `standalone`
+# key itself IS here, because it is a group. `other` stays here too: it is a
+# display bucket that sits alongside group keys in facets/legends.
 
 #' Supergroup name -> display label. The toTitleCase fallback in
 #' format_group_name() handles clean single words ("structure" -> "Structure");
@@ -178,10 +180,16 @@ SUPERGROUP_DISPLAY_NAMES <- c(
   other = "Other"
 )
 
-#' Bundle name -> display label.
+#' Bundle name -> display label. MUST cover every GROUP_BUNDLES key, or the
+#' toTitleCase fallback produces things like "Nmd Core".
 BUNDLE_DISPLAY_NAMES <- c(
-  nmd_reported = "NMD (reported)",
-  lengths_core = "Core lengths"
+  nmd_core         = "NMD (core)",
+  lengths_core     = "Core lengths",
+  splicing_core    = "Core splicing",
+  structure_core   = "Core structure",
+  intrinsic_core   = "Core intrinsic",
+  intrinsic_select = "Intrinsic (selected)",
+  translation_core = "Core translation"
 )
 
 
@@ -190,10 +198,11 @@ BUNDLE_DISPLAY_NAMES <- c(
 #' Looks the key up in the table for its `kind`; on a miss, falls back to
 #' title-cased underscore replacement. Vectorised.
 #'
-#' This is the SELECTION-key namespace only. Standalone columns (cai,
-#' expression, …) are NOT handled here — they are columns and use
-#' format_col_name(). A plot whose group column mixes selection keys with
-#' standalones must dispatch per element (see feature_response_scatter.R).
+#' This is the SELECTION-key namespace only. The columns inside the
+#' `standalone` group (cai, translation_efficiency, orfexondensity) are NOT
+#' handled here — they are columns and use format_col_name(). A plot whose
+#' group column mixes selection keys with standalone column names must
+#' dispatch per element (see feature_response_scatter.R).
 #'
 #' @param g    Character vector of group / supergroup / bundle keys.
 #' @param kind One of "group", "supergroup", "bundle", or "auto". "auto"
