@@ -86,21 +86,26 @@ suppressPackageStartupMessages({
   mfe_deltas       = 2L,   # delta MFE
   mfe_expected     = 3L,   # expected MFE residual
   rnafold_per_nt   = 4L,   # MFE per nt (corrected structure family)
-  rnaup            = 5L,   # RNAup / accessibility
-  rnalfold_scores  = 6L,   # RNAlfold local structure
-  rnalfold_zscores = 7L,   # RNAlfold z-score
+  rnalfold_scores  = 5L,   # RNAlfold local structure
+  rnalfold_zscores = 6L,   # RNAlfold z-score
+  probing          = 7L,   # icSHAPE Gini
   nmd              = 8L,   # NMD fragility
   junctions        = 9L,   # junctions
   eej_dist         = 10L,  # EEJ distances
   stopfree         = 11L,  # stop-free length
   gc               = 12L,  # GC content
-  nuc_ratios       = 13L,  # nucleotide ratios
-  nuc_combos       = 14L,  # purine / amino ratios
+  nuc_ratios       = 13L,  # nucleotide ratios (frac_*)
+  compositional    = 14L,  # purine / amino ratios
   skews            = 15L,  # AT/GC skew
-  lengths          = 16L,  # length / architecture
+  lengths          = 16L,  # length
   introns          = 17L,
   exons            = 18L,
-  noncoding        = 19L
+  noncoding        = 19L,
+  exon_density     = 20L,
+  uorfs            = 21L,
+  codon_freqs      = 22L,
+  aa_freqs         = 23L,
+  standalone       = 24L
 )
 
 

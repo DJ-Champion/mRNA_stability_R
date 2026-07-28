@@ -83,9 +83,13 @@ suppressPackageStartupMessages({
 #'                       this. 0 (default) = no filter. Try 0.1 to declutter.
 #' @param label_quantile Numeric in [0, 1]. Label the top (1 - q) fraction by
 #'                       distance from origin. Default 0.9 = label top 10%.
-#' @param standalones    Character vector of standalone columns to include
-#'                       even though they're not in any group. Default includes
-#'                       cai, translation_efficiency, expression.
+#' @param standalones    Legacy escape hatch: character vector of columns to
+#'                       include even though no group reaches them. Empty by
+#'                       default — cai, translation_efficiency and
+#'                       orfexondensity are now in the `standalone` group, so
+#'                       `groups = "standalone"` (or the `other` supergroup)
+#'                       is the supported route. Use this only for a column
+#'                       that genuinely sits outside FEATURE_PATTERNS.
 #' @param exclude        Regex patterns to exclude. Default = R10 derived-
 #'                       prediction set, unless response_x or response_y is
 #'                       one of them (in which case it's auto-removed from
@@ -115,9 +119,7 @@ feature_response_scatter <- function(df,
                                      top_n_per_group = list(),
                                      noise_filter   = 0,
                                      label_quantile = 0.9,
-                                     standalones    = c("cai",
-                                                        "translation_efficiency",
-                                                        "expression"),
+                                     standalones    = character(),
                                      exclude        = c("^saluki_prediction$",
                                                         "^prediction_difference$"),
                                      min_n          = 30,
@@ -354,11 +356,14 @@ feature_response_scatter <- function(df,
 
   # --- Display labels (R4) -------------------------------------------------
   # group_label() dispatches per element: selection keys (group / supergroup /
-  # other) via format_group_name(); standalone columns via format_col_name().
+  # bundle) via format_group_name(); anything else — i.e. a bare column name
+  # such as a standalone reached through the legacy `standalones=` fallback —
+  # via format_col_name(). The key sets are read from the registries rather
+  # than hardcoded, so adding a supergroup cannot silently mislabel it.
   group_label <- function(g) {
-    ifelse(g %in% names(FEATURE_PATTERNS) |
-             g %in% c("structure", "intrinsic", "splicing",
-                      "regulatory", "other"),
+    selection_keys <- c(names(FEATURE_PATTERNS), names(SUPERGROUPS),
+                        names(GROUP_BUNDLES), "other")
+    ifelse(g %in% selection_keys,
            format_group_name(g, kind = "auto"),
            formatter(g))
   }

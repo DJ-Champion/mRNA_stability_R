@@ -15,7 +15,7 @@
 # Unlike feature_group_panel(), this accepts the full selection vocabulary, so
 # you can hex-panel an ad-hoc set:
 #   feature_response_hex_panels(df, columns = c("length_cds", "gc_content_cds"))
-#   feature_response_hex_panels(df, groups  = "nmd_reported")          # a bundle
+#   feature_response_hex_panels(df, groups  = "nmd_core")              # a bundle
 #   feature_response_hex_panels(df, groups  = "structure",
 #                               drop = list(probing = "gini_nucleoplasm_cds"))
 #

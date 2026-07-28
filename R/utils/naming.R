@@ -90,33 +90,22 @@ REPLACEMENTS <- list(
   list("^rnafold_score_",                  "MFE "),
   list("^mfe_expected_",                   "MFE.exp. "),
   list("^mfe_delta_",                      "MFE.delta "),
-  list("^mfe_median_",                     "MFE.median "),
-  list("^mfe_pval_",                       "MFE.p-value "),
+  list("^rnafold_median_",                 "MFE.median "),
+  list("^rnafold_pval_",                   "MFE.p-value "),
   list("^rnafold_per_nt_",                 "MFE/nt "),
-  list("^rnalfold_zscore_",                    "min.local.MFE.z "),
-  list("^rnalfold_score_",                     "min.local.MFE "),
-  list("^rnalfold_pval_",                      "min.local.MFEp-value "),
-  list("^rnaup_zscore_",                   "RNAup z-score "),
-  list("^rnaup_score_",                    "RNAup "),
-  list("^rnaup_pval_",                     "RNAup p-value "),
+  list("^rnalfold_zscore_",                "min.local.MFE.z "),
+  list("^rnalfold_score_",                 "min.local.MFE "),
+  list("^rnalfold_median_",                "min.local.MFE.median "),
+  list("^rnalfold_pval_",                  "min.local.MFE.p-value "),
   list("^junctions_density_",              "Junction density "),
   list("^junctions_",                      "Junctions "),
-  list("^orf_percent_length_",             "ORF % length "),
-  list("^orf_number_",                     "ORF count "),
-  list("^orf_length_",                     "ORF length "),
-  list("^orfj_density$",                   "ORF-J density"),
-  list("^stopfree_length_",                 "Stop-free "),
+  list("^stopfree_length_",                "Stop-free "),
   list("^length_",                         "Length "),
-  list("^gc_",                             "GC% "),
+  list("^exon_density_",                   "Exon density "),
   list("^cai$",                            "CAI"),
-  list("^expression$",                     "Expression"),
   list("^orfexondensity$",                 "ORF-exon dens."),
-  list("^nuc_ratio_a",                     "nt.A% "),
-  list("^nuc_ratio_c",                     "nt.C% "),
-  list("^nuc_ratio_g",                     "nt.G% "),
-  list("^nuc_ratio_u",                     "nt.U% "),
-  list("^codon_",                          "Codon. "),  # e.g. codon_aaa_cds -> "Codon freq. aaa CDS"
-  list("^aa_",                             "aa. "),     # e.g. aa_l_cds      -> "AA freq. l CDS"
+  list("^codon_",                          "Codon. "),  # e.g. codon_aaa_cds -> "Codon.AAA% "
+  list("^aa_",                             "aa. "),     # e.g. aa_l_cds      -> "aa.L% "
   list("^gini_nucleoplasm_",               "icSHAPE.nuc "),
   list("^gini_cytoplasm_",                 "icSHAPE.cyto "),
   # list("^shape_",                          "icSHAPE "),
@@ -156,15 +145,16 @@ REPLACEMENTS <- list(
 #' @param col_name Character (length-1 or vector). A canonical column name.
 #' @return Character vector of the same length.
 #' @examples
-#' format_col_name("rnafold_zscore_5utr")   # "MFE z-score 5' UTR"
+#' format_col_name("rnafold_zscore_5utr")   # "MFE.z 5' UTR"
 #' format_col_name("length_cds")            # "Length CDS"
 #' format_col_name("halflife")              # "Half-life"
-#' # v4 examples:
-#' format_col_name("junctions_count_5utr")            # "Junction count 5' UTR"
-#' format_col_name("eej_dist_first_start")            # "First EEJ dist. from start codon"
-#' format_col_name("intron_length_mean_mrna")         # "Mean intron length mRNA"
-#' format_col_name("nmd_fragile_codon_density_mrna")  # "NMD fragile codon density mRNA"
-#' format_col_name("uorf_count_mrna")                 # "uORF count mRNA"
+#' format_col_name("gc_content_5utr")       # "G+C% 5' UTR"
+#' format_col_name("junctions_count_5utr")  # "Junction count 5' UTR"
+#' format_col_name("eej_dist_closest_start")            # "EEJ.closest start codon"
+#' format_col_name("intron_length_mean_mrna")           # "Mean intron length mRNA"
+#' format_col_name("nmd_snv_fragile_codon_density_mrna")# "NMD frag. mRNA"
+#' format_col_name("codon_aaa_cds")         # "Codon.AAA%"
+#' format_col_name("aa_l_cds")              # "aa.L%"
 #' @export
 format_col_name <- function(col_name) {
   vapply(col_name, format_single_name, character(1), USE.NAMES = FALSE)

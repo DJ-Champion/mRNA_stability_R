@@ -629,7 +629,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     list(response = "halflife",
          suffix   = "halflife_nuc_ratios",
          sig      = 0.02,
-         groups   = c("nuc_ratios", "nuc_combos", "gc"),
+         groups   = c("nuc_ratios", "gc"),
          absolute = TRUE,
          top_n    = list(),
          width    = 200)
