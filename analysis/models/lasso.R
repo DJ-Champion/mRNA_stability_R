@@ -23,30 +23,40 @@ suppressPackageStartupMessages({
 
 
 # --- Default feature bundle --------------------------------------------------
-# Edit this to change what goes into the model. Each entry is either a
-# feature-group key (matched through FEATURE_PATTERNS) or a literal column
-# name. The helper `assemble_predictors()` resolves them against a dataframe.
+# Edit this to change what goes into the model. `groups` accepts anything the
+# selection layer accepts — group, supergroup or bundle keys (R3a) — and
+# `columns` is an escape hatch for literal column names outside any group.
+# The helper `assemble_predictors()` resolves them against a dataframe.
 
 DEFAULT_LASSO_PREDICTORS <- list(
-  groups  = c("lengths", "gc", "nmd", "architecture",
-              "junctions", "uorfs", "stopfree", "skews",
-              "codon_freqs", "aa_freqs", "nuc_ratios"),
+  groups  = c("lengths", "gc", "nmd", "introns", "exons", "noncoding",
+              "junctions", "eej_dist", "uorfs", "stopfree", "skews",
+              "codon_freqs", "aa_freqs", "nuc_ratios", "compositional"),
   columns = c()
 )
 
 
 #' Resolve a predictor spec (groups + explicit columns) against a dataframe
 #'
+#' Group resolution goes through `select_features()` so the model sees exactly
+#' the same selection semantics as every plot (R3a): `spec$groups` may name
+#' groups, supergroups or bundles, and `spec$pick` / `spec$drop` refine them.
+#' An unknown group key warns and is skipped rather than aborting the fit.
+#'
 #' @param df A dataframe.
-#' @param spec A list with elements `groups` (character) and `columns`
-#'   (character). Missing columns are silently dropped with a message.
+#' @param spec A list with elements `groups` (character), `columns`
+#'   (character), and optionally `pick` / `drop` (named lists). Missing
+#'   columns are silently dropped with a message.
 #' @return Character vector of columns that exist in df.
 #' @export
 assemble_predictors <- function(df, spec = DEFAULT_LASSO_PREDICTORS) {
-  cols_from_groups <- character(0)
-  for (g in spec$groups %||% character(0)) {
-    cols_from_groups <- c(cols_from_groups, fg_columns(df, g))
-  }
+  cols_from_groups <- if (length(spec$groups %||% character(0)) > 0) {
+    select_features(df,
+                    groups = spec$groups,
+                    pick   = spec$pick %||% list(),
+                    drop   = spec$drop %||% list())
+  } else character(0)
+
   requested <- unique(c(cols_from_groups, spec$columns %||% character(0)))
   missing   <- setdiff(spec$columns %||% character(0), names(df))
   if (length(missing) > 0) {

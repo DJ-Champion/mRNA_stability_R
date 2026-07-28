@@ -43,7 +43,7 @@ After `build_dataset(species)` returns, the dataframe satisfies **all** of these
 - **`species` column is present** and equals the species name on every row.
 - **Identifier columns come first:** `species`, `transcript_id`, `gene_id`, `gene_name` (whichever exist).
 - **Column names are canonical** (lowercase, snake_case, no species prefix). See §2.
-- **Region suffix is the last token** of any regional column: `length_5utr`, `gc_content_cds`, `rnafold_zscore_mrna`.
+- **Region suffix is the last token** of any regional column: `length_5utr`, `gc_content_cds`, `rnafold_zscore_mrna`. *Aspirational, not yet universal* — a handful of loader columns still violate this (`utr5_length`, `n_exons`, `internal_exon_mean`, …) and are consequently invisible to `fg()` and dropped by region-aware plots. See §10. New code MUST NOT add to that set.
 - **All-NA columns are dropped** by `drop_all_na_columns()` at the end of `engineer_features()`. DO NOT rely on a specific column existing without guarding.
 - **`halflife` is the canonical response variable.** No species prefix, no suffix.
 
@@ -81,36 +81,46 @@ DO NOT invent new suffixes. If a feature genuinely needs a new region, add it to
 
 ### 2.2 Column-name patterns (canonical → display)
 
-Patterns listed left to right: regex (used by `FEATURE_PATTERNS`) → example column → display string from `format_col_name()`.
+Every `FEATURE_PATTERNS` key, its regex, its supergroup, and a real example. Column counts are for the current human build; regenerate with `list_selection_keys()` / `fg_columns()` rather than trusting this table if something looks off.
 
-| Regex (FEATURE_PATTERNS key)               | Example column                  | Display string                  |
-|--------------------------------------------|---------------------------------|---------------------------------|
-| `lengths` → `^length_`                     | `length_cds`                    | `Length CDS`                    |
-| `gc` → `^gc_`                              | `gc_content_5utr`               | `GC content 5' UTR`             |
-| `rnafold_scores`  → `^rnafold_score_`      | `rnafold_score_mrna`            | `MFE mRNA`                      |
-| `rnafold_zscores`  → `^rnafold_zscore_`   | `rnafold_zscore_5utr`           | `MFE z-score 5' UTR`            |
-| `rnafold_per_nt` → `^rnafold_per_nt_`      | `rnafold_per_nt_cds`            | `MFE/nt CDS`                    |
-| `mfe_expected` → `^mfe_expected_`          | `mfe_expected_cds`              | `MFE expected CDS`              |
-| `mfe_deltas` → `^mfe_delta_`               | `mfe_delta_3utr`                | `MFE Δ 3' UTR`                  |
-| `rnalfold_scores` → `^rnalfold_score_`     | `rnalfold_score_5utr`           | `Local MFE 5' UTR`              |
-| `rnalfold_zscores` → `^rnalfold_zscore_`   | `rnalfold_zscore_cds`           | `Local MFE z-score CDS`         |
-| `rnaup` → `^rnaup_`                        | `rnaup_score_utrpair`           | `RNAup UTR interactions`        |
-| `junctions` → `^(junctions_\|eej_dist_)`   | `junctions_count_cds`, `eej_dist_last_stop` | `Junction count CDS`, `Last EEJ dist. from stop codon` |
-| `uorfs` → `^(uorf_\|dist_cap_)`            | `uorf_count_mrna`               | `uORF count mRNA`               |
-| `orfs` → `^orf_`                           | `orf_length_5utr`               | `uORF length 5' UTR`            |
-| `stopfree` → `^stopfree_`                  | `stopfree_3utr`                 | `Stop-free 3' UTR`              |
-| `skews` → `^(gc\|at)_skew_`                | `gc_skew_cds`, `at_skew_cds`    | `GC skew CDS`, `AT skew CDS`    |
-| `nmd` → `^nmd_`                            | `nmd_fragile_codon_density_mrna`| `NMD fragile codon density mRNA`|
-| `architecture` → `^(intron_\|exon_\|noncoding_)` | `intron_length_mean_mrna` | `Mean intron length mRNA`       |
-| `codon_freqs` → `^codon_`                  | `codon_aaa_freq_cds`            | `Codon freq. CDS aaa`           |
-| `aa_freqs` → `^aa_`                        | `aa_freq_leu`                   | `AA freq. leu`                  |
-| `nuc_ratios` → `^(frac_\|purine_\|amino_)` | `purine_ratio_cds`              | `Purine ratio CDS`              |
-| `probing` → `^gini_`                       | `gini_nucleoplasm_cds`          | `icSHAPE Gini nucleoplasm CDS`  |
-| `standalone` → `^(cai\|translation_efficiency\|expression\|orfexondensity)$` | `cai` | `CAI` |
+| Group key          | Regex                          | Supergroup    | Example column            | Display string          |
+|--------------------|--------------------------------|---------------|---------------------------|-------------------------|
+| `lengths`          | `^length_`                     | `intrinsic`   | `length_cds`              | `Length CDS`            |
+| `gc`               | `^gc_content_`                 | `intrinsic`   | `gc_content_5utr`         | `G+C% 5' UTR`           |
+| `stopfree`         | `^stopfree_`                   | `intrinsic`   | `stopfree_length_3utr`    | `Stop-free 3' UTR`      |
+| `skews`            | `^(gc\|at)_skew_`              | `intrinsic`   | `gc_skew_cds`             | `GC-skew CDS`           |
+| `codon_freqs`      | `^codon_`                      | `intrinsic`   | `codon_aaa_cds`           | `Codon.AAA%`            |
+| `aa_freqs`         | `^aa_`                         | `intrinsic`   | `aa_l_cds`                | `aa.L%`                 |
+| `nuc_ratios`       | `^frac_`                       | `intrinsic`   | `frac_a_cds`              | `nt.A% CDS`             |
+| `compositional`    | `^(purine_\|amino_)`           | `intrinsic`   | `purine_ratio_cds`        | `A+G% CDS`              |
+| `rnafold_scores`   | `^rnafold_score_`              | `structure`   | `rnafold_score_mrna`      | `MFE mRNA`              |
+| `rnafold_zscores`  | `^rnafold_zscore_`             | `structure`   | `rnafold_zscore_5utr`     | `MFE.z 5' UTR`          |
+| `rnafold_per_nt`   | `^rnafold_per_nt_`             | `structure`   | `rnafold_per_nt_cds`      | `MFE/nt CDS`            |
+| `mfe_expected`     | `^mfe_expected_`               | `structure`   | `mfe_expected_cds`        | `MFE.exp. CDS`          |
+| `mfe_deltas`       | `^mfe_delta_`                  | `structure`   | `mfe_delta_3utr`          | `MFE.delta 3' UTR`      |
+| `rnalfold_scores`  | `^rnalfold_score_`             | `structure`   | `rnalfold_score_5utr`     | `min.local.MFE 5' UTR`  |
+| `rnalfold_zscores` | `^rnalfold_zscore_`            | `structure`   | `rnalfold_zscore_cds`     | `min.local.MFE.z CDS`   |
+| `probing`          | `^gini_`                       | `structure`   | `gini_cytoplasm_cds`      | `icSHAPE.cyto CDS`      |
+| `junctions`        | `^junctions_`                  | `splicing`    | `junctions_count_cds`     | `Junction count CDS`    |
+| `eej_dist`         | `^eej_dist_`                   | `splicing`    | `eej_dist_closest_start`  | `EEJ.closest start codon` |
+| `introns`          | `^intron_`                     | `splicing`    | `intron_length_mean_mrna` | `Mean intron length mRNA` |
+| `exons`            | `^exon_(count\|length)_`       | `splicing`    | `exon_count_internal_mrna`| `Number of internal exons mRNA` |
+| `noncoding`        | `^noncoding_`                  | `splicing`    | *(none in current build)* | —                       |
+| `uorfs`            | `^(uorf_\|dist_cap_)`          | `translation` | `uorf_count_mrna`         | `uORF count mRNA`       |
+| `exon_density`     | `^exon_density_`               | `translation` | `exon_density_cds`        | `Exon density CDS`      |
+| `nmd`              | `^nmd_`                        | `decay`       | `nmd_snv_fragile_codon_density_mrna` | `NMD frag. mRNA` |
+| `standalone`       | `^(cai\|translation_efficiency\|orfexondensity)$` | `other` | `cai` | `CAI`         |
 
-Reserved single-token columns: `halflife`, `gene_id`, `gene_name`, `transcript_id`, `species`, `saluki_prediction`, `prediction_difference`. Note: `cai`, `translation_efficiency`, `expression`, and `orfexondensity` are now selectable via the `standalone` FEATURE_PATTERNS group (or the `other` supergroup).
+Reserved single-token columns, matched by no group: `halflife`, `gene_id`, `gene_name`, `transcript_id`, `species`, `saluki_prediction`, `prediction_difference`.
 
-> **v4 note.** Whole-transcript scalar metrics — architecture (`intron_length_mean_mrna`, `exon_length_first_mrna`, …), uORF (`uorf_count_mrna`, …) and NMD fragility (`nmd_fragile_codon_density_mrna`, …) — carry the real `mrna` region suffix. The v3 `transcript` pseudo-region and the `window`/`core`/`full` NMD pseudo-regions have been retired; there is now a single NMD fragility model and "NMD" appears only as a metric-name prefix in the display string.
+**Two schema invariants.** Both are load-bearing; violating either produces silent misbehaviour rather than an error.
+
+1. **The patterns are mutually exclusive.** No column may match two groups. Any plot that builds a column → group map (the dotplot, the response scatter, the heatmap workflow) will otherwise double-assign the column and draw it twice. This is why `gc` is anchored at `^gc_content_` rather than `^gc_` (which would swallow the `skews` columns) and `exons` at `^exon_(count|length)_` (which would otherwise swallow `exon_density`).
+2. **Every group belongs to exactly one supergroup.** A group missing from `SUPERGROUPS` gets `supergroup_of() == NA` and is silently pooled into the `other` facet.
+
+> **`standalone` is a group, not a set of loose columns.** `cai`, `translation_efficiency` and `orfexondensity` are genuinely region-less, so they are one group (in the `other` supergroup) rather than one group per column. They map to the `mrna` slot in region-aware plots. Their *labels* still come from `format_col_name()`, because each is a distinct column rather than a family — only the key `standalone` itself goes through `format_group_name()`.
+
+> **Whole-transcript scalars carry the real `mrna` suffix.** Architecture (`intron_length_mean_mrna`, …), uORF (`uorf_count_mrna`, …) and NMD fragility (`nmd_snv_fragile_codon_density_mrna`, …) all end in `mrna`. The old `transcript` pseudo-region and the `window`/`core`/`full` NMD pseudo-regions are gone; there is one NMD fragility model and "NMD" appears only as a metric-name prefix in the display string.
 
 ### 2.3 Display-label round-trip rule
 
@@ -120,78 +130,73 @@ Every column that will appear on a plot axis, legend, or title **MUST** have a `
 
 ### 2.4 Quick lookup index — every `format_col_name()` rule
 
-Alphabetised reference of every active `REPLACEMENTS` rule in `R/utils/naming.R`. Use this to find the display string for a canonical column without scrolling. **Notation:** `prefix_` = prefix-anchored regex (`^prefix_`); `[exact]` = exact-match regex (`^token$`); `_suffix` = suffix-anchored regex (`_suffix$`). For columns built from a prefix + region (e.g. `length_cds`), the region token is substituted via the rules in §2.1.
+Reference for every active `REPLACEMENTS` rule in `R/utils/naming.R`, **in the order they are applied** (order matters — later rules operate on the output of earlier ones). **Notation:** `prefix_` = prefix-anchored regex (`^prefix_`); `[exact]` = exact-match regex (`^token$`). For columns built from a prefix + region (e.g. `length_cds`), the region token is then substituted by the region-suffix rules below.
 
-#### Prefix and exact-match rules
+The house style is compact and dotted (`MFE.z`, `G+C%`, `nt.A%`, `icSHAPE.cyto`) rather than prose — these labels are sized for dense small-multiples panels, not standalone figure captions.
 
-| Pattern                          | Example column                          | Display result                       |
-|----------------------------------|-----------------------------------------|--------------------------------------|
-| `aa_freq_`                       | `aa_freq_leu`                           | `AA freq. leu`                       |
-| `amino_ratio_`                   | `amino_ratio_cds`                       | `Amino ratio CDS`                    |
-| `at_skew_`                       | `at_skew_3utr`                          | `AT skew 3' UTR`                     |
-| `cai` [exact]                    | `cai`                                   | `CAI`                                |
-| `distance_junction_down_start` [exact] | `distance_junction_down_start`    | `Junction downstream distance (start)` |
-| `distance_junction_down_stop` [exact]  | `distance_junction_down_stop`     | `Junction downstream distance (stop)`  |
-| `distance_junction_up_start` [exact]   | `distance_junction_up_start`      | `Junction upstream distance (start)`   |
-| `distance_junction_up_stop` [exact]    | `distance_junction_up_stop`       | `Junction upstream distance (stop)`    |
-| `dist_cap_to_first_uatg_`        | `dist_cap_to_first_uatg_mrna`           | `Dist. cap to first uATG mRNA`       |
-| `eej_dist_first_`                | `eej_dist_first_start`                  | `First EEJ dist. from start codon`   |
-| `eej_dist_last_`                 | `eej_dist_last_stop`                    | `Last EEJ dist. from stop codon`     |
-| `exon_count_internal_`           | `exon_count_internal_mrna`              | `Number of internal exons mRNA`      |
-| `exon_length_first_`             | `exon_length_first_mrna`                | `First exon length mRNA`             |
-| `exon_length_last_`              | `exon_length_last_mrna`                 | `Last exon length mRNA`              |
-| `expression` [exact]             | `expression`                            | `Expression`                         |
-| `frac_`                          | `frac_a_cds`                            | `Fraction a CDS`                     |
-| `freq_cds_`                      | `freq_cds_aaa`                          | `Codon freq. CDS aaa`                |
-| `freq_last10_`                   | `freq_last10_aaa`                       | `Codon freq. last-10 aaa`            |
-| `gc_`                            | `gc_cds`                                | `GC CDS`                             |
-| `gc_content_`                    | `gc_content_5utr`                       | `GC content 5' UTR`                  |
-| `gc_skew_`                       | `gc_skew_3utr`                          | `GC skew 3' UTR`                     |
-| `gene_id` [exact]                | `gene_id`                               | `Ensembl gene ID`                    |
-| `gene_name` [exact]              | `gene_name`                             | `Gene name`                          |
-| `halflife` [exact]               | `halflife`                              | `Half-life`                          |
-| `intron_length_mean_`            | `intron_length_mean_mrna`               | `Mean intron length mRNA`            |
-| `junctions_count_`               | `junctions_count_cds`                   | `Junction count CDS`                 |
-| `junctions_density_`             | `junctions_density_cds`                 | `Junction density CDS`               |
-| `junctions_` (fallback)          | `junctions_mrna`                        | `Junctions mRNA`                     |
-| `keth_`                          | `keth_score_mrna`                       | `Keth-seq score mRNA`                |
-| `length_`                        | `length_cds`                            | `Length CDS`                         |
-| `mfe_delta_`                     | `mfe_delta_3utr`                        | `MFE Δ 3' UTR`                       |
-| `mfe_expected_`                  | `mfe_expected_cds`                      | `MFE expected CDS`                   |
-| `mfe_median_`                    | `mfe_median_5utr`                       | `MFE median 5' UTR`                  |
-| `mfe_pval_`                      | `mfe_pval_cds`                          | `MFE p-value CDS`                    |
-| `noncoding_length_fraction_`     | `noncoding_length_fraction_mrna`        | `Non-coding length fraction mRNA`    |
-| `nmd_alt_stop_count_`            | `nmd_alt_stop_count_mrna`               | `NMD alt-stop count mRNA`            |
-| `nmd_alt_stop_density_`          | `nmd_alt_stop_density_mrna`             | `NMD alt-stop density mRNA`          |
-| `nmd_fragile_codon_count_`       | `nmd_fragile_codon_count_mrna`          | `NMD fragile codon count mRNA`       |
-| `nmd_fragile_codon_density_`     | `nmd_fragile_codon_density_mrna`        | `NMD fragile codon density mRNA`     |
-| `nuc_ratio_a`                    | `nuc_ratio_a`                           | `Adenine ratio`                      |
-| `nuc_ratio_c`                    | `nuc_ratio_c`                           | `Cytosine ratio`                     |
-| `nuc_ratio_g`                    | `nuc_ratio_g`                           | `Guanine ratio`                      |
-| `nuc_ratio_u`                    | `nuc_ratio_u`                           | `Uracil ratio`                       |
-| `orf_length_`                    | `orf_length_5utr`                       | `uORF length 5' UTR`                 |
-| `orf_number_`                    | `orf_number_5utr`                       | `uORF count 5' UTR`                  |
-| `orf_percent_length_`            | `orf_percent_length_5utr`               | `uORF % length 5' UTR`               |
-| `orfexondensity` [exact]         | `orfexondensity`                        | `ORF-exon density`                   |
-| `orfj_density` [exact]           | `orfj_density`                          | `ORF-J density`                      |
-| `prediction_difference` [exact]  | `prediction_difference`                 | `Prediction difference`              |
-| `purine_ratio_`                  | `purine_ratio_cds`                      | `Purine ratio CDS`                   |
-| `rnafold_score_`                 | `rnafold_score_mrna`                    | `MFE mRNA`                           |
-| `rnafold_zscore_`                | `rnafold_zscore_5utr`                   | `MFE z-score 5' UTR`                 |
-| `rnal_pval_`                     | `rnal_pval_cds`                         | `Local MFE p-value CDS`              |
-| `rnal_score_`                    | `rnal_score_5utr`                       | `Local MFE 5' UTR`                   |
-| `rnal_zscore_`                   | `rnal_zscore_cds`                       | `Local MFE z-score CDS`              |
-| `rnaup_pval_`                    | `rnaup_pval_utrpair`                    | `RNAup p-value UTR interactions`     |
-| `rnaup_score_`                   | `rnaup_score_utrpair`                   | `RNAup UTR interactions`             |
-| `rnaup_zscore_`                  | `rnaup_zscore_utrpair`                  | `RNAup z-score UTR interactions`     |
-| `saluki_prediction` [exact]      | `saluki_prediction`                     | `Saluki prediction`                  |
-| `shape_`                         | `shape_score_mrna`                      | `icSHAPE score mRNA`                 |
-| `species` [exact]                | `species`                               | `Species`                            |
-| `stopfree_`                      | `stopfree_3utr`                         | `Stop-free 3' UTR`                   |
-| `transcript_id` [exact]          | `transcript_id`                         | `Transcript ID`                      |
-| `translation_efficiency` [exact] | `translation_efficiency`                | `Translation efficiency`             |
-| `uorf_count_`                    | `uorf_count_mrna`                       | `uORF count mRNA`                    |
-| `uorf_present_`                  | `uorf_present_mrna`                     | `Has uORF mRNA`                      |
+> This table is hand-maintained and *will* drift. It is a convenience, not the source of truth. When it matters, run `format_col_name("<column>")`.
+
+#### Metric rules, in application order
+
+| Pattern                                   | Example column                              | Display result                    |
+|-------------------------------------------|---------------------------------------------|-----------------------------------|
+| `nmd_transversion_fragile_codon_density_` | `nmd_transversion_fragile_codon_density_mrna` | `NMD transversion fragile codon density mRNA` |
+| `nmd_snv_fragile_codon_density_`          | `nmd_snv_fragile_codon_density_mrna`        | `NMD frag. mRNA`                  |
+| `nmd_alt_stop_codon_density_`             | `nmd_alt_stop_codon_density_mrna`           | `NMD alt-stop mRNA`               |
+| `nmd_transition_fraction_of_snv_fragile_` | `nmd_transition_fraction_of_snv_fragile_mrna` | `NMD transition fragile codon fraction mRNA` |
+| `nmd_transition_fragile_codon_density_`   | `nmd_transition_fragile_codon_density_mrna` | `NMD transition fragile codon density mRNA` |
+| `intron_length_mean_`                     | `intron_length_mean_mrna`                   | `Mean intron length mRNA`         |
+| `exon_length_first_`                      | `exon_length_first_mrna`                    | `First exon length mRNA`          |
+| `exon_length_last_`                       | `exon_length_last_mrna`                     | `Last exon length mRNA`           |
+| `exon_count_internal_`                    | `exon_count_internal_mrna`                  | `Number of internal exons mRNA`   |
+| `noncoding_length_fraction_`              | `noncoding_length_fraction_mrna`            | `Non-coding length fraction mRNA` |
+| `frac_a` / `frac_c` / `frac_g` / `frac_u` | `frac_a_cds`                                | `nt.A% CDS`                       |
+| `at_skew_`                                | `at_skew_3utr`                              | `AT-skew 3' UTR`                  |
+| `gc_skew_`                                | `gc_skew_3utr`                              | `GC-skew 3' UTR`                  |
+| `purine_ratio_`                           | `purine_ratio_cds`                          | `A+G% CDS`                        |
+| `amino_ratio_`                            | `amino_ratio_cds`                           | `A+C% CDS`                        |
+| `gc_content_`                             | `gc_content_5utr`                           | `G+C% 5' UTR`                     |
+| `junctions_count_`                        | `junctions_count_cds`                       | `Junction count CDS`              |
+| `eej_dist_downstream`                     | `eej_dist_downstream_stop`                  | `EEJ dist. downstream stop codon` |
+| `eej_dist_upstream_`                      | `eej_dist_upstream_start`                   | `EEJ dist. upstream start codon`  |
+| `eej_dist_closest_`                       | `eej_dist_closest_start`                    | `EEJ.closest start codon`         |
+| `uorf_count_`                             | `uorf_count_mrna`                           | `uORF count mRNA`                 |
+| `uorf_present_`                           | `uorf_present_mrna`                         | `uORF mRNA`                       |
+| `dist_cap_to_first_uatg_`                 | `dist_cap_to_first_uatg_mrna`               | `Dist. cap to first uATG mRNA`    |
+| `halflife` [exact]                        | `halflife`                                  | `Half-life`                       |
+| `gene_name` [exact]                       | `gene_name`                                 | `Gene name`                       |
+| `gene_id` [exact]                         | `gene_id`                                   | `Ensembl gene ID`                 |
+| `transcript_id` [exact]                   | `transcript_id`                             | `Transcript ID`                   |
+| `translation_efficiency` [exact]          | `translation_efficiency`                    | `Translation efficiency`          |
+| `saluki_prediction` [exact]               | `saluki_prediction`                         | `Saluki prediction`               |
+| `prediction_difference` [exact]           | `prediction_difference`                     | `Prediction difference`           |
+| `species` [exact]                         | `species`                                   | `Species`                         |
+| `rnafold_zscore_`                         | `rnafold_zscore_5utr`                       | `MFE.z 5' UTR`                    |
+| `rnafold_score_`                          | `rnafold_score_mrna`                        | `MFE mRNA`                        |
+| `mfe_expected_`                           | `mfe_expected_cds`                          | `MFE.exp. CDS`                    |
+| `mfe_delta_`                              | `mfe_delta_3utr`                            | `MFE.delta 3' UTR`                |
+| `rnafold_median_`                         | `rnafold_median_5utr`                       | `MFE.median 5' UTR`               |
+| `rnafold_pval_`                           | `rnafold_pval_cds`                          | `MFE.p-value CDS`                 |
+| `rnafold_per_nt_`                         | `rnafold_per_nt_cds`                        | `MFE/nt CDS`                      |
+| `rnalfold_zscore_`                        | `rnalfold_zscore_cds`                       | `min.local.MFE.z CDS`             |
+| `rnalfold_score_`                         | `rnalfold_score_5utr`                       | `min.local.MFE 5' UTR`            |
+| `rnalfold_median_`                        | `rnalfold_median_cds`                       | `min.local.MFE.median CDS`        |
+| `rnalfold_pval_`                          | `rnalfold_pval_cds`                         | `min.local.MFE.p-value CDS`       |
+| `junctions_density_`                      | `junctions_density_cds`                     | `Junction density CDS`            |
+| `junctions_` (fallback)                   | `junctions_mrna`                            | `Junctions mRNA`                  |
+| `stopfree_length_`                        | `stopfree_length_3utr`                      | `Stop-free 3' UTR`                |
+| `length_`                                 | `length_cds`                                | `Length CDS`                      |
+| `exon_density_`                           | `exon_density_cds`                          | `Exon density CDS`                |
+| `cai` [exact]                             | `cai`                                       | `CAI`                             |
+| `orfexondensity` [exact]                  | `orfexondensity`                            | `ORF-exon dens.`                  |
+| `codon_`                                  | see special case below                      | `Codon.AAA%`                      |
+| `aa_`                                     | see special case below                      | `aa.L%`                           |
+| `gini_nucleoplasm_`                       | `gini_nucleoplasm_cds`                      | `icSHAPE.nuc CDS`                 |
+| `gini_cytoplasm_`                         | `gini_cytoplasm_cds`                        | `icSHAPE.cyto CDS`                |
+
+**Ordering constraints that matter.** `gc_content_` and `gc_skew_` must both precede any broader `gc_` rule. `junctions_count_` and `junctions_density_` must both precede the `junctions_` fallback. NMD metric-prefix rules render to `"NMD <metric> "` with a trailing space, so the region rule can apply cleanly afterwards.
+
+**Two special cases, handled in code rather than by a rule.** `format_single_name()` intercepts `^codon_([acgtu]{3})_cds$` → `Codon.AAA%` and `^aa_([a-z])_cds$` → `aa.L%` before the `REPLACEMENTS` loop runs. This uppercases the token and drops the region suffix, avoiding 84 exact-match rules and R's lack of PCRE2 case-folding in `sub()`.
 
 #### Region-suffix rules
 
@@ -235,15 +240,21 @@ These are the functions every extender code should rely on. DO NOT reach into in
 | `select_features(df, groups, pick, drop)` | `R/utils/feature_groups.R` | Resolve groups/supergroups/bundles + pick/drop → column names |
 | `resolve_selection(groups, pick, drop)`   | `R/utils/feature_groups.R` | Normalise a selection → `(groups, pick, drop)` triple         |
 | `expand_groups(groups)`                   | `R/utils/feature_groups.R` | Group/supergroup/bundle names → `FEATURE_PATTERNS` keys        |
+| `refine_group_columns(members, pick, drop)` | `R/utils/feature_groups.R` | Apply one group's pick/drop — the shared semantics plots must reuse |
 | `lookup_key(key)`                         | `R/utils/feature_groups.R` | Tell which namespace a string belongs to: "supergroup" / "bundle" / "group" / "unknown" |
 | `list_selection_keys(kind)`               | `R/utils/feature_groups.R` | Browse all groups, supergroups, and bundles with display names |
+| `supergroup_of(group)`                    | `R/config.R`               | Reverse lookup: group key → its supergroup (`NA` if unregistered) |
 | `SUPERGROUPS`                             | constant in `R/config.R`   | Coarse group → member-group categorisation                     |
 | `GROUP_BUNDLES`                           | constant in `R/config.R`   | Reusable named selections (intent, not schema)                 |
+| `INCLUDED_GROUPS`                         | constant in `R/config.R`   | The project's default selection; the default `groups =` for the dotplot, response scatter, region heatmap and heatmap workflow |
 | `format_col_name(x)`              | `R/utils/naming.R`                         | Canonical column name → display string (vectorised) |
 | `format_group_name(x, kind)`      | `R/utils/palettes.R`                       | Group / supergroup / bundle key → display string (vectorised) |
+| `format_metric_name(x)`           | `R/utils/palettes.R`                       | Column → display string with the region suffix stripped |
+| `feature_colour(group)` / `region_colour(r)` / `region_shape(r)` | `R/utils/palettes.R` | Palette accessors with a documented fallback |
 | `clear_snapshot(species)`         | `R/io/cache.R`                             | Force next build to rebuild                      |
 | `REGIONS`                         | constant in `R/config.R`                   | The legal region suffix vocabulary               |
 | `FEATURE_PATTERNS`                | constant in `R/config.R`                   | Group → regex registry                           |
+| `REGION_COLOURS` / `REGION_SHAPES` / `REGION_DISPLAYS` | constants in `R/utils/palettes.R` | Per-region visual vocabulary        |
 | `SPECIES_CONFIG`                  | constant in `R/config.R`                   | Species registry                                 |
 | `OUTPUT_DIR`                      | constant in `R/config.R`                   | `data/outputs` — base path for all outputs       |
 | `CACHE_VERSION`                   | constant in `R/config.R`                   | Bump when feature-engineering logic changes      |
@@ -265,6 +276,8 @@ source("R/load_all.R")
 ```
 
 DO NOT `source()` individual pipeline files. DO NOT redefine pipeline functions locally.
+
+**Corollary — nothing may sit under `R/` except live pipeline code.** `load_all.R` sources *every* `.R` file in `R/utils/`, `R/io/`, `R/features/` and `R/pipeline/` via `list.files()`. A backup, a scratch file, or a `foo_old.R` left in place is loaded too, and if it redefines a function it may win or lose depending on **locale collation order** — `list.files()` sorts differently under `LC_COLLATE=C` (typical for `Rscript` on a server or in CI) than under a UTF-8 desktop locale. This is not hypothetical: `R/utils/naming_old.R` shadowed `format_col_name()` this way and was only harmless by luck of sort order. Park work-in-progress outside `R/`, or on a branch.
 
 ### R2 — Always get data via `build_dataset()`
 
@@ -339,10 +352,11 @@ Display strings live in three maps in `R/utils/palettes.R` —
 — seeded where the `tools::toTitleCase` fallback would be wrong. Add a map entry
 rather than hardcoding a label in the plot.
 
-**Standalones are now a group.** `cai`, `translation_efficiency`, `expression`,
-and `orfexondensity` are selectable via the `standalone` FEATURE_PATTERNS group
-(part of the `other` supergroup). Use `select_features(df, "standalone")` or
-`select_features(df, "other")` to reach them. They have no region suffix and are
+**Standalones are a group.** `cai`, `translation_efficiency` and
+`orfexondensity` are selectable via the `standalone` FEATURE_PATTERNS group
+(the sole member of the `other` supergroup). Use
+`select_features(df, "standalone")` or `select_features(df, "other")` to reach
+them. They have no region suffix and are
 always mapped to the `mrna` slot in region-aware plots. Their labels still come
 from `format_col_name()` rather than `format_group_name()`, because each is a
 distinct column, not a family. A plot whose group column contains standalone
@@ -443,7 +457,7 @@ Things that look reasonable and will silently break the pipeline or downstream a
 | Calling `engineer_features()` from an analysis script           | Skips cache, may double-engineer                    | `build_dataset()` does this for you            |
 | Mutating column names with `rename_with(toupper)` for display   | Breaks `format_col_name()` round-trip               | Format only at the moment of display          |
 | Renaming a column produced by a loader inside `engineer.R`      | Downstream `fg()` patterns break                    | Either rename in the loader, or add new col   |
-| Adding `nmd_reported = "^nmd_(snv\|alt)"` to `FEATURE_PATTERNS` | Subset masquerading as a schema family; pollutes `expand_groups`, double-assigns columns | Define it in `GROUP_BUNDLES`, or use per-call `pick`/`drop` |
+| Adding `nmd_core = "^nmd_(snv\|alt)"` to `FEATURE_PATTERNS` | Subset masquerading as a schema family; pollutes `expand_groups`, double-assigns columns | Define it in `GROUP_BUNDLES`, or use per-call `pick`/`drop` |
 ---
 
 ## 6. Extension recipes
@@ -456,6 +470,7 @@ Pick the recipe that matches your task. Follow every numbered step.
 - Correlation-style plot → `analysis/correlations/<name>.R`
 - Model fit / coefficient plot → `analysis/models/<name>.R`
 - QC / diagnostic plot → `analysis/qc/<name>.R`
+- Anything comparing species to each other → `analysis/cross_species/<name>.R`
 - Anything else → propose a new subdirectory in your PR description
 
 **Steps:**
@@ -521,13 +536,26 @@ A "derived" feature is one computed from columns already in the assembled datafr
 
 ### 6.4 Adding a new feature group
 
-Simpler. Append to `FEATURE_PATTERNS` in `R/config.R`:
+Four registries, all of them required. Missing any of the last three fails **silently**.
+
+1. **`FEATURE_PATTERNS`** in `R/config.R` — the regex:
+   ```r
+   my_new_group = "^my_metric_",
+   ```
+   It MUST be mutually exclusive with every existing pattern (§2.2). If your prefix is a prefix of another group's, or vice versa, anchor one of them more tightly.
+2. **`SUPERGROUPS`** in `R/config.R` — add the key to exactly one supergroup. Omitted → `supergroup_of()` returns `NA` and the group is silently pooled into the `other` facet.
+3. **`FEATURE_GROUP_COLOURS`** in `R/utils/palettes.R` — omitted → `feature_colour()` falls back to the `other` grey, which reads as a palette bug.
+4. **`FEATURE_GROUP_DISPLAY_NAMES`** in `R/utils/palettes.R` — omitted → `format_group_name()` title-cases the raw key (`translation_e` → "Translation e").
+
+No cache bump needed (it's a query helper, not data).
+
+**Verify all four:**
 
 ```r
-my_new_group = "^my_metric_",
+fg_columns(build_dataset("human"), "my_new_group")   # non-empty?
+supergroup_of("my_new_group")                        # not NA?
+list_selection_keys(kind = "group")                  # sensible display name?
 ```
-
-No cache bump needed (it's a query helper, not data). Verify with `fg_columns(build_dataset("human"), "my_new_group")`.
 
 ### 6.4a Adding a reusable column selection (a bundle)
  
@@ -548,7 +576,7 @@ A bare character vector is shorthand for `list(groups = <vec>)`.
 ```r
 GROUP_BUNDLES <- list(
   # "the two reported NMD columns" — a fixed allow-list against an open group
-  nmd_reported = list(
+  nmd_core = list(
     groups = "nmd",
     pick   = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
                           "nmd_alt_stop_codon_density_mrna"))
@@ -565,10 +593,10 @@ GROUP_BUNDLES <- list(
 **Steps:**
  
 1. Add the entry to `GROUP_BUNDLES` in `R/config.R`.
-2. Use it anywhere `groups` is accepted: `select_features(df, "nmd_reported")`,
-   or a plot call `groups = c("structure", "nmd_reported")`.
+2. Use it anywhere `groups` is accepted: `select_features(df, "nmd_core")`,
+   or a plot call `groups = c("structure", "nmd_core")`.
 3. **DO NOT bump `CACHE_VERSION`.** A bundle is a query helper, not data.
-4. Verify: `select_features(build_dataset("human"), "nmd_reported")` returns the
+4. Verify: `select_features(build_dataset("human"), "nmd_core")` returns the
    expected columns.
 **Merge rule (know this).** If a caller passes `pick`/`drop` AND names a bundle
 carrying `pick`/`drop` for the *same group key*, the **caller wins** for that
@@ -993,6 +1021,10 @@ Before considering any extension complete, run through this list. Each item maps
 - [ ] Column *subsets* use `pick`/`drop` or a `GROUP_BUNDLES` bundle — never a new `FEATURE_PATTERNS` subset entry (R3a)
 - [ ] Plot functions accepting `groups` also accept `pick`/`drop` and resolve via `resolve_selection()` (R3a)
 - [ ] Any new bundle name does not collide with a group or supergroup name (§6.4a)
+- [ ] Any new group is registered in all four places: `FEATURE_PATTERNS`, `SUPERGROUPS`, `FEATURE_GROUP_COLOURS`, `FEATURE_GROUP_DISPLAY_NAMES` (§6.4)
+- [ ] Any new group's regex is mutually exclusive with every existing one (§2.2)
+- [ ] Any new bundle has a `BUNDLE_DISPLAY_NAMES` entry (§6.4a)
+- [ ] No backup / scratch / `*_old.R` file left anywhere under `R/` (R1)
 - [ ] Script runs cleanly from a fresh R session via `Rscript <file>`
 - [ ] Outputs are written to the correct subdirectory under `data/outputs/`
 - [ ] Display-name spot check: `format_col_name(c(<your new cols>))` returns clean strings
@@ -1003,12 +1035,16 @@ Before considering any extension complete, run through this list. Each item maps
 
 ```
 R/                                  pipeline core (DO NOT scatter analysis here)
-├── config.R                        constants, paths, FEATURE_PATTERNS, CACHE_VERSION
+├── config.R                        paths, REGIONS, FEATURE_PATTERNS, SUPERGROUPS,
+│                                   GROUP_BUNDLES, INCLUDED_GROUPS, CACHE_VERSION
 ├── load_all.R                      sources everything in dependency order
 ├── utils/                          pure helpers, no pipeline state
 │   ├── normalise.R                 z_score_normalize, min_max_normalize
 │   ├── naming.R                    format_col_name, REPLACEMENTS
-│   └── feature_groups.R            fg, fg_columns
+│   ├── palettes.R                  FEATURE_GROUP_COLOURS, REGION_COLOURS/SHAPES,
+│   │                               format_group_name, format_metric_name
+│   └── feature_groups.R            fg, fg_columns, select_features,
+│                                   resolve_selection, lookup_key
 ├── io/
 │   ├── load_raw.R                  one function per raw source file
 │   └── cache.R                     save/load/clear snapshot
@@ -1022,6 +1058,7 @@ R/                                  pipeline core (DO NOT scatter analysis here)
 analysis/                           consumer code (this is where new plots go)
 ├── qc/                             diagnostics, sanity checks
 ├── correlations/                   anything correlation- or scatter-shaped
+├── cross_species/                  species-vs-species comparisons
 └── models/                         fitted models, coefficient plots
 
 scripts/                            CLI runners (one per build, one-off jobs)
@@ -1043,10 +1080,13 @@ data/
 - **`add_mfe_expected_and_delta()` keys on `gc_content_{region}` and `length_{region}`.** If your loader produces `gc_{region}` instead, no expected/delta columns are computed. (Current state: `sequence_basic.tsv` produces `gc_content_*`.)
 - **`engineer_features()` drops all-NA columns at the end.** A column whose loader produced only `NA` for this species will simply not appear in the output. This is by design but easy to forget when debugging "where did my column go".
 - **The `species` column is added before `engineer_features()` is called.** Any engineering step that operates row-wise has access to `species` if it needs species-specific behaviour. Use this sparingly — most logic should be species-agnostic.
-- **v4 retired the pseudo-region tokens.** Whole-transcript scalars (architecture, uORF, NMD) now end in the real `mrna` suffix; the v3 `transcript` token and the `window`/`core`/`full` NMD tokens no longer exist. There is one NMD fragility model — `load_nmd_fragility(species)` takes no `type` argument and reads `nmd_fragility.tsv`. Any analysis script written against the v3 names (`*_transcript`, `nmd_*_window`, …) will silently select nothing — `fg()` returns an empty set rather than erroring.
+- **The pseudo-region tokens are long gone.** Whole-transcript scalars (architecture, uORF, NMD) end in the real `mrna` suffix; the `transcript` token and the `window`/`core`/`full` NMD tokens no longer exist. There is one NMD fragility model. Any analysis script written against the old names (`*_transcript`, `nmd_*_window`, …) will silently select nothing — `fg()` returns an empty set rather than erroring.
 - **Subset feature groups do not belong in `FEATURE_PATTERNS`.** The deleted `*_some` / `mfe_scores` / `mfe_zscores` keys were subsets and aliases living in the schema layer; they double-assigned columns and forced ad-hoc exclusion lists. Reusable subsets are `GROUP_BUNDLES` bundles; one-off subsets are per-call `pick`/`drop`. Neither needs a `CACHE_VERSION` bump.
-- **`distances` was removed from `FEATURE_PATTERNS`.** It was a pure subset of `junctions` (both matched `eej_dist_*`), causing double-assignment in any plot that builds a column→group map. All `eej_dist_*` columns continue to be covered by the `junctions` group (regex `^(junctions_|eej_dist_)`). Remove `"distances"` from any `groups` argument that still names it — it will produce a warning and be skipped.
-- **`standalone` is now a group.** `cai`, `translation_efficiency`, `expression`, and `orfexondensity` are reachable via `select_features(df, "standalone")` or the `other` supergroup. They are genuinely region-less and map to the `mrna` slot in region-aware plots. The `standalones=` parameter on the dotplot and response-scatter is kept for backward compatibility but is now a fallback only (used when `standalone` is not in the expanded group list).
+- **`junctions` and `eej_dist` are now two groups, not one.** `junctions` is `^junctions_` (counts and densities); `eej_dist` is `^eej_dist_` (the six exon-exon-junction distances). The old combined `^(junctions_|eej_dist_)` regex and the `distances` group that overlapped it are both gone. A `groups` argument naming `"distances"` warns and is skipped.
+- **`standalone` is a group; `expression` is not in it.** `cai`, `translation_efficiency` and `orfexondensity` are reachable via `select_features(df, "standalone")` or the `other` supergroup. `expression` was dropped from the pipeline entirely — `load_agarwal_features()` no longer returns it. The `standalones=` parameter on the dotplot and response-scatter still exists but defaults to empty; it is a fallback for columns genuinely outside `FEATURE_PATTERNS`, not the route to these three.
+- **Registering a group takes four edits, not one.** A regex in `FEATURE_PATTERNS`, membership in `SUPERGROUPS`, a colour in `FEATURE_GROUP_COLOURS`, and a label in `FEATURE_GROUP_DISPLAY_NAMES`. Miss the colour and the group renders in the `other` grey; miss the label and `format_group_name()` title-cases the key (`translation_e` → "Translation e"). Neither errors. Likewise, a new bundle needs a `BUNDLE_DISPLAY_NAMES` entry.
+- **Some loader columns are still non-canonical, and are therefore invisible.** ~43 columns in the current human build match no `FEATURE_PATTERNS` group. Two causes: (a) families nobody has grouped — `rnafold_median_*`, `rnafold_pval_*`, `rnalfold_median_*`, `rnalfold_pval_*` (these do have display rules, so they label correctly if you name them explicitly); (b) loader names that break the region-suffix-last invariant of §1.2 — `utr5_length` (a duplicate of `length_5utr`), `internal_exon_mean` / `_median` / `_sd`, `n_exons`, `stop_dist_last_downstream`, `n_overlapping_uorfs`, `total_classical_uorf_codons`, `max_classical_uorf_codons`, `dist_last_uorf_stop_to_main_atg`, `cds_length_codons_cds`, `n_codons_scored_cds`, `n_stops_cds`. Group (b) is silently dropped by every region-aware plot (the dotplot reports them in its `dropped` message). Fixing this means renaming at the loader and bumping `CACHE_VERSION`. Note also that `intron_median` and `intron_sd` *are* caught by `introns` alongside `intron_length_mean_mrna`, so that one group mixes two naming conventions.
+- **The `noncoding` group currently matches nothing.** `load_architecture()` maps `noncoding_length_fraction_mrna`, but the column is absent from current builds. The group and its display rule are kept so it is picked up if the input returns.
 - **Not sure which namespace a string belongs to?** Call `lookup_key("mytoken")` — it returns `"supergroup"`, `"bundle"`, `"group"`, or `"unknown"`. Call `list_selection_keys()` to print all of them in one table.
 
 ---
