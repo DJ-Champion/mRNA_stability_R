@@ -10,8 +10,15 @@
 #          group_a, group_b, region_a, region_b, n, rho.
 #
 # Excluded by default: codon_freqs and aa_freqs (within-group correlations
-# are a mathematical artefact — they sum to ~1 within a region), plus the
-# response variable halflife and derived prediction columns (R10).
+# are a mathematical artefact — each family is row-normalised to sum to
+# exactly 1, so the columns are compositional and share a fixed total), plus
+# the response variable halflife and derived prediction columns (R10).
+#
+# That closure held only accidentally before v8: a DNA-only regex in
+# add_codon_aa_fractions() normalised just the 27 codons spelled without a U,
+# which summed to 1 among themselves while the other 38 stayed raw counts.
+# The exclusion was right for the wrong reason; it is now right for the
+# stated one.
 #
 # Usage:
 #   source("R/load_all.R")

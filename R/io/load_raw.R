@@ -60,6 +60,34 @@ normalise_region <- function(df) {
 }
 
 
+#' Canonicalise codon column names onto the RNA alphabet.
+#'
+#' Upstream emits the same codon under two spellings: the human counts file
+#' says `codon_AAU`, the mouse one says `codon_AAT`. Left alone they are two
+#' different column names, which breaks things in two directions — the
+#' cross-species `bind_rows()` idiom yields a half-NA codon block (the species
+#' share only 28 of 65 names), and any DNA-only regex silently skips every
+#' human column that contains a U.
+#'
+#' The pipeline is RNA-canonical everywhere else — `nuc_U_ratio_*` becomes
+#' `frac_u_*`, which `format_col_name()` labels "nt.U%" — so T -> U is the
+#' direction of travel, not the reverse. This is the codon-alphabet analogue
+#' of REGION_ALIASES: one place to reconcile upstream spelling, rather than
+#' equivalent renames scattered through individual loaders.
+#'
+#' Deliberately scoped to the bare triplet token. A blanket t -> u over all
+#' names would rewrite `aa_t` (threonine) into `aa_u` and quietly corrupt the
+#' amino-acid block.
+normalise_codon_alphabet <- function(df) {
+  hits <- grepl("^codon_[acgt]{3}$", names(df))
+  if (any(hits)) {
+    token <- sub("^codon_", "", names(df)[hits])
+    names(df)[hits] <- paste0("codon_", chartr("t", "u", token))
+  }
+  df
+}
+
+
 # Rename the gene_id column
 rename_gene_id <- function(df) {
   if ("ensembl_gene_id" %in% names(df)) {
@@ -266,14 +294,17 @@ load_uorfs <- function(species) {
 #' Load Codon and Amino Acid counts (Wide Form)
 #'
 #' Raw columns are bare codon triplets / single-letter AA codes
-#' (`codon_aaa`, `aa_l`, …) and are CDS-only. Per the region-suffix-last
-#' invariant the loader stamps `_cds` on every payload column. The counts
+#' (`codon_aaa`, `aa_l`, …) and are CDS-only. Codon triplets are folded onto
+#' the RNA alphabet first — upstream disagrees on DNA vs RNA spelling per
+#' species, see normalise_codon_alphabet(). Per the region-suffix-last
+#' invariant the loader then stamps `_cds` on every payload column. The counts
 #' are converted to row-normalised fractions in add_codon_aa_fractions().
 load_codon_aa_counts <- function(species) {
   df <- read_if_exists(species_path(species, "codon_aa_counts.tsv"))
   if (is.null(df)) return(NULL)
   df |>
     lowercase_names() |>
+    normalise_codon_alphabet() |>
     dplyr::select(-dplyr::any_of(c("gene_id", "strand"))) |>
     affix_payload(suffix = "_cds", keys = "transcript_id")
 }
