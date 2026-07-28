@@ -1,6 +1,6 @@
 # RNAstab — Pipeline Extension Guide
 
-**Audience:** an AI coding instance (or human contributor) tasked with writing new plotting scripts, refactoring legacy scripts onto this pipeline, or extending the pipeline with new features, loaders, or species.
+**Audience:** a contributor (or AI coding instance) tasked with writing new plotting scripts, refactoring legacy scripts onto this pipeline, or extending the pipeline with new features, loaders, or species.
 
 **Authority:** this document is a rulebook, not a tour. Where it says **MUST** / **MUST NOT** / **DO** / **DO NOT**, treat those as constraints, not suggestions. The README explains *what the pipeline is*. This document explains *how to interface with and extend it without breaking the invariants*.
 
