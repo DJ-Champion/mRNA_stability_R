@@ -195,15 +195,25 @@ add_eej_min_distance <- function(df) {
 #' Convert raw codon / amino-acid counts into row-normalised fractions
 #'
 #' Counts conflate composition with CDS length. This step divides each
-#' codon count by the per-row sum of all 64 codon counts (and likewise
-#' for the ~20 AA counts), so each family sums to 1.0 per transcript and
-#' the columns express pure composition.
+#' codon count by the per-row sum of the whole codon pool — the 64 triplets
+#' plus `codon_other` (the unresolvable-codon bucket, currently all-zero in
+#' both species but part of the pool by construction: the 65 columns sum to
+#' `cds_length_codons`). The ~20 AA counts are normalised the same way, so
+#' each family sums to 1.0 per transcript and expresses pure composition.
+#'
+#' The triplet class must admit `u` as well as `t`: codon columns arrive
+#' RNA-spelled (normalise_codon_alphabet() folds the DNA-spelled species onto
+#' the RNA alphabet at load time). A `[acgt]`-only class here previously left
+#' the 37 U-containing human columns as raw counts — length proxies
+#' correlating with `length_cds` at |rho| up to 0.82 — while dividing the
+#' remaining 27 by their own subtotal, which made them sum to 1 among
+#' themselves and hid the breakage.
 #'
 #' Replaces the count columns in-place — the canonical schema now treats
 #' `codon_<nnn>_cds` and `aa_<x>_cds` as fractions.
 add_codon_aa_fractions <- function(df) {
-  codon_cols <- grep("^codon_[acgt]{3}_cds$", names(df), value = TRUE)
-  aa_cols    <- grep("^aa_[a-z]_cds$",        names(df), value = TRUE)
+  codon_cols <- grep("^codon_([acgtu]{3}|other)_cds$", names(df), value = TRUE)
+  aa_cols    <- grep("^aa_[a-z]_cds$",                 names(df), value = TRUE)
   
   normalise <- function(cols) {
     mat   <- as.matrix(df[, cols, drop = FALSE])

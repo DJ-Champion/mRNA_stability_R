@@ -15,7 +15,7 @@ OUTPUT_DIR <- file.path(DATA_ROOT, "outputs")
 
 # Bump this integer when feature-engineering logic changes so stale caches
 # are regenerated instead of silently reused.
-CACHE_VERSION <- 7L
+CACHE_VERSION <- 8L
 
 
 # --- Region vocabulary -------------------------------------------------------
@@ -43,6 +43,18 @@ REGION_ALIASES <- c(
   start_codon_region = "start",
   stop_codon_region  = "stop"
 )
+
+
+# --- Nucleotide alphabet -----------------------------------------------------
+# The schema is RNA-canonical: uracil, never thymine. Upstream `nuc_U_ratio_*`
+# becomes `frac_u_*`, and format_col_name() labels it "nt.U%". Species differ
+# upstream on codon spelling (human `codon_AAU`, mouse `codon_AAT`);
+# normalise_codon_alphabet() in R/io/load_raw.R folds them onto this alphabet
+# at load time, the same way normalise_region() applies REGION_ALIASES.
+#
+# Consequence for anyone writing a regex over composition columns: the triplet
+# character class is `[acgtu]`, not `[acgt]`. Matching DNA-only silently drops
+# the 37 U-containing codons rather than erroring.
 
 
 # --- Species registry --------------------------------------------------------
