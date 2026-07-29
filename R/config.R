@@ -206,6 +206,100 @@ GROUP_BUNDLES <- list(
 INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core",
                      "intrinsic_select", "translation_core")
 
+
+# --- Model-pipeline exclusions -----------------------------------------------
+# Columns that are built and cached, but are NOT admissible as covariates.
+# Applied by drop_excluded() (R/utils/feature_groups.R) at the head of a
+# modelling / screening script — never inside build_dataset(), for two reasons:
+#
+#   1. Several entries here are ENGINEERING SCAFFOLDING: engineer.R derives
+#      kept columns from them. mfe_expected_* feeds mfe_delta_*;
+#      junctions_count_* feeds exon_density_*; eej_dist_{up,down}stream_*
+#      feeds eej_dist_closest_*. Remove them before engineering and the
+#      retained derivatives disappear too.
+#   2. QC scripts legitimately want them — analysis/qc/mfe_expected_check.R
+#      reads the mfe_expected_* family this list removes wholesale.
+#
+# The cache therefore stays complete and this needs no CACHE_VERSION bump: it
+# is selection intent, like INCLUDED_GROUPS above, not a schema change.
+#
+# Why a flat denylist rather than GROUP_BUNDLES pick/drop: 43 of these match no
+# FEATURE_PATTERNS key at all (the rnafold/rnalfold median+pval families, and
+# the legacy scalars). select_features() only ever returns columns belonging to
+# a registered group, so the pick/drop machinery cannot address them. A growing
+# table also fails safer with a denylist — a newly ingested feature arrives
+# INCLUDED and surfaces in screening, rather than being silently excluded.
+#
+# Species differ: mouse lacks 37 of these. drop_excluded() uses any_of().
+
+EXCLUDED_FEATURES <- c(
+  # Vienna auxiliary distribution statistics. The score/zscore/per-nt families
+  # are the modelled encoding of the same folding runs; median and p-value are
+  # retained upstream for provenance only. Human-only (absent in mouse).
+  "rnafold_median_3utr", "rnafold_median_5utr", "rnafold_median_cds",
+  "rnafold_median_last100", "rnafold_median_mrna", "rnafold_median_start",
+  "rnafold_median_stop", "rnafold_median_utrpair",
+  "rnafold_pval_3utr", "rnafold_pval_5utr", "rnafold_pval_cds",
+  "rnafold_pval_last100", "rnafold_pval_mrna", "rnafold_pval_start",
+  "rnafold_pval_stop", "rnafold_pval_utrpair",
+  "rnalfold_median_3utr", "rnalfold_median_5utr", "rnalfold_median_cds",
+  "rnalfold_median_last100", "rnalfold_median_mrna", "rnalfold_median_start",
+  "rnalfold_median_stop",
+  "rnalfold_pval_3utr", "rnalfold_pval_5utr", "rnalfold_pval_cds",
+  "rnalfold_pval_last100", "rnalfold_pval_mrna", "rnalfold_pval_start",
+  "rnalfold_pval_stop",
+
+  # Scaffolding for mfe_delta_* (= rnafold_score - mfe_expected). Deterministic
+  # in gc_content_{region} and length_{region}, so it carries no information the
+  # delta and its two inputs do not already hold. Empties the `mfe_expected`
+  # group key; `structure` keeps its other seven members.
+  "mfe_expected_5utr", "mfe_expected_cds", "mfe_expected_3utr",
+  "mfe_expected_mrna", "mfe_expected_last100", "mfe_expected_start",
+  "mfe_expected_stop",
+
+  # Fixed-width analysis windows, not measured transcript properties.
+  # length_last100 takes 2 distinct values across the human table.
+  "length_last100", "length_start", "length_stop",
+
+  # Exon / intron architecture summaries superseded by the retained
+  # exon_density_* encoding.
+  "exon_count_internal_mrna", "internal_exon_mean", "internal_exon_median",
+  "internal_exon_sd", "intron_length_mean_mrna", "intron_median",
+  "intron_sd", "n_exons",
+
+  # Junction counts and their per-kb densities. engineer.R turns the counts
+  # into exon_density_* ((junctions + 1) / kb), which is what the models use;
+  # this drops the whole `junctions` group and keeps `exon_density`.
+  "junctions_count_5utr", "junctions_count_cds", "junctions_count_3utr",
+  "junctions_count_mrna",
+  "junctions_density_5utr", "junctions_density_cds", "junctions_density_3utr",
+  "junctions_density_mrna",
+
+  # Directional exon-exon junction distances. add_eej_min_distance() collapses
+  # each up/downstream pair into the retained eej_dist_closest_{start,stop}.
+  "eej_dist_upstream_stop", "eej_dist_downstream_stop",
+  "stop_dist_last_downstream",
+  "eej_dist_upstream_start", "eej_dist_downstream_start",
+
+  # Exact duplicate of length_5utr (verified identical on the v8 human cache).
+  "utr5_length",
+
+  # uORF counts and distances. Retains uorf_present_mrna, which is what
+  # translation_core picks.
+  "uorf_count_mrna", "n_overlapping_uorfs", "total_classical_uorf_codons",
+  "max_classical_uorf_codons", "dist_cap_to_first_uatg_mrna",
+  "dist_last_uorf_stop_to_main_atg",
+
+  # CDS size / denominator columns. The codon and aa families are row-normalised
+  # fractions (add_codon_aa_fractions), so these are the length proxies that
+  # normalisation exists to remove.
+  "cds_length_codons_cds", "n_codons_scored_cds", "n_stops_cds",
+
+  # Leaves `standalone` as cai + translation_efficiency, both retained as
+  # candidate covariates.
+  "orfexondensity"
+)
+
 # --- Helpers -----------------------------------------------------------------
 
 #' Return the absolute path to a raw file for a given species.

@@ -294,6 +294,47 @@ list_selection_keys <- function(kind = c("supergroup", "bundle", "group"),
 }
 
 
+#' Remove the model-pipeline exclusions from a built dataset
+#'
+#' The boundary between "the table we built" and "the covariate pool we screen".
+#' Call it once, immediately after build_dataset() / build_all(), before
+#' redundancy screening, pool reduction or confounding QC. Everything upstream
+#' of that call — the raw files, the cache, the QC scripts — still sees the
+#' full table; see the EXCLUDED_FEATURES block in config.R for why the drop
+#' cannot move into build_dataset().
+#'
+#' Uses any_of(), so columns absent from a given species are not an error
+#' (mouse legitimately lacks the human-only Vienna median/pval families).
+#'
+#' @param df      Dataframe from build_dataset() / build_all().
+#' @param exclude Character vector of column names. Defaults to
+#'   EXCLUDED_FEATURES; pass your own to screen a different pool.
+#' @param verbose Logical. If TRUE (default) report how many columns went.
+#' @return `df` without the excluded columns.
+#' @examples
+#' df <- build_dataset("human") |> drop_excluded()
+#' # keep the Vienna auxiliary stats for one investigation:
+#' df <- build_dataset("human") |>
+#'   drop_excluded(exclude = setdiff(EXCLUDED_FEATURES,
+#'                                   grep("_(median|pval)_", EXCLUDED_FEATURES,
+#'                                        value = TRUE)))
+#' @export
+drop_excluded <- function(df, exclude = EXCLUDED_FEATURES, verbose = TRUE) {
+  hit <- intersect(exclude, names(df))
+
+  if (verbose) {
+    message("drop_excluded: removed ", length(hit), " of ", length(exclude),
+            " excluded columns; ", ncol(df) - length(hit), " remain",
+            if (length(hit) < length(exclude)) {
+              paste0(" (", length(exclude) - length(hit),
+                     " not present in this species)")
+            } else "")
+  }
+
+  dplyr::select(df, -dplyr::any_of(exclude))
+}
+
+
 #' Resolve a feature selection into an ordered vector of column names
 #'
 #' The single entry point for "which columns does this analysis use". Accepts

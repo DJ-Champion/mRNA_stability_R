@@ -44,17 +44,27 @@ DROP_PATTERNS <- c(
   "^length_"
 )
 
-# Anything else to manually exclude (column names, not patterns)
-EXTRA_DROP <- c("orfexondensity", "expression", "translation_efficiency", "junctions_count_mrna", 
-                "cds_length_codons_cds", "aa_total_cds", "n_stops_cds", "n_codons_scored_cds",
-                "uorf_count_mrna", "utr5_length", "junctions_count_cds","junctions_count_3utr",
-                "junctions_count_5utr", "n_exons", "exon_count_internal_mrna", "cai", "stop_dist_closest_downstream",
-                "stop_dist_last_downstream", "max_classical_uorf_codons", "dist_last_uorf_stop_to_main_atg",
-                "start_dist_closest_upstream", "dist_cap_to_first_uatg_mrna", "internal_exon_sd", "internal_exon_mean",
-                "internal_exon_median", "intron_sd")
+# The bulk of the old hand-maintained EXTRA_DROP now lives in config.R as
+# EXCLUDED_FEATURES, shared with elastic-net_sanity_test.R and the screening
+# scripts (the two copies had already drifted apart: 26 entries here vs 16
+# there). Only genuinely script-specific exclusions remain below.
+EXTRA_DROP <- c(
+  # Response-adjacent, not sequence-derived: both are measured phenotypes that
+  # would leak into a sequence-only half-life model. They stay in
+  # EXCLUDED_FEATURES' complement deliberately — they ARE wanted as candidate
+  # covariates for redundancy screening and confounding QC, just not as
+  # predictors here.
+  "translation_efficiency", "cai",
+  # Absent from the v8 cache; kept so older cached datasets still shape the
+  # same way. any_of() below makes missing names a no-op rather than an error.
+  "expression", "aa_total_cds",
+  "stop_dist_closest_downstream", "start_dist_closest_upstream"
+)
 
 
 # ----------------------------- 1. Load and shape ----------------------------
+
+source("R/load_all.R")   # for EXCLUDED_FEATURES
 
 df <- readRDS(INPUT_PATH)
 
@@ -62,8 +72,10 @@ drop_cols <- df %>%
   select(matches(paste(DROP_PATTERNS, collapse = "|"))) %>%
   names()
 
+# any_of(), not all_of(): mouse/bovine lack many of these, and several
+# EXTRA_DROP names are gone from the v8 cache — all_of() would error.
 df_model <- df %>%
-  select(-all_of(c(drop_cols, EXTRA_DROP))) %>%
+  select(-any_of(c(drop_cols, EXCLUDED_FEATURES, EXTRA_DROP))) %>%
   filter(!is.na(.data[[TARGET_COL]]))
 
 feature_cols <- setdiff(names(df_model), c(META_COLS, TARGET_COL))
