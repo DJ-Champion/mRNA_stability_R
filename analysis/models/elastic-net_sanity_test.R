@@ -20,23 +20,25 @@ N_CORES     <- max(1, parallel::detectCores() - 1)
 META_COLS   <- c("species", "transcript_id", "gene_id", "gene_name")
 TARGET_COL  <- "halflife"
 
-# Same drop logic as the LightGBM training script — keep these in sync, or
-# better, factor them into a shared config later.
+# Same drop logic as the LightGBM training script. The shared bulk is now
+# EXCLUDED_FEATURES in config.R — that is the "factor them into a shared
+# config later" the previous comment here asked for, so these no longer need
+# hand-syncing. Keep DROP_PATTERNS and EXTRA_DROP identical to the LightGBM
+# script, since the whole point is an equal-footing comparison.
 DROP_PATTERNS <- c("^rnafold_", "^rnalfold_", "^rnaup_",
                    "^mfe_(expected|delta)_", "^(shape|keth)_", "^length_")
-EXTRA_DROP <- c("orfexondensity", "expression", "translation_efficiency",
-                "junctions_count_mrna", "cds_length_codons_cds", "aa_total_cds",
-                "n_stops_cds", "n_codons_scored_cds", "uorf_count_mrna",
-                "utr5_length", "junctions_count_cds", "junctions_count_3utr",
-                "junctions_count_5utr", "n_exons", "exon_count_internal_mrna",
-                "cai")
+EXTRA_DROP <- c("translation_efficiency", "cai",
+                "expression", "aa_total_cds",
+                "stop_dist_closest_downstream", "start_dist_closest_upstream")
+
+source("R/load_all.R")   # for EXCLUDED_FEATURES
 
 df <- readRDS(INPUT_PATH)
 drop_cols <- df %>%
   select(matches(paste(DROP_PATTERNS, collapse = "|"))) %>% names()
 
 df_model <- df %>%
-  select(-all_of(c(drop_cols, EXTRA_DROP))) %>%
+  select(-any_of(c(drop_cols, EXCLUDED_FEATURES, EXTRA_DROP))) %>%
   filter(!is.na(.data[[TARGET_COL]]))
 
 feature_cols <- setdiff(names(df_model), c(META_COLS, TARGET_COL))
