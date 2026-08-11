@@ -77,7 +77,11 @@ suppressPackageStartupMessages({
 # Constants
 # =============================================================================
 
-.CW_ID_COLS <- c("transcript_id", "gene_id", "gene_name", "species")
+# Identifier + blocking columns, never features. META_COLS (config.R) carries
+# the family and split columns alongside the four identifiers, so they are
+# excluded from correlation panels rather than appearing as constant-ish
+# character columns.
+.CW_ID_COLS <- META_COLS
 
 # Priority for cluster representative tie-breaking (lower integer = preferred).
 # Groups not listed get priority 999 (lowest priority).
