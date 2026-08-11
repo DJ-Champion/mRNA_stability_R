@@ -35,6 +35,22 @@ data/raw/shared/            ──┤  load_raw.R (one loader per source file)
                   consumer code: build_dataset(species)
 ```
 
+Blocked splits are a **second, independent artefact**, built from `family.tsv` alone and joined on at use:
+
+```
+data/raw/shared/family.tsv  ──▶  load_family()  ──┬──▶  build_dataset()   [family_* columns]
+      (the clustering seam)                       │
+                                                  └──▶  build_splits()    [pipeline/splits.R]
+                                                             │  run ONCE
+                                                             ▼
+                                              data/splits/holdout_<level>.rds
+                                                             │
+                                                             ▼
+                                    consumer code: attach_splits(build_dataset(...))
+```
+
+`build_splits()` reads the seam directly rather than the cache, so it needs no cache to exist and cannot be perturbed by a feature-engineering change. See §6.7.
+
 ### 1.2 Shape invariants
 
 After `build_dataset(species)` returns, the dataframe satisfies **all** of these. Any consumer code MAY rely on them; any extender MUST preserve them:
@@ -235,6 +251,12 @@ These are the functions every extender code should rely on. DO NOT reach into in
 |-----------------------------------|--------------------------------------------|--------------------------------------------------|
 | `build_dataset(species, rebuild)` | `R/pipeline/build_dataset.R`               | Get the wide dataframe for one species           |
 | `build_all(species, rebuild)`     | `R/pipeline/build_dataset.R`               | Stack multiple species, one `species` column     |
+| `attach_splits(df, level)`        | `R/pipeline/splits.R`                      | Add the blocked `split` column from the on-disk artefact |
+| `load_splits(level)`              | `R/pipeline/splits.R`                      | Read the split artefact (`NULL` if not built yet) |
+| `build_splits(level, ...)`        | `R/pipeline/splits.R`                      | **Run once**, via `scripts/build_splits.R` — writes the artefact |
+| `validate_splits(assigned)`       | `R/pipeline/splits.R`                      | Assert the blocking guarantee before modelling   |
+| `META_COLS` / `ID_COLS` / `FAMILY_COLS` | constants in `R/config.R`            | Columns carried on every row but never predictors |
+| `BLOCK_LEVEL`                     | constant in `R/config.R`                   | Which clustering level blocks the splits (`medium`) |
 | `fg(group)`                       | `R/utils/feature_groups.R`                 | Tidyselect spec for a named group                |
 | `fg_columns(df, group)`           | `R/utils/feature_groups.R`                 | Inspect what a group resolves to in this df      |
 | `select_features(df, groups, pick, drop)` | `R/utils/feature_groups.R` | Resolve groups/supergroups/bundles + pick/drop → column names |
@@ -439,6 +461,20 @@ Any new long-form regional loader MUST return a tibble with both `transcript_id`
 
 `gene_id` is supplied by `load_transcripts()` only. Other loaders that happen to carry it MUST drop it (`select(-any_of("gene_id"))`) before returning. Failing to do so produces `gene_id.x` / `gene_id.y` suffix collisions on join.
 
+### R13 — Family and split columns are metadata, never features
+
+The `family_*` columns and `split` are carried on every row but MUST NOT enter a predictor matrix. They are listed in `META_COLS` (`R/config.R`); build a feature set as `setdiff(names(df), c(META_COLS, TARGET_COL))` and they are handled.
+
+The trap is `family_size_medium`: it is numeric, sits among genuine features, and describes the *corpus* rather than the transcript. Nothing about its dtype or name stops a model consuming it.
+
+Note they are deliberately absent from `FEATURE_PATTERNS`. Adding a `family` key there would make them reachable through `fg()` and `select_features()` — i.e. selectable *as features*, the exact opposite of the intent. `META_COLS` is the right register; a feature group is not.
+
+### R14 — Generate the split once; read it everywhere
+
+`build_splits()` is run from `scripts/build_splits.R` and writes `data/splits/holdout_<level>.rds`. Every consumer reads it via `attach_splits(df)`. NEVER re-derive the assignment inside an analysis or modelling script.
+
+A re-derived split is not reproducible even with a fixed seed: a rebuilt `family.tsv`, a different R version, or a changed row order can move genes between train and test, and results stop being comparable with nothing looking wrong. `family.tsv` carries no record of the clustering run behind it, so the artefact stores that file's md5; `attach_splits()` warns if the dataset and the split were built from different ones.
+
 ---
 
 ## 5. Anti-patterns
@@ -458,6 +494,9 @@ Things that look reasonable and will silently break the pipeline or downstream a
 | Mutating column names with `rename_with(toupper)` for display   | Breaks `format_col_name()` round-trip               | Format only at the moment of display          |
 | Renaming a column produced by a loader inside `engineer.R`      | Downstream `fg()` patterns break                    | Either rename in the loader, or add new col   |
 | Adding `nmd_core = "^nmd_(snv\|alt)"` to `FEATURE_PATTERNS` | Subset masquerading as a schema family; pollutes `expand_groups`, double-assigns columns | Define it in `GROUP_BUNDLES`, or use per-call `pick`/`drop` |
+| `assign_holdout(fam)` inside a modelling script                 | Split silently reshuffles on any upstream change; results stop being reproducible | `attach_splits(df)` — read the artefact (R14) |
+| `group_vfold_cv(df, group = gene_id)`                           | Blocks on the gene, not the family; paralogues still split across folds | `group = family_id_medium`, or block on `split`  |
+| Judging a split by its gene counts alone                        | An 80/10/10 split can be exact while a held-out split holds only genes with no relatives | Check `pct_multi` is similar across splits in the `build_splits()` summary |
 ---
 
 ## 6. Extension recipes
@@ -638,6 +677,38 @@ the same name as an existing group or supergroup.
 4. `Rscript scripts/build_<species>.R`. Watch the `skip (missing): ...` messages — they tell you which files are absent.
 
 No code changes to any other file should be needed. If they are, you've found a leak — fix the leak rather than patching around it.
+
+### 6.7 Family blocking — using it, and refreshing it
+
+**Using it.** Two lines:
+
+```r
+df <- attach_splits(build_dataset("human"))
+train <- df |> filter(split == "train", !is.na(halflife))
+```
+
+**The invariant, first, because the summary output reads as if it might be violated:** a family is *never* divided across splits. The packer's unit is the whole family — it sorts families by size and places each one, entire, into one split. Its only decision is which split. `validate_splits()` asserts this, and `build_splits()` refuses to write an artefact that fails.
+
+So in the summary table, `max_family = 20` for `test` means *the largest family test received has 20 members, all 20 of them in test* — not that a family was cut. `pct_multi` is the share of a split's genes that have at least one relative, and that relative is necessarily in the same split. The three `pct_multi` figures should be close to one another: that is what makes the held-out splits resemble the training data. If one is near zero, that split holds only genes with no relatives at all — see the anti-pattern below.
+
+`split` is `train` / `val` / `test`. `val` serves the purpose a nested inner CV loop would, so there is no inner-fold machinery to set up. For inference rather than prediction, the family label is the **clustering unit for uncertainty**, not just the split key — a 282-member family is not 282 independent observations, so `family_id_medium` should enter as a random effect or as the cluster for robust standard errors, or the confidence interval comes out too narrow and a null result cannot be trusted either.
+
+**Two things to state in any write-up** that uses this split, because neither is visible in the numbers:
+
+1. It tests **generalisation to novel gene families** — a stronger and different claim than random-over-genes, and different again from leave-one-species-out.
+2. Families above 5% of the smallest split (68 genes at present) are **pinned to `train`**, so the held-out splits are depleted of the largest families.
+
+**Sensitivity check.** Every level is a column, so re-blocking at `loose` is one flag: `Rscript scripts/build_splits.R --level loose`. "Conclusions unchanged under a looser grouping" is worth more than the level choice itself.
+
+**Refreshing after a re-clustering.** When the Python side emits a new `family.tsv`:
+
+1. Drop it in `data/raw/shared/family.tsv`.
+2. Bump `CACHE_VERSION` and rebuild — the family columns are cached, so a stale cache would keep the old labels.
+3. Re-run `Rscript scripts/build_splits.R`. **Gene membership of train/val/test will change.** Any model fitted against the old split is no longer comparable.
+
+Skipping step 3 is caught, not silent: `attach_splits()` compares the md5 of the `family.tsv` behind the dataset against the one behind the split artefact and warns when they diverge.
+
+**Adding a species to the blocking.** Family assignment comes from a *cohort* — the set of datasets clustered together — and merging orthologues across species is the whole point, since training on mouse `Rpl13a` and testing on human `RPL13A` is leakage. A species not in the cohort therefore gets no family columns and `NA` splits; `load_family()` returns `NULL` for it, which is correct behaviour, not a degradation. Making mouse blockable means adding it to the cohort **on the Python side** and re-clustering both species together — clustering mouse on its own would produce labels that silently fail to block cross-species leakage. `build_splits()` already pools every species the seam contains into one packing run.
 
 ---
 

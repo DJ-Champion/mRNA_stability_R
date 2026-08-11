@@ -411,6 +411,94 @@ load_gini_probing <- function(species) {
     )
 }
 
+#' Load sequence-family assignments from the shared clustering seam.
+#'
+#' `family.tsv` is produced by the Python side of the pipeline (see
+#' FAMILY_CLUSTERING.md) and is the ONLY artefact this side reads from it —
+#' never the alignment table. One row per gene, wide over clustering levels,
+#' with a family ID and size at each of strict / medium / loose.
+#'
+#' Keyed on `gene_id`, NOT transcript_id, for the same reason as
+#' load_gini_probing(): gene_id is the stable join key across the pipeline.
+#' The file's own `transcript_id` column is dropped rather than joined on —
+#' load_transcripts() owns that column, and carrying a second copy produces
+#' the `transcript_id.x` / `.y` collision R12 exists to prevent. (It was
+#' verified to match the v8 human cache exactly, version suffix included, so
+#' nothing is lost by preferring the gene key.)
+#'
+#' A cohort is a set of datasets clustered TOGETHER, so a species absent from
+#' the cohort has no meaningful family assignment — orthologues merging across
+#' species is the point of pooling them, and a species clustered alone would
+#' get labels that silently fail to block cross-species leakage. Returning
+#' NULL for such a species is therefore correct, not a degradation: the
+#' columns are absent for that species, and any blocked-CV consumer of a
+#' stacked `build_all()` frame must guard on their presence.
+#'
+#' Three columns of the seam are deliberately NOT ingested — see FAMILY_COLS
+#' in config.R for why.
+#'
+#' Every gene in the cohort appears, singletons included, so the join is
+#' lossless and `NA` never appears in a `family_id_*` column for a gene the
+#' clustering saw. Genes the clustering did NOT see (rows that reached the
+#' cache via the half-life join without sequence features) do get NA — that is
+#' a genuine absence and is asserted on rather than hidden.
+#'
+#' @param species Character, one of names(SPECIES_CONFIG).
+#' @return A wide tibble keyed on gene_id with the FAMILY_COLS columns, or
+#'   NULL if the file is missing or holds no rows for this species.
+load_family <- function(species) {
+  df <- read_if_exists(shared_path("family.tsv"))
+  if (is.null(df)) return(NULL)
+
+  df <- lowercase_names(df)
+
+  if (!"species" %in% names(df)) {
+    warning("family.tsv has no species column — skipped")
+    return(NULL)
+  }
+  df <- dplyr::filter(df, species == !!species)
+  if (nrow(df) == 0) {
+    message("  skip (no rows for ", species, "): ", shared_path("family.tsv"))
+    return(NULL)
+  }
+
+  # One row per gene is the seam's contract. A breach means the cohort listed
+  # a dataset twice, or two datasets share a species label — either way the
+  # join below would multiply rows, so fail here where the cause is visible.
+  if (anyDuplicated(df$gene_id)) {
+    stop("family.tsv has duplicate gene_id values for species '", species,
+         "' — the cohort config is wrong (a dataset listed twice, or two ",
+         "datasets sharing a species label)")
+  }
+
+  df |>
+    dplyr::rename(family_searched          = searched,
+                  family_had_internal_stop = had_internal_stop) |>
+    dplyr::select(dplyr::all_of(c("gene_id", FAMILY_COLS)))
+}
+
+
+#' Provenance for the family seam: which clustering run produced it.
+#'
+#' `family.tsv` carries no record of the `<search_hash>` it came from, so a
+#' re-clustered cohort would replace it with a file that looks identical and
+#' joins identically while assigning different families. Checksumming it at
+#' ingest makes "which family run is this cache / split traceable to" an
+#' answerable question after the fact.
+#'
+#' @return A list(path, md5, mtime, n_rows), or NULL if the file is absent.
+family_provenance <- function() {
+  path <- shared_path("family.tsv")
+  if (!file.exists(path)) return(NULL)
+  list(
+    path   = path,
+    md5    = unname(tools::md5sum(path)),
+    mtime  = file.info(path)$mtime,
+    n_rows = length(readLines(path, warn = FALSE)) - 1L
+  )
+}
+
+
 #' #' Load Dani probing data (icSHAPE + Keth-seq) from a shared file.
 #' #'
 #' #' The shared file holds data for multiple genomes in genome-suffixed columns

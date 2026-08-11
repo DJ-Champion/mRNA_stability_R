@@ -50,8 +50,9 @@ suppressPackageStartupMessages({
   "^prediction_difference$"
 )
 
-# Pipeline identifier columns — never treated as features.
-.FF_ID_COLS <- c("transcript_id", "gene_id", "gene_name", "species")
+# Pipeline identifier columns — never treated as features. From META_COLS
+# (config.R), which also covers the family / split blocking columns.
+.FF_ID_COLS <- META_COLS
 
 
 # Internal: build column → group and column → region lookup maps.

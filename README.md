@@ -26,6 +26,9 @@ all_species <- build_all()      # tibble with a `species` column
 
 # 5. Force a rebuild after changing raw inputs or feature logic:
 human <- build_dataset("human", rebuild = TRUE)
+
+# 6. For modelling, attach the blocked train/val/test split:
+human <- attach_splits(build_dataset("human"))
 ```
 
 
@@ -60,7 +63,10 @@ RNAstab/
 │   │                           # drop_all_na_columns, engineer_features
 │   └── pipeline/
 │       ├── assemble.R          # pivot_regional_to_wide, join helpers
-│       └── build_dataset.R     # build_dataset(), build_all()
+│       ├── build_dataset.R     # build_dataset(), build_all()
+│       └── splits.R            # assign_folds(), assign_holdout(),
+│                               # build_splits(), load_splits(),
+│                               # attach_splits(), validate_splits()
 ├── analysis/
 │   ├── qc/
 │   │   ├── dataset_overview.R          # coverage / missingness diagnostics
@@ -91,13 +97,15 @@ RNAstab/
 │   ├── preprocess_saluki.R     # one-off: HDF5 → .rds
 │   ├── build_human.R           # CLI runner for human
 │   ├── build_mouse.R           # CLI runner for mouse
+│   ├── build_splits.R          # CLI runner: writes the blocked split (once)
 │   └── example_analysis.R      # worked end-to-end example
 ├── data/
 │   ├── raw/                    # populated by you
 │   │   ├── human/
 │   │   ├── mouse/
-│   │   └── shared/
+│   │   └── shared/             # incl. family.tsv, the clustering seam
 │   ├── cache/                  # auto-generated .rds snapshots
+│   ├── splits/                 # auto-generated blocked train/val/test
 │   └── outputs/
 │       ├── plots/
 │       └── tables/
@@ -281,6 +289,68 @@ clear_snapshot("human")                  # delete cache file
 
 Bump `CACHE_VERSION` whenever feature-engineering logic changes — that's the
 mechanism for keeping caches honest after refactors.
+
+### Sequence families and blocked splits
+
+Genes are grouped into **sequence families** so that homologous genes never
+land on opposite sides of a train/test boundary. Training on one member of a
+paralogue pair and testing on the other inflates the score, and nothing in the
+model output reveals it.
+
+Families are computed upstream in Python (see `FAMILY_CLUSTERING.md`) and
+arrive as `data/raw/shared/family.tsv`. `load_family()` ingests them, giving
+every gene a `family_id_{strict,medium,loose}` label. `BLOCK_LEVEL` in
+`R/config.R` picks which one blocks the splits — `medium`, a measured choice.
+
+The split itself is a **separate artefact, generated once**:
+
+```bash
+Rscript scripts/build_splits.R                # writes data/splits/holdout_medium.rds
+Rscript scripts/build_splits.R --level loose  # sensitivity check
+```
+
+then read everywhere via `attach_splits(build_dataset("human"))`. Never
+re-derive it inside an analysis script: a rebuilt `family.tsv` or a changed row
+order can move genes between train and test, and results stop being comparable
+with nothing looking wrong. `attach_splits()` warns if the dataset and the
+split were built from different `family.tsv` files.
+
+**Whole families move together — a family is never divided across splits.**
+The packer's only decision is *which* split each intact family goes to. What
+it balances is threefold: gene counts (80/10/10), and family structure, and
+the size of the largest family any split receives. The summary printed by
+`build_splits()` reports all three:
+
+```
+ split n_genes pct n_families max_family pct_multi
+  test    1360  10       1061         20      35.3
+ train   10881  80       8484        282      35.3
+   val    1360  10       1060         29      35.4
+```
+
+- `max_family` — the largest family that split received, *entirely*. Test's
+  biggest family has 20 members and all 20 are in test.
+- `pct_multi` — the share of that split's genes having at least one relative
+  (which is necessarily in the same split). The three figures should be close
+  to each other; that is what makes test resemble train.
+
+A split whose `pct_multi` is near zero holds nothing but genes with no
+relatives, which is an unrepresentative slice of the genome even though the
+gene counts look perfect. `validate_splits()` checks for it.
+
+Two caveats to state in any write-up using this split:
+
+1. It measures **generalisation to novel gene families** — a stronger claim
+   than random-over-genes, and a different one from cross-species transfer.
+2. Families larger than 5% of the smallest split (68 genes) are pinned to
+   `train` wholesale, so held-out splits are depleted of the very largest
+   families. Only one family currently qualifies.
+
+Species absent from the clustering cohort (currently mouse) get no family
+columns and `NA` splits. Making mouse blockable means adding it to the cohort
+**upstream** and re-clustering both species together — cross-species
+orthologues must merge into one family, or the blocking does not prevent
+cross-species leakage.
 
 ### Adding a new species
 

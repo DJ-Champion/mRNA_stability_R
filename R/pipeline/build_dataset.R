@@ -75,6 +75,7 @@ build_dataset <- function(species, rebuild = FALSE) {
   agarwal_df   <- load_agarwal_features(species)
   saluki_df    <- load_saluki_predictions(species)
   gini_df      <- load_gini_probing(species)        # gene-level, joins on gene_id
+  family_df    <- load_family(species)              # gene-level, joins on gene_id
   
   purrr::imap(regional, function(df, nm) {
     if (is.null(df) || !all(c("transcript_id", "region") %in% names(df))) return(NULL)
@@ -124,22 +125,54 @@ build_dataset <- function(species, rebuild = FALSE) {
   if (!is.null(agarwal_df))  wide <- join_gene_level(wide, list(agarwal_df))
   if (!is.null(saluki_df))   wide <- join_gene_level(wide, list(saluki_df))
   if (!is.null(gini_df))     wide <- join_gene_level(wide, list(gini_df))
-  
+
+  # Family labels. Not features — blocking metadata (see FAMILY_COLS in
+  # config.R). The row count is asserted either side because this join is the
+  # one place a malformed seam could silently multiply the corpus, and a
+  # dataset that has quietly doubled still looks entirely plausible.
+  if (!is.null(family_df)) {
+    n_before <- nrow(wide)
+    wide <- join_gene_level(wide, list(family_df))
+    if (nrow(wide) != n_before) {
+      stop("joining family.tsv changed the row count (", n_before, " -> ",
+           nrow(wide), ") — gene_id is not unique on one side of the join")
+    }
+
+    # Genes the clustering never saw. Expected to be rows that arrived via the
+    # half-life join without sequence features, so they carry no family and
+    # cannot be modelled anyway. Report rather than assert: the count is
+    # informative, and a rise in it is the signal that family.tsv has drifted
+    # out of step with the rest of the raw inputs.
+    n_unfamilied <- sum(is.na(wide$family_id_medium) & !is.na(wide$gene_id))
+    if (n_unfamilied > 0) {
+      message("  ", n_unfamilied, " gene(s) present in the dataset but absent ",
+              "from family.tsv (no family label; excluded from blocked splits)")
+    }
+  }
+
+
   # --- 4. Add the species marker -------------------------------------------
   wide$species <- species
   
   # Put identifier columns first for readability
-  id_cols <- intersect(c("species", "transcript_id", "gene_id", "gene_name"),
-                       names(wide))
+  id_cols <- intersect(ID_COLS, names(wide))
   wide <- wide[, c(id_cols, setdiff(names(wide), id_cols))]
-  
+
   # --- 5. Feature engineering ----------------------------------------------
   message("Running feature engineering...")
   wide <- engineer_features(wide)
-  
+
   # --- 6. Save cache -------------------------------------------------------
+  # Family provenance is attached AFTER engineering, not at load time: dplyr
+  # verbs are not reliable about carrying custom attributes through, and a
+  # left_join keeps the attributes of x only. Setting it here, on the finished
+  # frame, is the one point where survival to disk is guaranteed.
+  if (!is.null(family_df)) {
+    attr(wide, "family_provenance") <- family_provenance()
+  }
+
   save_snapshot(wide, species)
-  
+
   wide
 }
 

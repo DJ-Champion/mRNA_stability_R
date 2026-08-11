@@ -12,10 +12,11 @@ RAW_DIR    <- file.path(DATA_ROOT, "raw")
 SHARED_DIR <- file.path(RAW_DIR, "shared")
 CACHE_DIR  <- file.path(DATA_ROOT, "cache")
 OUTPUT_DIR <- file.path(DATA_ROOT, "outputs")
+SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 
 # Bump this integer when feature-engineering logic changes so stale caches
 # are regenerated instead of silently reused.
-CACHE_VERSION <- 8L
+CACHE_VERSION <- 9L
 
 
 # --- Region vocabulary -------------------------------------------------------
@@ -300,6 +301,73 @@ EXCLUDED_FEATURES <- c(
   "orfexondensity"
 )
 
+
+# --- Identity, family and split columns --------------------------------------
+# Columns that identify a row rather than describe it. Distinct from
+# EXCLUDED_FEATURES in what happens to them: drop_excluded() REMOVES an
+# excluded feature, whereas these must SURVIVE into a modelling frame — the
+# family label is the grouping variable for blocked CV and the cluster for
+# robust standard errors, so a script that dropped it could not do its job.
+#
+# The distinction that matters: never a predictor, always carried.
+
+ID_COLS <- c("species", "transcript_id", "gene_id", "gene_name")
+
+# Ingested from family.tsv by load_family() (R/io/load_raw.R). See
+# FAMILY_CLUSTERING.md §1.7 for the seam's full column list; three of its
+# columns are deliberately not ingested — `transcript_id` (supplied by
+# load_transcripts(); keeping it would collide on join), `dataset` (constant
+# per species, recorded in the cache's family provenance attribute instead)
+# and `protein_len` (an exact restatement of length_cds/3 - 1; verified to
+# correlate 1.000 with length_cds on the v8 human cache).
+FAMILY_COLS <- c(
+  "family_id_strict",   "family_size_strict",
+  "family_id_medium",   "family_size_medium",
+  "family_id_loose",    "family_size_loose",
+  "family_searched",    "family_had_internal_stop"
+)
+
+# Everything a modelling script must exclude from its predictor matrix. The
+# scripts build features as setdiff(names(df), c(META_COLS, TARGET_COL)), so
+# any column NOT named here becomes a predictor by default — which is why
+# family_size_* has to be listed. It is numeric, plausible-looking, and a
+# property of the corpus rather than of the transcript.
+META_COLS <- c(ID_COLS, FAMILY_COLS, "split")
+
+# NOTE: family columns are deliberately absent from FEATURE_PATTERNS. Adding a
+# `family` key there would make them reachable through select_features() and
+# fg(), i.e. selectable AS FEATURES, which is the opposite of the intent.
+
+
+# --- Blocking and split configuration ----------------------------------------
+# See FAMILY_CLUSTERING.md §1.7 and §2.2a.
+
+# Which clustering level blocks the splits. `medium` is the measured choice on
+# human MANE: max family 282 (2.07% of the corpus), 10,605 families, and it
+# splits the Ras superfamily along known subfamily lines where `loose` merges
+# the whole superfamily. `strict` is unusable despite a reassuring 0.18% — its
+# three largest families are all ZNF fragments, i.e. it shreds the largest real
+# gene family in the genome.
+#
+# Every level is a column in the cache, so refitting at "loose" is a one-line
+# sensitivity check rather than a rebuild.
+BLOCK_LEVEL <- "medium"
+
+# 80-10-10 holdout. `val` serves the purpose a nested inner CV loop would.
+SPLIT_PROPS <- c(train = 0.8, val = 0.1, test = 0.1)
+
+# Families larger than this fraction of the SMALLEST split are pinned to
+# `train`. At 13,601 genes the smallest split is ~1,360, so the ceiling is ~68
+# genes and the 282-member family cannot land in test and dominate 21% of it.
+# The consequence must be reported with any result: the test set is depleted
+# of large families, so it measures generalisation to small and singleton
+# families rather than to all of them.
+SPLIT_PIN_FRAC <- 0.05
+
+# Fixed so the artefact is reproducible from the same family.tsv.
+SPLIT_SEED <- 42L
+
+
 # --- Helpers -----------------------------------------------------------------
 
 #' Return the absolute path to a raw file for a given species.
@@ -316,6 +384,19 @@ shared_path <- function(filename) file.path(SHARED_DIR, filename)
 #' Return the cache file path for a species.
 cache_path <- function(species) {
   file.path(CACHE_DIR, sprintf("%s_dataset_v%d.rds", species, CACHE_VERSION))
+}
+
+#' Return the split-artefact path for a blocking level.
+#'
+#' Unversioned by CACHE_VERSION on purpose: the split is a property of
+#' family.tsv and the seed, not of feature-engineering logic. Its traceability
+#' comes from the family.tsv checksum stored inside the artefact, not from the
+#' filename.
+#'
+#' @param level Character, a clustering level (strict / medium / loose).
+#' @param ext Character, "rds" (the artefact) or "tsv" (the readable copy).
+splits_path <- function(level = BLOCK_LEVEL, ext = "rds") {
+  file.path(SPLITS_DIR, sprintf("holdout_%s.%s", level, ext))
 }
 
 #' Prefix payload columns with a tool or other prefix, leaving keys untouched.

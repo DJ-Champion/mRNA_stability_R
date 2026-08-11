@@ -29,7 +29,13 @@ OUTPUT_PATH <- "models/halflife_lgbm_v5.rds"
 N_CORES     <- max(1, parallel::detectCores() - 1)
 
 # Columns that are IDs / metadata / target — never used as predictors.
-META_COLS  <- c("species", "transcript_id", "gene_id", "gene_name")
+# META_COLS now comes from config.R (sourced below), which adds the family
+# and split columns to the four identifier columns this used to list. Those
+# must be carried, not dropped: family_id is the grouping variable for blocked
+# CV and the cluster for robust standard errors. They are excluded here only
+# from the PREDICTOR matrix — note family_size_* in particular, which is
+# numeric, plausible-looking, and a property of the corpus rather than of the
+# transcript.
 TARGET_COL <- "halflife"
 
 # Patterns to drop:

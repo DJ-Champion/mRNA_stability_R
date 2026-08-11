@@ -17,7 +17,9 @@ INPUT_PATH  <- "data/cache/human_dataset_v4.rds"
 OUTPUT_PATH <- "models/halflife_glmnet_baseline_v4.rds"
 N_CORES     <- max(1, parallel::detectCores() - 1)
 
-META_COLS   <- c("species", "transcript_id", "gene_id", "gene_name")
+# META_COLS comes from config.R (sourced below) — identifier columns plus the
+# family / split columns, which must be carried into the frame but never
+# treated as predictors. See the note in train_halflife_model.R.
 TARGET_COL  <- "halflife"
 
 # Same drop logic as the LightGBM training script. The shared bulk is now
