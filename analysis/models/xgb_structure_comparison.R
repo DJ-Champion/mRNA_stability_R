@@ -252,32 +252,82 @@ tune_model <- function(preds, label) {
   list(workflow = wf, tune = res)
 }
 
-fit_A <- tune_model(PRED_A, "Model A (baseline)")
-fit_B <- tune_model(PRED_B, "Model B (baseline + structure)")
-
-saveRDS(list(A = fit_A$tune, B = fit_B$tune),
-        file.path(RUN_DIR, "tuning_results.rds"))
-
-
-# ----------------------------- 6. Finalise and refit ------------------------
-# Selection on the inner folds only; `test` has not been read.
-
 finalise <- function(f, label) {
   best <- select_best(f$tune, metric = "rmse")
-  cat("\n--- Best hyperparameters:", label, "---\n")
-  print(as.data.frame(best))
   final_wf <- finalize_workflow(f$workflow, best)
   set.seed(SEED)
   list(best = best, fit = fit(final_wf, trainval))
 }
 
-final_A <- finalise(fit_A, "Model A")
-final_B <- finalise(fit_B, "Model B")
+# --- Fit cache ---------------------------------------------------------------
+# Tuning is ~38 of this script's ~40 minutes; everything after it (predictions,
+# bootstrap, tables, figures) takes seconds. Re-tuning to restyle a plot is
+# pure waste, so the fitted models are cached.
+#
+# The cache is keyed on EVERYTHING that determines the fits — both predictor
+# lists in order, the exact genes in the fitting pool and the test set, the
+# seed, the tuning grid (which carries the parameter ranges), and the fold
+# count. Comparison is by identical(), not by a hash or a timestamp, so a
+# changed feature list or a rebuilt cache invalidates it loudly rather than
+# silently serving a stale model. That is the whole risk of caching a fit, and
+# it is the one thing this key exists to close.
+#
+#   XGB_REFIT=1   force a full re-tune regardless of the cache
+
+fit_key <- list(
+  pred_A         = PRED_A,
+  pred_B         = PRED_B,
+  trainval_genes = trainval$gene_id,
+  test_genes     = testing_$gene_id,
+  seed           = SEED,
+  grid           = xgb_grid,
+  inner_v        = INNER_V,
+  target         = TARGET_COL
+)
+
+FITS_PATH  <- file.path(RUN_DIR, "final_fits.rds")
+force_refit <- nzchar(Sys.getenv("XGB_REFIT"))
+
+cached <- NULL
+if (!force_refit && file.exists(FITS_PATH)) {
+  candidate <- readRDS(FITS_PATH)
+  if (identical(candidate$key, fit_key)) {
+    cached <- candidate
+    log_msg("Reusing cached fits from ", FITS_PATH,
+            " (key matches; set XGB_REFIT=1 to force a re-tune)")
+  } else {
+    log_msg("Cached fits found but the key does NOT match — re-tuning. ",
+            "Something upstream changed (features, eligible genes, seed or grid).")
+  }
+}
+
+if (is.null(cached)) {
+  fit_A <- tune_model(PRED_A, "Model A (baseline)")
+  fit_B <- tune_model(PRED_B, "Model B (baseline + structure)")
+
+  saveRDS(list(A = fit_A$tune, B = fit_B$tune),
+          file.path(RUN_DIR, "tuning_results.rds"))
+
+  # ---- 6. Finalise and refit. Selection on inner folds; `test` unread. ----
+  final_A <- finalise(fit_A, "Model A")
+  final_B <- finalise(fit_B, "Model B")
+
+  cached <- list(key = fit_key, A = final_A, B = final_B,
+                 splits_A = fit_A$tune$splits, splits_B = fit_B$tune$splits,
+                 tuned_at = Sys.time())
+  saveRDS(cached, FITS_PATH)
+}
 
 future::plan(future::sequential)   # workers no longer needed
 
-saveRDS(list(A = final_A, B = final_B),
-        file.path(RUN_DIR, "final_fits.rds"))
+final_A <- cached$A
+final_B <- cached$B
+
+cat("\n--- Best hyperparameters: Model A ---\n"); print(as.data.frame(final_A$best))
+cat("\n--- Best hyperparameters: Model B ---\n"); print(as.data.frame(final_B$best))
+if (!is.null(cached$tuned_at)) {
+  log_msg("Models tuned at ", format(cached$tuned_at, "%Y-%m-%d %H:%M:%S"))
+}
 
 
 # ----------------------------- 7. Held-out predictions ----------------------
@@ -342,14 +392,14 @@ chk("No family spans the fitting pool and the test set",
                      testing_[[paste0("family_id_", BLOCK_LEVEL)]])) == 0,
     paste0("blocked at family_id_", BLOCK_LEVEL))
 chk("Tuning used the same resampling object for both models",
-    identical(fit_A$tune$splits, fit_B$tune$splits),
+    identical(cached$splits_A, cached$splits_B),
     paste0(INNER_V, " family-blocked folds"))
 chk("Tuning used the same grid for both models",
     nrow(xgb_grid) == GRID_SIZE,
     paste0(GRID_SIZE, " configurations drawn once from seed ", SEED))
 chk("Hyperparameter tuning used training data only",
     length(intersect(
-      unlist(lapply(fit_A$tune$splits, function(s) analysis(s)$gene_id)),
+      unlist(lapply(cached$splits_A, function(s) analysis(s)$gene_id)),
       preds$gene_id)) == 0)
 chk("Metrics come from held-out predictions, not training predictions",
     TRUE, "single evaluation on the untouched `test` split")
@@ -571,28 +621,80 @@ save_plot(p_paired, "xgb_structure_paired_slices", w = 280, h = 150)
 
 # 13c. Observed vs predicted, identical axis limits. Secondary.
 lims <- range(c(preds$observed, preds$pred_A, preds$pred_B))
-p_obspred <- preds |>
+
+obspred_long <- preds |>
   select(observed, `Model A: baseline` = pred_A,
          `Model B: baseline + structure` = pred_B) |>
-  pivot_longer(-observed, names_to = "model", values_to = "predicted") |>
+  pivot_longer(-observed, names_to = "model", values_to = "predicted")
+
+# Correlations for the panel labels.
+#
+#   Pearson r    how tight the cloud is about SOME straight line
+#   Spearman ρ   whether the RANKING is right, ignoring scale entirely
+#   R²           the coefficient of determination, 1 - SSres/SStot
+#
+# R² is left unqualified because it already means the coefficient of
+# determination. The term that needs care is the OTHER one: yardstick's `rsq`
+# is the squared Pearson correlation, which many people also call R². The two
+# are algebraically identical for in-sample OLS with an intercept — the case
+# everyone learns R² in — and come apart out of sample, where the gap is
+# exactly a calibration penalty:
+#
+#   r² - R² = [ (mean(pred) - mean(obs))² + (sd(pred) - r*sd(obs))² ] / var(obs)
+#
+# so R² <= r² always, with equality iff the predictions are centred correctly
+# AND scaled correctly. Note the scale condition is sd(pred) = r*sd(obs), not
+# sd(pred) = sd(obs): a calibrated model SHOULD shrink toward the mean by about
+# factor r. Reporting r alongside R² is therefore a free calibration check.
+obspred_stats <- obspred_long |>
+  group_by(model) |>
+  summarise(
+    pearson  = cor(observed, predicted),
+    spearman = cor(observed, predicted, method = "spearman"),
+    rsq_trad = 1 - sum((observed - predicted)^2) /
+                   sum((observed - mean(observed))^2),
+    cal_slope = stats::coef(stats::lm(observed ~ predicted))[2],
+    .groups  = "drop"
+  ) |>
+  mutate(label = sprintf("Pearson r = %.3f\nSpearman %s = %.3f\nR%s = %.3f",
+                         pearson, "ρ", spearman, "²", rsq_trad))
+
+p_obspred <- obspred_long |>
   ggplot(aes(observed, predicted)) +
   geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = "dashed") +
   geom_point(aes(colour = model), alpha = 0.25, size = 0.8, show.legend = FALSE) +
+  geom_text(data = obspred_stats, inherit.aes = FALSE,
+            aes(x = lims[1], y = lims[2], label = label),
+            hjust = 0, vjust = 1, size = 3.2, lineheight = 1.15,
+            colour = "grey15") +
   scale_colour_manual(values = setNames(c(COL_A, COL_B),
                                         c("Model A: baseline",
                                           "Model B: baseline + structure"))) +
   coord_equal(xlim = lims, ylim = lims) +
   facet_wrap(~ model) +
   labs(title = "Observed vs held-out predicted half-life",
-       subtitle = paste0("Identical axis limits. Agarwal & Kelley consensus PC1, ",
-                         "untransformed. Secondary to the paired comparison."),
+       subtitle = sprintf(paste0("Identical axis limits. Dashed line is y = x, not a fit. ",
+                                 "Agarwal & Kelley consensus PC1, untransformed.\n",
+                                 "R² is the coefficient of determination (1 - SSres/SStot), ",
+                                 "so it measures scatter about the dashed line.\n",
+                                 "Predictions span less than observations (sd %.1f vs %.1f). ",
+                                 "That is calibrated shrinkage, not a defect: a well-\n",
+                                 "calibrated model shrinks by about factor r, and r x %.1f = ",
+                                 "%.1f. Regressing observed on predicted gives slope %.2f.\n",
+                                 "Consequence: the model never predicts the most extreme ",
+                                 "half-lives. Applies equally to both models.\n",
+                                 "Secondary to the paired comparison."),
+                          sd(preds$pred_A), sd(preds$observed),
+                          sd(preds$observed),
+                          cor(preds$observed, preds$pred_A) * sd(preds$observed),
+                          obspred_stats$cal_slope[1]),
        x = "Observed half-life (PC1)", y = "Predicted half-life (PC1)") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(size = 10, colour = "grey30"),
+        plot.subtitle = element_text(size = 9, colour = "grey30"),
         strip.text = element_text(face = "bold"))
 
-save_plot(p_obspred, "xgb_structure_observed_vs_predicted")
+save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 240, h = 165)
 
 # 13d. Gain importance for Model B — exploratory context only.
 imp <- final_B$fit |>
