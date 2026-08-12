@@ -290,45 +290,9 @@ print(as.data.frame(delta_table), row.names = FALSE, digits = 4)
 write_csv(delta_table, file.path(TABLE_DIR, "xgb_structure_gini_deltas.csv"))
 
 
-# ----------------------------- 6. Plot --------------------------------------
-
-metric_label <- c(rsq_trad = "R² (out-of-fold)", rmse = "RMSE", mae = "MAE")
-
-p <- delta_table |>
-  mutate(metric_lab = factor(metric_label[metric], levels = metric_label),
-         comparison = factor(comparison, levels = rev(unique(comparison)))) |>
-  ggplot(aes(delta, comparison)) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
-  geom_errorbar(aes(xmin = ci_low, xmax = ci_high), orientation = "y", width = 0.15,
-                 linewidth = 0.8, colour = "grey25") +
-  geom_point(aes(fill = conclusive), size = 4, shape = 21, colour = "grey20",
-             show.legend = FALSE) +
-  scale_fill_manual(values = c(`TRUE` = "#E8590C", `FALSE` = "grey75")) +
-  facet_wrap(~ metric_lab, scales = "free_x") +
-  labs(
-    title = "SECONDARY: icSHAPE Gini on the genes that have it",
-    subtitle = sprintf(paste0("Out-of-fold, %d genes, %d family-blocked folds, ",
-                              "95%% paired-bootstrap CI (%d reps).\n",
-                              "Grey points span zero. NOT the headline comparison.\n",
-                              "Caveats: (1) icSHAPE coverage tracks expression, so ",
-                              "this subset is biased toward\nabundant transcripts. ",
-                              "(2) Gini is MEASURED, not computed from sequence, so ",
-                              "a model\nusing it cannot score an unprobed transcript. ",
-                              "(3) Probing read depth tracks abundance,\nwhich this ",
-                              "design cannot separate from a structure effect."),
-                      nrow(sub), OUTER_V, N_BOOT),
-    x = "Delta (candidate - reference), PC1 units", y = NULL
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(size = 9, colour = "grey30"),
-        strip.text = element_text(face = "bold"),
-        panel.grid.major.y = element_blank())
-
-for (ext in c("jpg", "pdf")) {
-  ggsave(file.path(PLOT_DIR, paste0("xgb_structure_gini_deltas.", ext)),
-         plot = p, width = 300, height = 155, units = "mm", dpi = 300)
-}
+# ----------------------------- 6. Figure ------------------------------------
+# Drawn by xgb_structure_plots.R from the CSV written above, like every other
+# figure in this analysis. Rendered at the end of section 7.
 
 
 # ----------------------------- 7. Manifest ----------------------------------
@@ -360,3 +324,12 @@ saveRDS(list(
 ), file.path(RUN_DIR, "gini_run_manifest.rds"))
 
 log_msg("Secondary run complete. n = ", nrow(sub), " genes.")
+
+
+# ----------------------------- 8. Figure ------------------------------------
+# Sourced after the manifest, because the figure's subtitle reads its design
+# string and gene count from it. See section 16 of the comparison script for
+# why rendering lives in a separate file.
+
+log_msg("Rendering figures")
+source("analysis/models/xgb_structure_plots.R", local = new.env())
