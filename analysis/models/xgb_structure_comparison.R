@@ -75,9 +75,25 @@ N_CHUNKS   <- 5L       # family-blocked slices of test, for the consistency plot
 N_WORKERS  <- 4L
 N_THREADS  <- 3L
 
-RUN_DIR    <- file.path(OUTPUT_DIR, "xgb_structure")
-PLOT_DIR   <- file.path(OUTPUT_DIR, "plots")
-TABLE_DIR  <- file.path(OUTPUT_DIR, "tables")
+# --- Variant ----------------------------------------------------------------
+# Which specification to run. A variant may change row eligibility and the
+# feature blocks, and nothing else — see VARIANTS in xgb_structure_features.R
+# for the registry and for why these are a SENSITIVITY ANALYSIS rather than a
+# set of independent tests.
+#
+#   Rscript analysis/models/xgb_structure_comparison.R              # default
+#   Rscript analysis/models/xgb_structure_comparison.R keep_missing
+#   Rscript analysis/models/xgb_structure_comparison.R with_raw_mfe
+#
+# Every variant gets its own self-contained directory, so their fit caches,
+# tables and figures cannot collide or silently overwrite one another.
+
+.args   <- commandArgs(trailingOnly = TRUE)
+VARIANT <- resolve_variant(if (length(.args) >= 1) .args[[1]] else "default")
+
+RUN_DIR    <- variant_dir(VARIANT, "root")
+PLOT_DIR   <- variant_dir(VARIANT, "plots")
+TABLE_DIR  <- variant_dir(VARIANT, "tables")
 for (d in c(RUN_DIR, PLOT_DIR, TABLE_DIR)) {
   dir.create(d, showWarnings = FALSE, recursive = TRUE)
 }
@@ -103,7 +119,7 @@ future::plan(future::multisession, workers = N_WORKERS)
 # ----------------------------- 1. Eligible dataset --------------------------
 
 log_msg("Building eligible dataset")
-el <- eligible_dataset("human")
+el <- eligible_dataset("human", VARIANT)
 report_feature_sets(el)
 
 dat        <- el$data
@@ -282,7 +298,8 @@ fit_key <- list(
   seed           = SEED,
   grid           = xgb_grid,
   inner_v        = INNER_V,
-  target         = TARGET_COL
+  target         = TARGET_COL,
+  variant        = VARIANT
 )
 
 FITS_PATH  <- file.path(RUN_DIR, "final_fits.rds")
@@ -544,159 +561,10 @@ cat("\n=== Per-slice held-out metrics ===\n")
 print(as.data.frame(per_chunk_wide), row.names = FALSE, digits = 4)
 
 
-# ----------------------------- 13. Plots ------------------------------------
+# ----------------------------- 13. Gain importance (model-derived) ----------
+# Extracted here because it needs the fitted Model B. The FIGURE that draws it
+# lives in xgb_structure_plots.R, like every other figure — see section 16.
 
-metric_label <- c(rsq_trad = "R² (held-out)", rmse = "RMSE", mae = "MAE",
-                  rsq = "r² (correlation)")
-COL_A <- "#4C6EF5"; COL_B <- "#E8590C"
-
-save_plot <- function(p, name, w = 210, h = 148) {
-  for (ext in c("jpg", "pdf")) {
-    ggsave(file.path(PLOT_DIR, paste0(name, ".", ext)), plot = p,
-           width = w, height = h, units = "mm", dpi = 300)
-  }
-}
-
-# 13a. Delta plot with bootstrap CIs — the primary figure.
-#
-# Fill encodes CONCLUSIVE (does the CI clear zero), not the sign of the point
-# estimate. Colouring by sign would paint a point orange for landing a hair's
-# breadth on the favourable side of zero with an interval ten times its own
-# width, which is the exact misreading this figure exists to prevent.
-p_delta <- delta_table |>
-  mutate(metric_lab = factor(metric_label[metric],
-                             levels = metric_label[c("rsq_trad", "rmse", "mae")])) |>
-  ggplot(aes(x = delta, y = 1)) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
-  geom_errorbar(aes(xmin = ci_low, xmax = ci_high), orientation = "y", width = 0.15,
-                 linewidth = 0.9, colour = "grey25") +
-  geom_point(aes(fill = conclusive), size = 4.5, shape = 21, colour = "grey20",
-             show.legend = FALSE) +
-  scale_fill_manual(values = c(`TRUE` = COL_B, `FALSE` = "grey70")) +
-  scale_y_continuous(breaks = NULL, limits = c(0.5, 1.5)) +
-  facet_wrap(~ metric_lab, scales = "free_x", ncol = 1) +
-  labs(
-    title    = "Change in held-out performance from adding secondary structure",
-    subtitle = sprintf(paste0("Model B minus Model A on %d held-out genes; ",
-                              "point estimate and 95%% paired-bootstrap CI (%d reps).\n",
-                              "R²: higher is better, so positive favours structure. ",
-                              "RMSE / MAE: lower is better, so negative favours structure.\n",
-                              "Filled points clear zero; hollow grey points do not."),
-                       nrow(preds), N_BOOT),
-    x = "Delta (Model B - Model A), PC1 units", y = NULL
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(size = 10, colour = "grey30"),
-        strip.text = element_text(face = "bold"),
-        panel.grid.major.y = element_blank(),
-        axis.text.y = element_blank())
-
-save_plot(p_delta, "xgb_structure_delta_metrics", w = 230, h = 150)
-
-# 13b. Paired slice plot — is the improvement consistent?
-p_paired <- chunk_metrics |>
-  mutate(metric_lab = factor(metric_label[metric],
-                             levels = metric_label[c("rsq_trad", "rmse", "mae")])) |>
-  ggplot(aes(x = model, y = value, group = chunk)) +
-  geom_line(colour = "grey60", linewidth = 0.6) +
-  geom_point(aes(colour = model), size = 3, show.legend = FALSE) +
-  scale_colour_manual(values = c(baseline = COL_A,
-                                 `baseline + structure` = COL_B)) +
-  facet_wrap(~ metric_lab, scales = "free_y") +
-  labs(
-    title    = "Paired performance across family-blocked slices of the held-out set",
-    subtitle = paste0("One line per slice. A consistent effect moves every line ",
-                      "the same way; a single crossing line means the pooled\n",
-                      "delta is carried by one corner of the test set."),
-    x = NULL, y = NULL
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(size = 10, colour = "grey30"),
-        strip.text = element_text(face = "bold"),
-        axis.text.x = element_text(size = 9))
-
-save_plot(p_paired, "xgb_structure_paired_slices", w = 280, h = 150)
-
-# 13c. Observed vs predicted, identical axis limits. Secondary.
-lims <- range(c(preds$observed, preds$pred_A, preds$pred_B))
-
-obspred_long <- preds |>
-  select(observed, `Model A: baseline` = pred_A,
-         `Model B: baseline + structure` = pred_B) |>
-  pivot_longer(-observed, names_to = "model", values_to = "predicted")
-
-# Correlations for the panel labels.
-#
-#   Pearson r    how tight the cloud is about SOME straight line
-#   Spearman ρ   whether the RANKING is right, ignoring scale entirely
-#   R²           the coefficient of determination, 1 - SSres/SStot
-#
-# R² is left unqualified because it already means the coefficient of
-# determination. The term that needs care is the OTHER one: yardstick's `rsq`
-# is the squared Pearson correlation, which many people also call R². The two
-# are algebraically identical for in-sample OLS with an intercept — the case
-# everyone learns R² in — and come apart out of sample, where the gap is
-# exactly a calibration penalty:
-#
-#   r² - R² = [ (mean(pred) - mean(obs))² + (sd(pred) - r*sd(obs))² ] / var(obs)
-#
-# so R² <= r² always, with equality iff the predictions are centred correctly
-# AND scaled correctly. Note the scale condition is sd(pred) = r*sd(obs), not
-# sd(pred) = sd(obs): a calibrated model SHOULD shrink toward the mean by about
-# factor r. Reporting r alongside R² is therefore a free calibration check.
-obspred_stats <- obspred_long |>
-  group_by(model) |>
-  summarise(
-    pearson  = cor(observed, predicted),
-    spearman = cor(observed, predicted, method = "spearman"),
-    rsq_trad = 1 - sum((observed - predicted)^2) /
-                   sum((observed - mean(observed))^2),
-    cal_slope = stats::coef(stats::lm(observed ~ predicted))[2],
-    .groups  = "drop"
-  ) |>
-  mutate(label = sprintf("Pearson r = %.3f\nSpearman %s = %.3f\nR%s = %.3f",
-                         pearson, "ρ", spearman, "²", rsq_trad))
-
-p_obspred <- obspred_long |>
-  ggplot(aes(observed, predicted)) +
-  geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = "dashed") +
-  geom_point(aes(colour = model), alpha = 0.25, size = 0.8, show.legend = FALSE) +
-  geom_text(data = obspred_stats, inherit.aes = FALSE,
-            aes(x = lims[1], y = lims[2], label = label),
-            hjust = 0, vjust = 1, size = 3.2, lineheight = 1.15,
-            colour = "grey15") +
-  scale_colour_manual(values = setNames(c(COL_A, COL_B),
-                                        c("Model A: baseline",
-                                          "Model B: baseline + structure"))) +
-  coord_equal(xlim = lims, ylim = lims) +
-  facet_wrap(~ model) +
-  labs(title = "Observed vs held-out predicted half-life",
-       subtitle = sprintf(paste0("Identical axis limits. Dashed line is y = x, not a fit. ",
-                                 "Agarwal & Kelley consensus PC1, untransformed.\n",
-                                 "R² is the coefficient of determination (1 - SSres/SStot), ",
-                                 "so it measures scatter about the dashed line.\n",
-                                 "Predictions span less than observations (sd %.1f vs %.1f). ",
-                                 "That is calibrated shrinkage, not a defect: a well-\n",
-                                 "calibrated model shrinks by about factor r, and r x %.1f = ",
-                                 "%.1f. Regressing observed on predicted gives slope %.2f.\n",
-                                 "Consequence: the model never predicts the most extreme ",
-                                 "half-lives. Applies equally to both models.\n",
-                                 "Secondary to the paired comparison."),
-                          sd(preds$pred_A), sd(preds$observed),
-                          sd(preds$observed),
-                          cor(preds$observed, preds$pred_A) * sd(preds$observed),
-                          obspred_stats$cal_slope[1]),
-       x = "Observed half-life (PC1)", y = "Predicted half-life (PC1)") +
-  theme_minimal(base_size = 12) +
-  theme(plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(size = 9, colour = "grey30"),
-        strip.text = element_text(face = "bold"))
-
-save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 240, h = 165)
-
-# 13d. Gain importance for Model B — exploratory context only.
 imp <- final_B$fit |>
   extract_fit_engine() |>
   xgb.importance(model = _) |>
@@ -704,28 +572,6 @@ imp <- final_B$fit |>
   mutate(block = if_else(Feature %in% STRUCTURE, "structure", "baseline"))
 
 write_csv(imp, file.path(TABLE_DIR, "xgb_structure_modelB_gain_importance.csv"))
-
-p_imp <- imp |>
-  slice_max(Gain, n = 25) |>
-  ggplot(aes(Gain, fct_reorder(Feature, Gain), fill = block)) +
-  geom_col() +
-  scale_fill_manual(values = c(baseline = "grey65", structure = COL_B)) +
-  scale_y_discrete(labels = function(x) vapply(x, format_col_name, character(1))) +
-  labs(title = "Model B gain importance (top 25): exploratory only",
-       subtitle = paste0("Correlated predictors share and redistribute gain, so ",
-                         "this is not an effect estimate and does not rank\n",
-                         "independent contributions. The statistical evidence is ",
-                         "the held-out improvement, not this figure."),
-       x = "Gain", y = NULL, fill = NULL) +
-  theme_minimal(base_size = 12) +
-  theme(plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(size = 10, colour = "grey30"),
-        legend.position = "top",
-        panel.grid.major.y = element_blank())
-
-save_plot(p_imp, "xgb_structure_modelB_importance", h = 180)
-
-log_msg("Plots written to ", PLOT_DIR)
 
 
 # ----------------------------- 13e. Why structure earns gain ----------------
@@ -744,14 +590,37 @@ log_msg("Plots written to ", PLOT_DIR)
 #
 # Fitted on the training pool only, so no test information enters even a
 # descriptive table.
+#
+# Complete cases regardless of the variant's row policy. Under "native_na" the
+# training pool contains NAs, and qr() does not merely warn on those — it fails
+# outright with "NA/NaN/Inf in foreign function call". Restricting to rows
+# complete on baseline + structure also makes the redundancy figures comparable
+# ACROSS variants, since they are then measured on the same genes rather than
+# on whatever each policy happened to admit.
 
 log_msg("Measuring how much of each structure feature the baseline explains")
 
-qr_base <- qr(cbind(1, as.matrix(trainval[, BASELINE])))
+red_rows <- trainval[stats::complete.cases(
+  trainval[, c(BASELINE, STRUCTURE), drop = FALSE]), , drop = FALSE]
+
+if (nrow(red_rows) < 10 * length(BASELINE)) {
+  log_msg("  skipped: only ", nrow(red_rows), " complete rows for ",
+          length(BASELINE), " predictors — too few to regress against")
+  redundancy <- tibble(structure_feature = character(),
+                       r2_from_baseline = numeric(), gain = numeric(),
+                       reading = character())
+} else {
+
+if (nrow(red_rows) < nrow(trainval)) {
+  log_msg("  using ", nrow(red_rows), " of ", nrow(trainval),
+          " training rows (complete cases; this variant admits missing data)")
+}
+
+qr_base <- qr(cbind(1, as.matrix(red_rows[, BASELINE])))
 redundancy <- tibble(
   structure_feature = STRUCTURE,
   r2_from_baseline  = vapply(STRUCTURE, function(v) {
-    y <- trainval[[v]]
+    y <- red_rows[[v]]
     1 - sum((y - qr.fitted(qr_base, y))^2) / sum((y - mean(y))^2)
   }, numeric(1))
 ) |>
@@ -762,14 +631,18 @@ redundancy <- tibble(
                            "largely a restatement of baseline information",
                            "genuinely new information, but not predictive"))
 
+}   # end of the "enough complete rows" branch
+
 write_csv(redundancy, file.path(TABLE_DIR, "xgb_structure_redundancy.csv"))
 
-cat("\n=== How much of each structure feature the baseline already explains ===\n")
-print(as.data.frame(redundancy |> select(-reading)), row.names = FALSE, digits = 3)
-cat(sprintf("\n%d of %d structure columns are >60%% reconstructible from baseline.\n",
-            sum(redundancy$r2_from_baseline > 0.6), nrow(redundancy)))
-cat("The rest are genuinely novel and still bought no held-out improvement --\n")
-cat("which is the sharper point: novelty is not relevance.\n")
+if (nrow(redundancy) > 0) {
+  cat("\n=== How much of each structure feature the baseline already explains ===\n")
+  print(as.data.frame(redundancy |> select(-reading)), row.names = FALSE, digits = 3)
+  cat(sprintf("\n%d of %d structure columns are >60%% reconstructible from baseline.\n",
+              sum(redundancy$r2_from_baseline > 0.6), nrow(redundancy)))
+  cat("The rest are genuinely novel and still bought no held-out improvement --\n")
+  cat("which is the sharper point: novelty is not relevance.\n")
+}
 
 gain_share <- imp |>
   group_by(block) |>
@@ -801,6 +674,9 @@ manifest <- list(
                           "prediction of measured mRNA half-life beyond a model",
                           "containing non-structure transcript features?"),
   species         = "human",
+  variant         = VARIANT$name,
+  variant_label   = VARIANT$label,
+  variant_rows    = VARIANT$rows,
   cache           = cache_path("human"),
   response        = TARGET_COL,
   response_note   = paste("Agarwal & Kelley 2022 consensus half-life PC1,",
@@ -927,6 +803,22 @@ summary_txt <- c(
 
 writeLines(summary_txt, file.path(RUN_DIR, "SUMMARY.txt"))
 cat("\n"); cat(summary_txt, sep = "\n"); cat("\n")
+
+
+# ----------------------------- 16. Figures ----------------------------------
+# Rendering lives in its own script, which reads only the tables written above
+# and never touches a fitted model — so a figure can be restyled in seconds
+# instead of re-tuning for 40 minutes:
+#
+#   Rscript analysis/models/xgb_structure_plots.R
+#
+# It is sourced here so one command still produces everything, and so this
+# file's table formats are exercised against the plotting code on every run
+# rather than drifting apart unnoticed. new.env() keeps its variables out of
+# this script's workspace.
+
+log_msg("Rendering figures")
+source("analysis/models/xgb_structure_plots.R", local = new.env())
 
 log_msg("Done. Artefacts in ", RUN_DIR, ", tables in ", TABLE_DIR,
         ", plots in ", PLOT_DIR)
