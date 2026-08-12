@@ -728,6 +728,72 @@ save_plot(p_imp, "xgb_structure_modelB_importance", h = 180)
 log_msg("Plots written to ", PLOT_DIR)
 
 
+# ----------------------------- 13e. Why structure earns gain ----------------
+# Exploratory context for the importance figure, and the answer to the obvious
+# challenge: "if structure is useless, why does it take 8.1% of the gain?"
+#
+# Two candidate explanations, and they turn out to split the block in half.
+# Either a structure column is a RESTATEMENT of baseline information (the tree
+# splits on it and collects gain for something it already knew), or it is
+# genuinely new information that simply is not related to half-life. Regressing
+# each structure column on the whole baseline block separates the two.
+#
+# Linear R², so this is a lower bound on redundancy — a tree could exploit a
+# non-linear relationship this misses. That direction is the safe one: it can
+# only understate how much baseline already knows.
+#
+# Fitted on the training pool only, so no test information enters even a
+# descriptive table.
+
+log_msg("Measuring how much of each structure feature the baseline explains")
+
+qr_base <- qr(cbind(1, as.matrix(trainval[, BASELINE])))
+redundancy <- tibble(
+  structure_feature = STRUCTURE,
+  r2_from_baseline  = vapply(STRUCTURE, function(v) {
+    y <- trainval[[v]]
+    1 - sum((y - qr.fitted(qr_base, y))^2) / sum((y - mean(y))^2)
+  }, numeric(1))
+) |>
+  left_join(select(imp, structure_feature = Feature, gain = Gain),
+            by = "structure_feature") |>
+  arrange(desc(r2_from_baseline)) |>
+  mutate(reading = if_else(r2_from_baseline > 0.6,
+                           "largely a restatement of baseline information",
+                           "genuinely new information, but not predictive"))
+
+write_csv(redundancy, file.path(TABLE_DIR, "xgb_structure_redundancy.csv"))
+
+cat("\n=== How much of each structure feature the baseline already explains ===\n")
+print(as.data.frame(redundancy |> select(-reading)), row.names = FALSE, digits = 3)
+cat(sprintf("\n%d of %d structure columns are >60%% reconstructible from baseline.\n",
+            sum(redundancy$r2_from_baseline > 0.6), nrow(redundancy)))
+cat("The rest are genuinely novel and still bought no held-out improvement --\n")
+cat("which is the sharper point: novelty is not relevance.\n")
+
+gain_share <- imp |>
+  group_by(block) |>
+  summarise(n_features = n(), gain = sum(Gain), .groups = "drop") |>
+  mutate(pct_of_features = 100 * n_features / sum(n_features),
+         pct_of_gain     = 100 * gain / sum(gain),
+         gain_per_feature = 100 * gain / n_features)
+
+write_csv(gain_share, file.path(TABLE_DIR, "xgb_structure_gain_share.csv"))
+
+cat("\n=== Gain share vs feature share ===\n")
+print(as.data.frame(gain_share), row.names = FALSE, digits = 3)
+cat(sprintf(paste0("\nStructure is %.1f%% of the predictors but takes %.1f%% of the gain",
+                   " -- BELOW proportional.\nPer feature it earns %.2fx an average",
+                   " baseline feature. Largest single feature (%s)\ntakes %.1f%% on",
+                   " its own, %.1fx the entire structure block.\n"),
+            gain_share$pct_of_features[gain_share$block == "structure"],
+            gain_share$pct_of_gain[gain_share$block == "structure"],
+            gain_share$gain_per_feature[gain_share$block == "structure"] /
+              gain_share$gain_per_feature[gain_share$block == "baseline"],
+            imp$Feature[1], 100 * imp$Gain[1],
+            imp$Gain[1] / sum(imp$Gain[imp$block == "structure"])))
+
+
 # ----------------------------- 14. Run manifest -----------------------------
 
 manifest <- list(

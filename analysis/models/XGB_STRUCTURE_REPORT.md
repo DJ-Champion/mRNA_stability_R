@@ -175,11 +175,69 @@ whether the pooled result is broad-based or driven by one corner of the test set
 
 ### The importance trap
 
-Structure features take **8.1% of Model B's total "importance"** — but contribute
-**zero** predictive improvement. The best structure feature ranks 47th out of 149.
+Structure features take **8.1% of Model B's total "importance"** while contributing
+**zero** predictive improvement. Their ranks run 47th to 125th out of 149.
 
-This is worth showing. Importance says a feature got *used*; it does not say the
-model got *better*. Only the held-out comparison says that.
+**What gain importance actually measures.** Each time a tree splits on a feature,
+XGBoost records how much that split reduced the loss *on the training data, at the
+moment the split was made*. Those reductions are summed per feature and normalised
+to 100%. So it is measured in-sample, it is a forced share (all 149 features carve
+up exactly 100% whether or not any of them help), and it records that a feature was
+*used*, not that it was *needed*.
+
+**8.1% is not even a large share.** The 22 structure features are 14.8% of the 149
+predictors, so proportionally they should take about 14.8%.
+
+| | Features | % of features | % of gain | Gain per feature |
+|---|---|---|---|---|
+| Baseline | 127 | 85.2% | 91.9% | 0.724 |
+| Structure | 22 | 14.8% | **8.1%** | **0.368** |
+
+A structure feature earns **0.51×** what an average baseline feature earns. For
+scale, `exon_density_cds` alone takes **23.6%** — 2.9× the entire structure block.
+The top 10 features hold 41.3% of all gain.
+
+**Why they earn anything at all — and this is the useful bit.** We tested whether
+structure is simply a restatement of baseline features, by regressing each
+structure feature on all 127 baseline features:
+
+| Structure feature | R² from baseline | |
+|---|---|---|
+| `mfe_delta_cds` | 0.921 | baseline already knows this |
+| `mfe_delta_5utr` | 0.917 | |
+| `mfe_delta_mrna` | 0.908 | |
+| … | | |
+| `rnafold_zscore_5utr` | 0.058 | genuinely new information |
+| `rnafold_zscore_stop` | 0.015 | |
+
+The block splits almost exactly along family lines — **7 of 22 columns are more
+than 60% reconstructible from baseline, and all 7 are the `mfe_delta_*` family:**
+
+- The **`mfe_delta_*` features are substitutes.** Baseline reconstructs them at
+  R² 0.68–0.92, which makes sense — delta is observed minus *expected* MFE, and
+  expected MFE is a deterministic function of GC and length, both already in the
+  baseline. Splitting on them collects gain for information the model already had.
+- The **15 z-scores are genuinely novel** (R² 0.015 to 0.45, median about 0.13).
+  The model really is seeing numbers it could not reconstruct. It uses them. They
+  earn gain. They still buy nothing on held-out genes.
+
+(These are linear R², so they are a *lower bound* on redundancy — a tree could
+exploit a non-linear relationship the regression misses. That errs in the safe
+direction: it can only understate how much the baseline already knows.)
+
+That second case is the stronger lesson. The problem is not that structure
+duplicates the baseline — it is that **a feature can be genuinely new, get used by
+the model, accumulate importance, and simply not be related to half-life.** Novelty
+is not relevance.
+
+**If challenged.** Gain importance says a feature got used; the held-out comparison
+asks whether the model predicts new genes better. When those disagree, held-out
+wins. And if someone says 8.1% sounds substantial: 22 of 149 features should get
+about 14.8% by proportion, so 8.1% is below-average participation, and one baseline
+feature carries 2.9× the whole block.
+
+*Numbers in this section come from `xgb_structure_gain_share.csv` and
+`xgb_structure_redundancy.csv`, both written by the main script.*
 
 ### Secondary test — icSHAPE Gini
 
@@ -240,7 +298,7 @@ information the baseline lacks — nothing about mechanism.
 | Main analysis | `analysis/models/xgb_structure_comparison.R` |
 | icSHAPE analysis | `analysis/models/xgb_structure_gini_subset.R` |
 | Shared feature definitions | `analysis/models/xgb_structure_features.R` |
-| Tables (10) | `data/outputs/tables/xgb_structure_*.csv` |
+| Tables (12) | `data/outputs/tables/xgb_structure_*.csv` |
 | Figures (5, jpg + pdf) | `data/outputs/plots/xgb_structure_*` |
 | Folds, fits, manifest | `data/outputs/xgb_structure/` |
 
