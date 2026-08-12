@@ -6,10 +6,20 @@
 .RData
 .RDataTmp
 
-# Data, figures, models directories
-data/*
-figures/*
-models/*
+# Data, figures, models directories.
+#
+# `data`, not `data/*`. The trailing /* ignores a directory's CONTENTS but not
+# the path itself, so a SYMLINK named `data` is a file to git and shows up as
+# untracked forever. That is the normal setup when working in a git worktree:
+# the cache lives in the main checkout, and the worktree gets a symlink so
+# scripts resolve `data/cache/...` unchanged.
+#
+# Safe because this file has no `!data/...` negation. If one is ever needed,
+# git will not descend into an ignored directory, so that line must go back to
+# `data/*` with the negation beneath it.
+data
+figures
+models
 
 
 # User-specific files
