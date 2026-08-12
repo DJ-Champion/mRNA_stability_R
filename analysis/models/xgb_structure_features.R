@@ -27,6 +27,99 @@ suppressPackageStartupMessages({
 TARGET_COL <- "halflife"
 
 
+# --- Variant registry --------------------------------------------------------
+# A variant is a named, declarative deviation from the committed default. It
+# may change TWO things and nothing else: which rows are eligible, and which
+# columns go in each block. Resampling, the split artefact, the tuning grid and
+# budget, and the seed are deliberately NOT variant-controlled, so any two
+# variants differ in exactly the stated way and a difference between them is
+# attributable.
+#
+# WHY THIS IS A SENSITIVITY ANALYSIS, NOT A SET OF TESTS. Running many
+# specifications and reporting the one that clears zero is the garden of
+# forking paths, and it would destroy the value of the committed result — which
+# is defensible precisely because it was specified before anyone saw an answer.
+# Every variant here must be reported, every time, in the table produced by
+# xgb_structure_variant_summary.R. The claim to make is "the conclusion holds
+# across every reasonable specification", which is stronger than a single run,
+# not weaker. If one variant disagrees with the rest, that is a finding about
+# the specification, to be explained rather than promoted.
+#
+# CROSS-VARIANT METRICS ARE NOT ALWAYS COMPARABLE. Variants that change row
+# eligibility are scored on different genes, so their absolute R² values are
+# not on the same footing. The paired DELTA within a variant is always
+# meaningful; the absolute numbers between variants are not. The summary table
+# prints n for every variant for exactly this reason.
+#
+# Each entry lists only what differs; the rest is inherited from `default`.
+
+VARIANTS <- list(
+
+  default = list(
+    label = "complete cases; length-normalised structure only",
+    # "complete"  = complete cases on baseline + structure (identical rows,
+    #               no imputation, informative missingness cannot leak)
+    # "native_na" = keep every gene with a target and a split, let XGBoost
+    #               learn a default split direction for NAs
+    rows             = "complete",
+    structure_groups = c("rnafold_zscores", "rnalfold_zscores", "mfe_deltas"),
+    baseline_add     = character(),
+    baseline_drop    = character()
+  ),
+
+  keep_missing = list(
+    label = "all genes with a target; XGBoost handles NA natively",
+    # Tests whether the default's 13% complete-case loss changed the answer.
+    # Read the result with care in ONE direction: structure missingness is
+    # informative (a missing 5'UTR MFE means a 5'UTR too short to fold), so
+    # this variant can flatter Model B by letting it split on an annotation
+    # artefact. If it is the only variant that turns positive, that is the
+    # first explanation to rule out, not a discovery.
+    rows = "native_na"
+  ),
+
+  with_raw_mfe = list(
+    label = "complete cases; adds raw and per-nucleotide MFE to structure",
+    # Tests whether excluding length-confounded MFE hid a real signal. Same
+    # caution: raw MFE is near-deterministic in length and GC, both already in
+    # the baseline, so if this variant alone turns positive the likely
+    # explanation is length re-entering the model, not structure.
+    structure_groups = c("rnafold_zscores", "rnalfold_zscores", "mfe_deltas",
+                         "rnafold_scores", "rnalfold_scores", "rnafold_per_nt")
+  )
+)
+
+
+#' Resolve a variant name into a complete specification
+#'
+#' @param name Character, a key of VARIANTS.
+#' @return The variant list, with every field filled in from `default`.
+#' @export
+resolve_variant <- function(name = "default") {
+  if (!name %in% names(VARIANTS)) {
+    stop("unknown variant '", name, "'. Known: ",
+         paste(names(VARIANTS), collapse = ", "), call. = FALSE)
+  }
+  v <- utils::modifyList(VARIANTS$default, VARIANTS[[name]])
+  if (!v$rows %in% c("complete", "native_na")) {
+    stop("variant '", name, "' has an unknown rows policy: ", v$rows,
+         call. = FALSE)
+  }
+  v$name <- name
+  v
+}
+
+
+#' Where a variant's artefacts live. One self-contained directory per variant.
+#' @export
+variant_dir <- function(variant, what = c("root", "tables", "plots")) {
+  what <- match.arg(what)
+  root <- file.path(OUTPUT_DIR, "xgb_structure",
+                    if (is.list(variant)) variant$name else variant)
+  if (what == "root") root else file.path(root, what)
+}
+
+
 # --- Feature-block construction ----------------------------------------------
 
 #' Build the baseline (non-structure) column list for a dataset
@@ -48,9 +141,11 @@ TARGET_COL <- "halflife"
 #' so it belongs with the junction-distance features the brief does name.
 #'
 #' @param df A dataset from build_dataset() after drop_excluded().
+#' @param variant A resolved variant; `baseline_add` / `baseline_drop` adjust
+#'   the list below without editing it.
 #' @return Character vector of column names present in `df`.
 #' @export
-baseline_columns <- function(df) {
+baseline_columns <- function(df, variant = resolve_variant()) {
   cols <- c(
     fg_columns(df, "lengths"),       # 4   regional sequence length
     fg_columns(df, "gc"),            # 7   regional GC content
@@ -65,7 +160,8 @@ baseline_columns <- function(df) {
     fg_columns(df, "nmd"),           # 5   fragile-codon / alternative-stop
     fg_columns(df, "exons")          # 1   exon_length_last_mrna
   )
-  unique(cols)
+  cols <- unique(c(cols, intersect(variant$baseline_add, names(df))))
+  setdiff(cols, variant$baseline_drop)
 }
 
 
@@ -82,14 +178,14 @@ baseline_columns <- function(df) {
 #' of the corpus.
 #'
 #' @param df A dataset from build_dataset() after drop_excluded().
+#' @param variant A resolved variant; `structure_groups` names the
+#'   FEATURE_PATTERNS keys that make up the block. The default is
+#'   rnafold_zscores (8, MFE z-score per region), rnalfold_zscores (7, local
+#'   MFE z-score) and mfe_deltas (7, observed minus expected MFE).
 #' @return Character vector of column names present in `df`.
 #' @export
-structure_columns <- function(df) {
-  unique(c(
-    fg_columns(df, "rnafold_zscores"),   # 8  MFE z-score, per region
-    fg_columns(df, "rnalfold_zscores"),  # 7  local MFE z-score
-    fg_columns(df, "mfe_deltas")         # 7  observed - expected MFE
-  ))
+structure_columns <- function(df, variant = resolve_variant()) {
+  unique(unlist(lapply(variant$structure_groups, function(g) fg_columns(df, g))))
 }
 
 
@@ -102,33 +198,45 @@ gini_columns <- function(df) fg_columns(df, "probing")
 
 #' Load the human dataset and cut it to the common eligible analysis set
 #'
-#' Complete-case on the UNION of baseline and structure, computed once. Two
-#' consequences the brief requires and this guarantees:
-#'   - Model A and Model B are handed the same rows and the same gene ids;
-#'   - Model B cannot lose rows to the extra missingness in its own block.
+#' Whatever the row policy, the guarantee the brief requires is the same and is
+#' provided here rather than downstream: Model A and Model B are handed the
+#' SAME rows and the same gene ids, and Model B cannot lose rows to the extra
+#' missingness in its own block. Eligibility is decided once, from the union of
+#' the two blocks, before either model exists.
 #'
-#' Complete-case rather than XGBoost's native NA handling, deliberately. The
-#' structure columns' missingness is INFORMATIVE — a missing 5'UTR MFE means a
-#' 5'UTR too short to fold, not a failed computation — so letting XGBoost learn
-#' a default direction for those splits would let Model B profit from an
-#' annotation artefact and report it as a structure effect. Cost: 1,800 of
-#' 13,601 genes (13%).
+#' Two policies, selected by the variant:
+#'
+#'   "complete"  (default) complete cases on baseline + structure. Chosen
+#'               because the structure columns' missingness is INFORMATIVE — a
+#'               missing 5'UTR MFE means a 5'UTR too short to fold, not a failed
+#'               computation — so letting XGBoost learn a default split
+#'               direction there would let Model B profit from an annotation
+#'               artefact and report it as a structure effect. Costs 1,800 of
+#'               13,601 genes (13%).
+#'
+#'   "native_na" every gene with a target and a split; XGBoost handles NA
+#'               internally. Keeps all 13,601. Both models still see identical
+#'               rows, because eligibility no longer depends on either block.
+#'               The informative-missingness concern above is precisely what
+#'               this variant exists to quantify — so read a gain here as a
+#'               question, not an answer.
 #'
 #' Zero-variance baseline columns are removed here, on train+val only, so the
 #' predictor sets are fixed before any model sees them and the two models
 #' cannot end up with different baseline blocks via a recipe filter.
 #'
 #' @param species Character, passed to build_dataset().
-#' @return list(data, baseline, structure, gini, dropped_zv)
+#' @param variant A resolved variant (see resolve_variant()).
+#' @return list(data, baseline, structure, gini, dropped_zv, variant)
 #' @export
-eligible_dataset <- function(species = "human") {
+eligible_dataset <- function(species = "human", variant = resolve_variant()) {
 
   df <- build_dataset(species) |>
     drop_excluded(verbose = FALSE) |>
     attach_splits()
 
-  base_cols  <- baseline_columns(df)
-  str_cols   <- structure_columns(df)
+  base_cols  <- baseline_columns(df, variant)
+  str_cols   <- structure_columns(df, variant)
   gini_cols  <- gini_columns(df)
 
   stopifnot(length(intersect(base_cols, str_cols)) == 0,
@@ -138,15 +246,21 @@ eligible_dataset <- function(species = "human") {
 
   keep <- df |>
     filter(!is.na(.data[[TARGET_COL]]), !is.na(split))
-  ok   <- stats::complete.cases(keep[, c(base_cols, str_cols), drop = FALSE])
-  keep <- keep[ok, , drop = FALSE]
+
+  if (identical(variant$rows, "complete")) {
+    ok   <- stats::complete.cases(keep[, c(base_cols, str_cols), drop = FALSE])
+    keep <- keep[ok, , drop = FALSE]
+  }
 
   # Constant on the data the model may learn from. Checked on train+val rather
   # than on everything, because inspecting test to decide the predictor set is
   # a (mild) use of held-out data.
+  # NAs dropped before counting: under the "native_na" policy a column with one
+  # observed value and the rest missing has two distinct values (v and NA) and
+  # would sneak past a naive uniqueness test while carrying no information.
   learnable <- keep[keep$split != "test", , drop = FALSE]
   zv <- names(which(vapply(learnable[base_cols], function(x)
-    length(unique(x)) < 2L, logical(1))))
+    length(unique(x[!is.na(x)])) < 2L, logical(1))))
   base_cols <- setdiff(base_cols, zv)
 
   list(
@@ -154,7 +268,8 @@ eligible_dataset <- function(species = "human") {
     baseline   = base_cols,
     structure  = str_cols,
     gini       = gini_cols,
-    dropped_zv = zv
+    dropped_zv = zv,
+    variant    = variant
   )
 }
 
@@ -164,10 +279,18 @@ eligible_dataset <- function(species = "human") {
 report_feature_sets <- function(el) {
   d <- el$data
   cat("\n=== Eligible analysis set ===\n")
+  cat(sprintf("Variant           : %s — %s\n", el$variant$name, el$variant$label))
+  cat(sprintf("Row policy        : %s\n", el$variant$rows))
   cat(sprintf("Response          : %s (Agarwal & Kelley consensus PC1, untransformed)\n",
               TARGET_COL))
   cat(sprintf("Genes             : %d (1 row per gene, %d distinct gene_id)\n",
               nrow(d), dplyr::n_distinct(d$gene_id)))
+  if (identical(el$variant$rows, "native_na")) {
+    miss <- mean(!stats::complete.cases(
+      d[, c(el$baseline, el$structure), drop = FALSE]))
+    cat(sprintf("                    %.1f%% of them have at least one missing predictor\n",
+                100 * miss))
+  }
   cat(sprintf("Split (blocked on family_id_%s):\n", BLOCK_LEVEL))
   print(table(d$split))
   cat(sprintf("\nBaseline features : %d\n", length(el$baseline)))

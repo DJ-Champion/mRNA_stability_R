@@ -239,6 +239,43 @@ feature carries 2.9× the whole block.
 *Numbers in this section come from `xgb_structure_gain_share.csv` and
 `xgb_structure_redundancy.csv`, both written by the main script.*
 
+### Sensitivity — does the answer depend on our choices?
+
+Two of the design decisions above could reasonably have gone the other way, so
+both were re-run as full specifications. Every variant is reported here, always,
+in one table.
+
+| Variant | Eligible genes | Held-out | Structure cols | ΔR² | 95% CI | |
+|---|---|---|---|---|---|---|
+| `default` | 11,801 | 1,165 | 22 | +0.0006 | −0.0086 to +0.0101 | no effect |
+| `keep_missing` | 13,601 | 1,360 | 22 | +0.0008 | −0.0088 to +0.0107 | no effect |
+| `with_raw_mfe` | 11,801 | 1,165 | 44 | −0.0050 | −0.0138 to +0.0044 | no effect |
+
+- **`keep_missing`** drops the complete-case rule and lets XGBoost handle NA
+  natively, recovering all 13,601 genes (13.2% of which have at least one missing
+  predictor). This is the variant most likely to *favour* structure, because
+  missingness in the structure block is informative. It doesn't: +0.0008.
+- **`with_raw_mfe`** adds raw MFE and per-nucleotide MFE back, doubling the
+  structure block to 44 columns. If excluding length-confounded MFE had hidden a
+  signal, this is where it would appear. It doesn't — the point estimate goes
+  slightly *negative*, consistent with 22 extra length-correlated columns adding
+  noise rather than information.
+
+**0 of 3 specifications** produce a ΔR² whose interval excludes zero.
+
+> **Why this is reported as a block, not one at a time.** Run enough
+> specifications and one will clear zero by chance, and it will be the one that
+> looks most publishable. `xgb_structure_variant_summary.R` reads the variant
+> registry rather than globbing the filesystem, so a defined-but-unrun variant
+> shows as `NOT RUN` and deleting a directory cannot quietly remove an
+> inconvenient row. The claim to make is "the conclusion holds across every
+> specification tried", which is stronger than any single run.
+
+Caveat when reading the table: within a variant the delta is paired and
+meaningful, because both models saw the same genes. *Between* variants the
+absolute R² values are not comparable when the row policy differs — `keep_missing`
+scores on 1,360 genes, the others on 1,165. Compare directions, not levels.
+
 ### Secondary test — icSHAPE Gini
 
 Run on the 861 genes that actually have icSHAPE data, using cross-validation.
@@ -284,29 +321,60 @@ information the baseline lacks — nothing about mechanism.
 4. **The test set has no large gene families.** The split deliberately pins big
    families to training, so results measure generalisation to small and mid-sized
    families.
-5. **13% of genes were dropped** to keep both models on identical rows.
+5. **13% of genes were dropped** to keep both models on identical rows — but the
+   `keep_missing` variant puts them back and the answer is unchanged, so this
+   caveat is now tested rather than merely acknowledged.
 6. **A null result isn't proof of absence.** It means: at this sample size, with
    these features, no detectable improvement. A different structure
-   representation could still work.
+   representation could still work — though the two most obvious alternatives
+   have now been tried and neither changed the answer.
 
 ---
 
 ## Files
 
+### Scripts
+
 | What | Where |
 |---|---|
-| Main analysis | `analysis/models/xgb_structure_comparison.R` |
-| icSHAPE analysis | `analysis/models/xgb_structure_gini_subset.R` |
-| Shared feature definitions | `analysis/models/xgb_structure_features.R` |
-| Tables (12) | `data/outputs/tables/xgb_structure_*.csv` |
-| Figures (5, jpg + pdf) | `data/outputs/plots/xgb_structure_*` |
-| Folds, fits, manifest | `data/outputs/xgb_structure/` |
+| Main comparison | `analysis/models/xgb_structure_comparison.R [variant]` |
+| Figures only (~5 s) | `analysis/models/xgb_structure_plots.R` |
+| Sensitivity table | `analysis/models/xgb_structure_variant_summary.R` |
+| icSHAPE secondary | `analysis/models/xgb_structure_gini_subset.R` |
+| Feature blocks + variant registry | `analysis/models/xgb_structure_features.R` |
 
-Reproducible: seed 42, reruns give identical numbers.
+### Outputs
 
-**Key figures for the talk**
+One self-contained directory per run, under `data/outputs/xgb_structure/`:
+
+```
+xgb_structure/
+├── default/       tables/  plots/  fits, folds, manifest, SUMMARY.txt
+├── keep_missing/  same
+├── with_raw_mfe/  same
+├── gini/          the icSHAPE secondary run
+└── _summary/      the cross-variant sensitivity table and figure
+```
+
+### How to re-run
+
+```bash
+Rscript analysis/models/xgb_structure_comparison.R              # default, ~40 min cold
+Rscript analysis/models/xgb_structure_comparison.R keep_missing
+Rscript analysis/models/xgb_structure_variant_summary.R         # seconds
+Rscript analysis/models/xgb_structure_plots.R                   # figures only, ~5 s
+```
+
+Reproducible: seed 42, reruns give identical numbers. Fitted models are cached
+per variant and keyed on the predictor lists, gene IDs, seed and tuning grid, so
+a re-run takes about 70 seconds unless something that affects the models changed
+— in which case it re-tunes on its own. `XGB_REFIT=1` forces it.
+
+**Key figures for the talk** (in `data/outputs/xgb_structure/default/plots/`
+unless noted)
 
 1. `xgb_structure_delta_metrics` — the three changes with error bars (the null)
 2. `xgb_structure_paired_slices` — improvement is not consistent across the test set
-3. `xgb_structure_gini_deltas` — the icSHAPE result
-4. `xgb_structure_modelB_importance` — the importance trap
+3. `_summary/plots/xgb_structure_variant_summary` — the null survives all three specifications
+4. `gini/plots/xgb_structure_gini_deltas` — the icSHAPE result
+5. `xgb_structure_modelB_importance` — the importance trap

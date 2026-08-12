@@ -71,9 +71,13 @@ N_WORKERS <- 4L
 N_THREADS <- 3L
 GRID_SIZE <- as.integer(Sys.getenv("XGB_GINI_GRID_SIZE", "20"))
 
-RUN_DIR   <- file.path(OUTPUT_DIR, "xgb_structure")
-PLOT_DIR  <- file.path(OUTPUT_DIR, "plots")
-TABLE_DIR <- file.path(OUTPUT_DIR, "tables")
+# Its own directory, alongside the variants but not one of them: this run has a
+# different design (three models, cross-validation) and a different eligible
+# set, so it is not a specification of the A-vs-B comparison and must not be
+# swept into the variant sensitivity table.
+RUN_DIR   <- file.path(OUTPUT_DIR, "xgb_structure", "gini")
+PLOT_DIR  <- file.path(RUN_DIR, "plots")
+TABLE_DIR <- file.path(RUN_DIR, "tables")
 for (d in c(RUN_DIR, PLOT_DIR, TABLE_DIR)) {
   dir.create(d, showWarnings = FALSE, recursive = TRUE)
 }
@@ -93,7 +97,7 @@ future::plan(future::multisession, workers = N_WORKERS)
 # xgb_structure_features.R), then cut down further to complete cases on Gini.
 
 log_msg("Building the Gini-complete subset")
-el <- eligible_dataset("human")
+el <- eligible_dataset("human", resolve_variant("default"))
 
 BASELINE  <- el$baseline
 STRUCTURE <- el$structure

@@ -31,6 +31,15 @@ suppressPackageStartupMessages({
 })
 
 if (!exists("OUTPUT_DIR")) source("R/load_all.R")
+if (!exists("resolve_variant")) source("analysis/models/xgb_structure_features.R")
+
+# Which variant's artefacts to draw. Inherited from the calling script when
+# sourced; otherwise taken from XGB_VARIANT, defaulting to `default`:
+#
+#   Rscript analysis/models/xgb_structure_plots.R                    # default
+#   XGB_VARIANT=keep_missing Rscript analysis/models/xgb_structure_plots.R
+PLOT_VARIANT <- if (exists("VARIANT")) VARIANT else
+  resolve_variant(Sys.getenv("XGB_VARIANT", "default"))
 
 
 # ----------------------------- Style knobs ----------------------------------
@@ -44,13 +53,27 @@ BASE_SIZE     <- 12
 PLOT_DPI      <- 300
 PLOT_FORMATS  <- c("jpg", "pdf")
 
-RUN_DIR   <- file.path(OUTPUT_DIR, "xgb_structure")
-PLOT_DIR  <- file.path(OUTPUT_DIR, "plots")
-TABLE_DIR <- file.path(OUTPUT_DIR, "tables")
+RUN_DIR   <- variant_dir(PLOT_VARIANT, "root")
+PLOT_DIR  <- variant_dir(PLOT_VARIANT, "plots")
+TABLE_DIR <- variant_dir(PLOT_VARIANT, "tables")
 dir.create(PLOT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 METRIC_LABEL <- c(rsq_trad = "R² (held-out)", rmse = "RMSE", mae = "MAE",
                   rsq = "r² (correlation)")
+
+# Any figure from a non-default specification carries the variant in its title.
+# Without it, a `keep_missing` figure is visually indistinguishable from the
+# committed result and could be presented as the headline by accident — which
+# is precisely the failure mode the sensitivity framing exists to prevent.
+title_for <- function(txt) {
+  if (identical(PLOT_VARIANT$name, "default")) txt
+  else paste0("[", PLOT_VARIANT$name, "] ", txt)
+}
+variant_note <- function() {
+  if (identical(PLOT_VARIANT$name, "default")) ""
+  else sprintf("\nSENSITIVITY VARIANT '%s': %s. Not the committed result.",
+               PLOT_VARIANT$name, PLOT_VARIANT$label)
+}
 
 theme_xgb <- function(subtitle_size = 10) {
   theme_minimal(base_size = BASE_SIZE) +
@@ -67,14 +90,16 @@ theme_xgb <- function(subtitle_size = 10) {
 #' warning to show for it. Since the PDFs are the presentation assets, a
 #' silently corrupted glyph is the worst possible failure mode. cairo_pdf
 #' handles ρ, ² and the em dash correctly.
-save_plot <- function(p, name, w = 210, h = 148) {
+save_plot <- function(p, name, w = 210, h = 148, dir = PLOT_DIR) {
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
   for (ext in PLOT_FORMATS) {
-    args <- list(filename = file.path(PLOT_DIR, paste0(name, ".", ext)),
+    args <- list(filename = file.path(dir, paste0(name, ".", ext)),
                  plot = p, width = w, height = h, units = "mm", dpi = PLOT_DPI)
     if (ext == "pdf") args$device <- grDevices::cairo_pdf
     do.call(ggsave, args)
   }
-  message("  wrote ", name, " (", paste(PLOT_FORMATS, collapse = ", "), ")")
+  message("  wrote ", file.path(dir, name), " (",
+          paste(PLOT_FORMATS, collapse = ", "), ")")
 }
 
 
@@ -130,13 +155,13 @@ p_delta <- deltas |>
   scale_y_continuous(breaks = NULL, limits = c(0.5, 1.5)) +
   facet_wrap(~ metric_lab, scales = "free_x", ncol = 1) +
   labs(
-    title    = "Change in held-out performance from adding secondary structure",
+    title    = title_for("Change in held-out performance from adding secondary structure"),
     subtitle = sprintf(paste0("Model B minus Model A on %d held-out genes; ",
                               "point estimate and 95%% paired-bootstrap CI (%d reps).\n",
                               "R²: higher is better, so positive favours structure. ",
                               "RMSE / MAE: lower is better, so negative favours structure.\n",
-                              "Filled points clear zero; hollow grey points do not."),
-                       N_TEST, N_BOOT),
+                              "Filled points clear zero; hollow grey points do not.%s"),
+                       N_TEST, N_BOOT, variant_note()),
     x = "Delta (Model B - Model A), PC1 units", y = NULL
   ) +
   theme_xgb() +
@@ -161,10 +186,10 @@ p_paired <- chunks |>
                                  `baseline + structure` = COL_STRUCTURE)) +
   facet_wrap(~ metric_lab, scales = "free_y") +
   labs(
-    title    = "Paired performance across family-blocked slices of the held-out set",
+    title    = title_for("Paired performance across family-blocked slices of the held-out set"),
     subtitle = paste0("One line per slice. A consistent effect moves every line ",
                       "the same way; a single crossing line means the pooled\n",
-                      "delta is carried by one corner of the test set."),
+                      "delta is carried by one corner of the test set.", variant_note()),
     x = NULL, y = NULL
   ) +
   theme_xgb() +
@@ -217,7 +242,7 @@ p_obspred <- obspred_long |>
                                           "Model B: baseline + structure"))) +
   coord_equal(xlim = lims, ylim = lims) +
   facet_wrap(~ model) +
-  labs(title = "Observed vs held-out predicted half-life",
+  labs(title = title_for("Observed vs held-out predicted half-life"),
        subtitle = sprintf(paste0("Identical axis limits. Dashed line is y = x, not a fit. ",
                                  "Agarwal & Kelley consensus PC1, untransformed.\n",
                                  "R² is the coefficient of determination (1 - SSres/SStot), ",
@@ -248,7 +273,7 @@ p_imp <- imp |>
   geom_col() +
   scale_fill_manual(values = c(baseline = "grey65", structure = COL_STRUCTURE)) +
   scale_y_discrete(labels = function(x) vapply(x, format_col_name, character(1))) +
-  labs(title = "Model B gain importance (top 25): exploratory only",
+  labs(title = title_for("Model B gain importance (top 25): exploratory only"),
        subtitle = paste0("Correlated predictors share and redistribute gain, so ",
                          "this is not an effect estimate and does not rank\n",
                          "independent contributions. The statistical evidence is ",
@@ -264,8 +289,13 @@ save_plot(p_imp, "xgb_structure_modelB_importance", h = 180)
 # Rendered only if the secondary run has been done. Absent is not an error —
 # the main comparison stands on its own.
 
-gini_path <- optional(file.path(TABLE_DIR, "xgb_structure_gini_deltas.csv"))
-gini_man  <- optional(file.path(RUN_DIR, "gini_run_manifest.rds"))
+# The icSHAPE run has its own directory, not a variant's — it is a different
+# design on a different eligible set, always built from the default feature
+# blocks. So this section is independent of PLOT_VARIANT and renders the same
+# figure whichever variant is being drawn.
+GINI_DIR  <- file.path(OUTPUT_DIR, "xgb_structure", "gini")
+gini_path <- optional(file.path(GINI_DIR, "tables", "xgb_structure_gini_deltas.csv"))
+gini_man  <- optional(file.path(GINI_DIR, "gini_run_manifest.rds"))
 
 if (is.null(gini_path) || is.null(gini_man)) {
   message("  skipping the icSHAPE figure — run `Rscript ", GINI, "` to produce it")
@@ -301,7 +331,8 @@ if (is.null(gini_path) || is.null(gini_man)) {
     theme_xgb(subtitle_size = 9) +
     theme(panel.grid.major.y = element_blank())
 
-  save_plot(p_gini, "xgb_structure_gini_deltas", w = 300, h = 155)
+  save_plot(p_gini, "xgb_structure_gini_deltas", w = 300, h = 155,
+            dir = file.path(GINI_DIR, "plots"))
 }
 
 message("Figures written to ", PLOT_DIR)

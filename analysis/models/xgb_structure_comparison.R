@@ -75,9 +75,25 @@ N_CHUNKS   <- 5L       # family-blocked slices of test, for the consistency plot
 N_WORKERS  <- 4L
 N_THREADS  <- 3L
 
-RUN_DIR    <- file.path(OUTPUT_DIR, "xgb_structure")
-PLOT_DIR   <- file.path(OUTPUT_DIR, "plots")
-TABLE_DIR  <- file.path(OUTPUT_DIR, "tables")
+# --- Variant ----------------------------------------------------------------
+# Which specification to run. A variant may change row eligibility and the
+# feature blocks, and nothing else — see VARIANTS in xgb_structure_features.R
+# for the registry and for why these are a SENSITIVITY ANALYSIS rather than a
+# set of independent tests.
+#
+#   Rscript analysis/models/xgb_structure_comparison.R              # default
+#   Rscript analysis/models/xgb_structure_comparison.R keep_missing
+#   Rscript analysis/models/xgb_structure_comparison.R with_raw_mfe
+#
+# Every variant gets its own self-contained directory, so their fit caches,
+# tables and figures cannot collide or silently overwrite one another.
+
+.args   <- commandArgs(trailingOnly = TRUE)
+VARIANT <- resolve_variant(if (length(.args) >= 1) .args[[1]] else "default")
+
+RUN_DIR    <- variant_dir(VARIANT, "root")
+PLOT_DIR   <- variant_dir(VARIANT, "plots")
+TABLE_DIR  <- variant_dir(VARIANT, "tables")
 for (d in c(RUN_DIR, PLOT_DIR, TABLE_DIR)) {
   dir.create(d, showWarnings = FALSE, recursive = TRUE)
 }
@@ -103,7 +119,7 @@ future::plan(future::multisession, workers = N_WORKERS)
 # ----------------------------- 1. Eligible dataset --------------------------
 
 log_msg("Building eligible dataset")
-el <- eligible_dataset("human")
+el <- eligible_dataset("human", VARIANT)
 report_feature_sets(el)
 
 dat        <- el$data
@@ -282,7 +298,8 @@ fit_key <- list(
   seed           = SEED,
   grid           = xgb_grid,
   inner_v        = INNER_V,
-  target         = TARGET_COL
+  target         = TARGET_COL,
+  variant        = VARIANT
 )
 
 FITS_PATH  <- file.path(RUN_DIR, "final_fits.rds")
@@ -573,14 +590,37 @@ write_csv(imp, file.path(TABLE_DIR, "xgb_structure_modelB_gain_importance.csv"))
 #
 # Fitted on the training pool only, so no test information enters even a
 # descriptive table.
+#
+# Complete cases regardless of the variant's row policy. Under "native_na" the
+# training pool contains NAs, and qr() does not merely warn on those — it fails
+# outright with "NA/NaN/Inf in foreign function call". Restricting to rows
+# complete on baseline + structure also makes the redundancy figures comparable
+# ACROSS variants, since they are then measured on the same genes rather than
+# on whatever each policy happened to admit.
 
 log_msg("Measuring how much of each structure feature the baseline explains")
 
-qr_base <- qr(cbind(1, as.matrix(trainval[, BASELINE])))
+red_rows <- trainval[stats::complete.cases(
+  trainval[, c(BASELINE, STRUCTURE), drop = FALSE]), , drop = FALSE]
+
+if (nrow(red_rows) < 10 * length(BASELINE)) {
+  log_msg("  skipped: only ", nrow(red_rows), " complete rows for ",
+          length(BASELINE), " predictors — too few to regress against")
+  redundancy <- tibble(structure_feature = character(),
+                       r2_from_baseline = numeric(), gain = numeric(),
+                       reading = character())
+} else {
+
+if (nrow(red_rows) < nrow(trainval)) {
+  log_msg("  using ", nrow(red_rows), " of ", nrow(trainval),
+          " training rows (complete cases; this variant admits missing data)")
+}
+
+qr_base <- qr(cbind(1, as.matrix(red_rows[, BASELINE])))
 redundancy <- tibble(
   structure_feature = STRUCTURE,
   r2_from_baseline  = vapply(STRUCTURE, function(v) {
-    y <- trainval[[v]]
+    y <- red_rows[[v]]
     1 - sum((y - qr.fitted(qr_base, y))^2) / sum((y - mean(y))^2)
   }, numeric(1))
 ) |>
@@ -591,14 +631,18 @@ redundancy <- tibble(
                            "largely a restatement of baseline information",
                            "genuinely new information, but not predictive"))
 
+}   # end of the "enough complete rows" branch
+
 write_csv(redundancy, file.path(TABLE_DIR, "xgb_structure_redundancy.csv"))
 
-cat("\n=== How much of each structure feature the baseline already explains ===\n")
-print(as.data.frame(redundancy |> select(-reading)), row.names = FALSE, digits = 3)
-cat(sprintf("\n%d of %d structure columns are >60%% reconstructible from baseline.\n",
-            sum(redundancy$r2_from_baseline > 0.6), nrow(redundancy)))
-cat("The rest are genuinely novel and still bought no held-out improvement --\n")
-cat("which is the sharper point: novelty is not relevance.\n")
+if (nrow(redundancy) > 0) {
+  cat("\n=== How much of each structure feature the baseline already explains ===\n")
+  print(as.data.frame(redundancy |> select(-reading)), row.names = FALSE, digits = 3)
+  cat(sprintf("\n%d of %d structure columns are >60%% reconstructible from baseline.\n",
+              sum(redundancy$r2_from_baseline > 0.6), nrow(redundancy)))
+  cat("The rest are genuinely novel and still bought no held-out improvement --\n")
+  cat("which is the sharper point: novelty is not relevance.\n")
+}
 
 gain_share <- imp |>
   group_by(block) |>
@@ -630,6 +674,9 @@ manifest <- list(
                           "prediction of measured mRNA half-life beyond a model",
                           "containing non-structure transcript features?"),
   species         = "human",
+  variant         = VARIANT$name,
+  variant_label   = VARIANT$label,
+  variant_rows    = VARIANT$rows,
   cache           = cache_path("human"),
   response        = TARGET_COL,
   response_note   = paste("Agarwal & Kelley 2022 consensus half-life PC1,",
