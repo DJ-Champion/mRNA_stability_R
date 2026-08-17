@@ -16,7 +16,7 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 
 # Bump this integer when feature-engineering logic changes so stale caches
 # are regenerated instead of silently reused.
-CACHE_VERSION <- 9L
+CACHE_VERSION <- 10L
 
 
 # --- Region vocabulary -------------------------------------------------------
