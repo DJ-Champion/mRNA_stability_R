@@ -1,3 +1,29 @@
+> ## ⚠️ SUPERSEDED — do not quote the numbers below
+>
+> This report describes the **two-model design** (Model A vs Model B) that ran
+> on 2026-08-12. That design has been replaced by a **four-rung nested ladder**
+> — Baseline → S-core → S-select → S-full — and the baseline itself changed:
+> the 20 `aa_*` amino-acid frequency columns were removed, because they are an
+> exact deterministic function of the codon columns that are kept
+> (`aa_x = sum(codons for x) / (1 - stop_fraction - codon_other)`, verified to
+> 5.6e-17 on the v9 human cache). The baseline went from 127 predictors to 107.
+>
+> **Every number in this report was produced against the old baseline and is
+> therefore not comparable to the current run.** The old variants map onto the
+> new ladder as follows:
+>
+> | Old | New |
+> |---|---|
+> | `default` structure block (22 cols) | **S-select** rung |
+> | `with_raw_mfe` (44 cols) | **S-full** rung |
+> | `keep_missing` row policy | the new `default` variant's row policy |
+> | — | **S-core** (15 cols) — new, and now the pre-specified primary |
+>
+> The prose about method, the paired-bootstrap sidebar, the importance trap and
+> the caveats all still apply and carry over. The **result tables do not.**
+> Rewrite this file from the new `SUMMARY.txt` and `_summary/` tables once the
+> full-budget ladder has been run.
+
 # Does secondary structure help predict mRNA half-life?
 
 A short summary of the XGBoost test. Run 2026-08-12.
