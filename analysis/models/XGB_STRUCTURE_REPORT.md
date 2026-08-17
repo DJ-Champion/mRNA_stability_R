@@ -15,8 +15,9 @@ does not replicate, and is dissected in the sensitivity section.)
 **The interesting exception.** On the 861 genes with experimental icSHAPE
 probing, *measured* structural Gini does add predictive information — ΔR²
 **+0.026**, CI **+0.007 to +0.045** — while computed folding on those same genes
-adds nothing. Computed and measured structure are not interchangeable here. See
-the secondary test, and the three caveats that come with it.
+adds nothing. Computed and measured structure are not interchangeable here.
+That result has its own document — [`XGB_ICSHAPE_REPORT.md`](XGB_ICSHAPE_REPORT.md)
+— because its caveats are heavy enough to need one.
 
 ---
 
@@ -321,37 +322,28 @@ one baseline feature carries 4× the whole block.
 
 ### Secondary test — icSHAPE Gini
 
-Run 2026-08-17 against this same 107-feature baseline, on the **861 genes that
-actually have icSHAPE data** (7.3% of the complete-case eligible set). Because
-the committed test split holds only ~98 Gini-complete genes, this design uses
-5-fold cross-validation blocked on `family_id_medium`, with 4-fold inner tuning
-over a 20-point grid, and reports out-of-fold predictions.
+**Reported in full in [`XGB_ICSHAPE_REPORT.md`](XGB_ICSHAPE_REPORT.md).** It has
+its own document because its design, its eligible set and its caveats are all
+different from this one's, and because its caveats are heavy enough that a
+summary row on a slide would misrepresent it.
 
-Three models: Baseline (107) → S-core (122, the primary rung's 15 z-scores) →
-S-core + Gini (130, adding 8 measured Gini columns).
-
-| Out-of-fold, 861 genes | R² | RMSE | MAE |
-|---|---|---|---|
-| Baseline | 0.4785 | 3.568 | 2.734 |
-| S-core | 0.4805 | 3.561 | 2.741 |
-| **S-core + icSHAPE Gini** | **0.5066** | **3.470** | **2.653** |
+The headline, on the 861 genes with probing data, out-of-fold:
 
 | Comparison | ΔR² | 95% CI | |
 |---|---|---|---|
-| S-core vs Baseline *(the ladder's primary, replicated on this subset)* | +0.0020 | −0.0070 to +0.0111 | no effect |
-| **icSHAPE Gini increment** | **+0.0261** | **+0.0074 to +0.0452** | **real effect** |
-| **S-core + Gini vs Baseline** | **+0.0281** | **+0.0084 to +0.0485** | **real effect** |
-
-All three metrics agree, and all three clear zero for both Gini rows. The
-computed-structure row does not, reproducing the main null on this subset.
+| S-core vs Baseline *(computed structure, replicated on this subset)* | +0.0020 | −0.0070 to +0.0111 | no effect |
+| **icSHAPE Gini increment** *(measured structure)* | **+0.0261** | **+0.0074 to +0.0452** | **real effect** |
 
 So: **computed folding energy adds nothing; experimentally measured structure
-does.** This replicates the pre-ladder result (which gave +0.029 against the old
-127-column baseline) now that the baseline has been cleaned of its redundant
-blocks — the increment shrank slightly, from +0.029 to +0.026, and survived.
+does.** This replicates the pre-ladder result (+0.029 against the old 127-column
+baseline) now that the baseline has been cleaned — the increment shrank to
++0.026 and survived.
 
-**Read the three caveats below before this goes on a slide.** The effect is
-real, but this design cannot say it is a *structure* effect.
+**Do not quote this without its caveats.** The probed genes are 10×
+over-represented among the most stable transcripts, and Gini derives from
+probing read depth, which tracks abundance, which tracks stability. The effect
+is real; that it is a *structure* effect is not established. The other report
+quantifies all of this.
 
 ---
 
@@ -424,13 +416,47 @@ The three metrics agreeing is *not* three independent confirmations — they are
 computed from the same predictions on the same genes and are strongly
 correlated. The sign-flip p-values are likewise on the same predictions.
 
-**What would settle it:** refit S-select under S-core's winning configuration
-and see whether the gap survives. If it vanishes, it was tuning variance; if it
-holds, the `mfe_delta` block is genuinely harmful on complete cases and deserves
-a proper look. That refit has not been run.
+**This has now been tested.** `xgb_structure_tuning_diagnostic.R` refits all
+four rungs under each configuration in turn and scores them on the same
+held-out genes. Within one configuration block the only thing differing between
+rungs is the feature set, so the ladder reads feature-only:
 
-Note also what this row is *not* evidence for: it points the wrong way for the
-structure hypothesis. Nothing in either variant favours structure at any rung.
+| Held-out R² | under `mod16` (S-core's) | under `mod54` (S-select's) |
+|---|---|---|
+| Baseline | 0.4673 | 0.4652 |
+| S-core | 0.4634 | 0.4630 |
+| S-select | **0.4752** | **0.4567** |
+| S-full | 0.4642 | 0.4634 |
+
+| S-select vs Baseline | ΔR² | 95% CI | |
+|---|---|---|---|
+| both under `mod16` | +0.0079 | −0.0013 to +0.0166 | not conclusive |
+| both under `mod54` | −0.0085 | −0.0171 to +0.0008 | not conclusive |
+| *as tuned (each rung its own winner)* | *−0.0106* | *−0.0188 to −0.0025* | *conclusive* |
+
+**The deficit does not survive holding the configuration fixed, and its sign
+flips.** The conclusive row is an artefact of comparing S-select's unlucky
+tuning draw against the baseline's own winner, not evidence about the
+`mfe_delta` columns.
+
+The magnitude is worth internalising: **the same feature set moves 0.0185 in
+held-out R² between two configurations** — from 0.4567 to 0.4752 — while the
+largest feature effect measured anywhere in this study is about 0.011. Tuning
+variance is bigger than everything the ladder is trying to measure. The other
+three rungs barely move between configurations (≤0.002), so the sensitivity is
+concentrated in S-select, which is itself consistent with an unlucky draw rather
+than a property of the block.
+
+**Do not read the 0.4752 cell as "structure helps."** It is the best of 8
+post-hoc fits under configurations chosen after seeing the result, and its own
+interval spans zero. The diagnostic explains a row; it does not estimate an
+effect, and it does not change the pre-specified design — under which every rung
+is entitled to its own search, and under which the primary contrast (S-core, not
+S-select) is unaffected either way.
+
+Note also what the original row is *not* evidence for: it points the wrong way
+for the structure hypothesis. Nothing in either variant favours structure at any
+rung.
 
 ---
 
@@ -464,7 +490,7 @@ plan.
 Tempting, and it may even be true, but this design cannot support it. The Gini
 increment is measured on a non-random 7% of the corpus, and Gini is derived from
 probing read depth, which tracks abundance, which is itself associated with
-half-life. An abundance proxy would produce exactly this result. Caveats 5–7
+half-life. An abundance proxy would produce exactly this result. Caveats 6–8
 below are the ones to have ready.
 
 ---
@@ -479,28 +505,43 @@ below are the ones to have ready.
    generalisation to small and mid-sized families, not to the largest ones.
 3. **One conclusive secondary row exists**, and it favours the baseline
    (`complete_case`, S-select). It is unadjusted, does not replicate in
-   `default`, and does not persist at S-full — see the sensitivity section. Have
-   the explanation ready rather than being surprised by it.
-4. **The response is a PC1 score, not hours.** RMSE and MAE are in score units
+   `default`, does not persist at S-full, and does not survive holding the
+   hyperparameter configuration fixed — it is tuning variance, diagnosed in the
+   sensitivity section. Have the explanation ready rather than being surprised
+   by it.
+4. **Tuning variance is larger than any effect measured here.** The same feature
+   set can move 0.0185 in held-out R² between two legitimately selected
+   configurations, against a largest-observed feature effect of about 0.011.
+   This is the strongest argument for the paired design and against reading
+   single R² values across models.
+5. **The response is a PC1 score, not hours.** RMSE and MAE are in score units
    and are not interpretable as a duration.
-5. **The icSHAPE genes aren't a random sample.** Probing coverage tracks
-   expression, so those 861 genes skew toward abundant transcripts and do not
-   represent the corpus.
-6. **Gini is measured, not computed.** A model using it cannot score a
+6. **The icSHAPE genes aren't a random sample, and the bias is aligned with
+   the outcome.** They are 10× over-represented among the most stable
+   transcripts (26.7% of the top half-life decile, 2.7% of the bottom) and are
+   markedly shorter than the corpus.
+7. **Gini is measured, not computed.** A model using it cannot score a
    transcript nobody has probed — a fundamentally different kind of model from
    the ladder, which runs on sequence alone.
-7. **Gini may be an abundance proxy.** It derives from probing read depth, read
+8. **Gini may be an abundance proxy.** It derives from probing read depth, read
    depth tracks abundance, and abundance relates to half-life. This design
    cannot separate those; it would need an expression covariate, which is not
    in the dataset.
-8. **Predictions are shrunk toward the mean** by design, so the model never
+9. **Predictions are shrunk toward the mean** by design, so the model never
    calls the most extreme half-lives. Applies to every rung equally.
-9. **Gain importance is exploratory context**, not an effect estimate.
+10. **Gain importance is exploratory context**, not an effect estimate.
    Correlated predictors share and redistribute importance.
 
 ---
 
 ## Files
+
+### Related reports
+
+| Report | Covers |
+|---|---|
+| **This file** | The four-rung ladder: does *computed* structure help? (no) |
+| [`XGB_ICSHAPE_REPORT.md`](XGB_ICSHAPE_REPORT.md) | The icSHAPE secondary: does *measured* structure help? (yes, with caveats) |
 
 ### Scripts
 
@@ -509,6 +550,7 @@ below are the ones to have ready.
 | Main comparison (models + figures) | `analysis/models/xgb_structure_comparison.R [variant]` |
 | Figures only (~5 s) | `analysis/models/xgb_structure_plots.R` |
 | Sensitivity table across variants | `analysis/models/xgb_structure_variant_summary.R` |
+| Tuning-variance diagnostic | `analysis/models/xgb_structure_tuning_diagnostic.R` |
 | icSHAPE secondary | `analysis/models/xgb_structure_gini_subset.R` |
 | Feature blocks, ladder + variant registry | `analysis/models/xgb_structure_features.R` |
 

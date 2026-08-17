@@ -19,10 +19,14 @@
 #
 # THREE CAVEATS THAT MUST TRAVEL WITH ANY NUMBER FROM THIS FILE.
 #
-# 1. SELECTION. icSHAPE coverage is not a random sample of the transcriptome —
-#    probing depth tracks expression, so these 861 genes are biased toward
-#    abundant transcripts. A result here describes well-probed genes, not the
-#    corpus. n = 861 is also small, so intervals are wide.
+# 1. SELECTION, AND IT IS ALIGNED WITH THE OUTCOME. icSHAPE coverage is not a
+#    random sample of the transcriptome — probing depth tracks expression, so
+#    these 861 genes are biased toward abundant transcripts. Section 2
+#    quantifies it rather than asserting it, and the imbalance lands on the
+#    response itself: probed genes sit almost a full standard deviation higher
+#    in half-life, and coverage runs ~10x denser in the most-stable decile than
+#    the least. A result here describes well-probed genes, not the corpus.
+#    n = 861 is also small, so intervals are wide.
 #
 # 2. GINI IS MEASURED, NOT PREDICTED. Every other feature in this project is
 #    computed from sequence. icSHAPE Gini is an experimental readout, so a
@@ -89,6 +93,20 @@ log_msg <- function(...) {
   utils::flush.console()
 }
 
+#' The selection caveat, carrying the measured imbalance rather than asserting
+#' it. Built from the profile so the manifest's caveat text cannot drift from
+#' the table it describes — this caveat travels further than the CSV does, and
+#' a number in it is what stops it being read as boilerplate.
+selection_caveat <- function(target_row, pct_lowest, pct_highest, is_sub) {
+  sprintf(paste("icSHAPE coverage is not random and the bias is aligned with the",
+                "OUTCOME: probed genes sit %+.2f standardised units higher in %s,",
+                "and coverage runs %.1f%% of the least-stable decile to %.1f%% of",
+                "the most-stable (base rate %.1f%%). Results describe well-probed",
+                "genes, not the corpus."),
+          target_row$std_diff, TARGET_COL, pct_lowest, pct_highest,
+          100 * mean(is_sub))
+}
+
 future::plan(future::multisession, workers = N_WORKERS)
 
 
@@ -149,7 +167,113 @@ if (length(zv)) {
 }
 
 
-# ----------------------------- 2. Outer folds -------------------------------
+# ----------------------------- 2. Who these genes are -----------------------
+# Caveat 1 says the probed genes are not a random sample. This quantifies it,
+# because "biased toward abundant transcripts" is an assertion and a reader is
+# entitled to the size of the bias — especially as it turns out to be aligned
+# with the OUTCOME, which is the version of this problem that actually threatens
+# the interpretation.
+#
+# EVERY baseline column is profiled, not a chosen handful. Picking the variables
+# to report after seeing which ones moved would be exactly the selective
+# reporting the rest of this analysis is built to avoid; the console prints the
+# largest imbalances but the CSV carries all of them.
+#
+# Standardised difference rather than a p-value: at n = 861 vs 10,940 almost
+# anything is "significant", and the question here is how big the imbalance is,
+# not whether it is nonzero.
+
+profile_cols <- intersect(unique(c(TARGET_COL, BASELINE)), names(el$data))
+is_sub       <- el$data$gene_id %in% sub$gene_id
+
+profile <- map_dfr(profile_cols, function(v) {
+  a <- el$data[[v]][is_sub]
+  b <- el$data[[v]][!is_sub]
+  pooled_sd <- sqrt((stats::var(a, na.rm = TRUE) + stats::var(b, na.rm = TRUE)) / 2)
+  tibble(variable    = v,
+         probed_mean = mean(a, na.rm = TRUE),
+         probed_sd   = stats::sd(a, na.rm = TRUE),
+         probed_med  = stats::median(a, na.rm = TRUE),
+         rest_mean   = mean(b, na.rm = TRUE),
+         rest_sd     = stats::sd(b, na.rm = TRUE),
+         rest_med    = stats::median(b, na.rm = TRUE),
+         std_diff    = if (isTRUE(pooled_sd > 0)) {
+           (mean(a, na.rm = TRUE) - mean(b, na.rm = TRUE)) / pooled_sd
+         } else NA_real_)
+}) |>
+  mutate(is_target = variable == TARGET_COL, n_probed = sum(is_sub),
+         n_rest = sum(!is_sub)) |>
+  arrange(desc(abs(std_diff)))
+
+write_csv(profile, file.path(TABLE_DIR, "xgb_structure_gini_subset_profile.csv"))
+
+# Coverage by outcome decile. The single most decision-relevant view: if probing
+# density tracks the response, the confound in caveat 3 is present in the data
+# rather than merely conceivable.
+coverage <- tibble(halflife = el$data[[TARGET_COL]], probed = is_sub) |>
+  mutate(decile = dplyr::ntile(halflife, 10)) |>
+  group_by(decile) |>
+  summarise(halflife_from = min(halflife), halflife_to = max(halflife),
+            n = n(), n_probed = sum(probed),
+            pct_probed = 100 * mean(probed), .groups = "drop")
+
+write_csv(coverage, file.path(TABLE_DIR, "xgb_structure_gini_coverage_by_decile.csv"))
+
+target_row <- profile |> filter(is_target)
+lo <- coverage$pct_probed[coverage$decile == 1]
+hi <- coverage$pct_probed[coverage$decile == 10]
+
+cat("\n=== Who the", nrow(sub), "probed genes are ===\n")
+cat("Largest imbalances vs the other", sum(!is_sub), "eligible genes",
+    "(standardised difference):\n")
+profile |>
+  slice_head(n = 10) |>
+  select(variable, probed_mean, rest_mean, std_diff) |>
+  as.data.frame() |>
+  print(row.names = FALSE, digits = 3)
+
+cat(sprintf("\nThe response itself: %s is %+.2f standardised units higher in the\n",
+            TARGET_COL, target_row$std_diff))
+cat(sprintf("probed genes (mean %.2f vs %.2f). Probing coverage by outcome decile\n",
+            target_row$probed_mean, target_row$rest_mean))
+cat(sprintf("runs %.1f%% (least stable) to %.1f%% (most stable), base rate %.1f%%.\n",
+            lo, hi, 100 * mean(is_sub)))
+cat(if (abs(target_row$std_diff) > 0.2) {
+  paste0("READING: selection is aligned with the outcome, so the abundance\n",
+         "confound in caveat 3 is present in the data, not merely conceivable.\n",
+         "Any result here describes well-probed genes, not the corpus.\n")
+} else {
+  paste0("READING: the probed genes are not markedly shifted on the outcome.\n")
+})
+
+# Regenerating these two tables costs a full re-tune (~80 min) otherwise, and
+# neither depends on a model — they are properties of the cache and the Gini
+# missingness pattern alone. This guard exists so a change to the profiling code
+# can be checked, and the tables refreshed, without refitting anything.
+#
+#   XGB_GINI_PROFILE_ONLY=1 Rscript analysis/models/xgb_structure_gini_subset.R
+#
+# It back-fills an existing manifest rather than writing a partial one, so a
+# profile-only run cannot leave behind a manifest with no results in it.
+if (nzchar(Sys.getenv("XGB_GINI_PROFILE_ONLY"))) {
+  man_path <- file.path(RUN_DIR, "gini_run_manifest.rds")
+  if (file.exists(man_path)) {
+    m <- readRDS(man_path)
+    m$subset_profile     <- profile
+    m$coverage_by_decile <- coverage
+    m$caveats["selection"] <- selection_caveat(target_row, lo, hi, is_sub)
+    m$profile_added_at   <- Sys.time()
+    saveRDS(m, man_path)
+    log_msg("Profile tables written and manifest back-filled")
+  } else {
+    log_msg("Profile tables written; no manifest to back-fill yet")
+  }
+  future::plan(future::sequential)
+  quit(save = "no", status = 0)
+}
+
+
+# ----------------------------- 3. Outer folds -------------------------------
 # One shared set, created once, reused by all three models — the same guarantee
 # the main run gets from the committed split artefact.
 
@@ -161,7 +285,7 @@ outer_folds <- group_vfold_cv(sub,
 saveRDS(outer_folds, file.path(RUN_DIR, "gini_outer_folds.rds"))
 
 
-# ----------------------------- 3. Model machinery ---------------------------
+# ----------------------------- 4. Model machinery ---------------------------
 # Same spec and same ranges as the main run, so the two are comparable.
 
 xgb_spec <- boost_tree(
@@ -202,7 +326,7 @@ set.seed(SEED)
 xgb_grid <- grid_space_filling(xgb_params, size = GRID_SIZE)
 
 
-# ----------------------------- 4. Nested CV ---------------------------------
+# ----------------------------- 5. Nested CV ---------------------------------
 # For each outer fold: split the training genes into family-blocked inner
 # folds, tune there, refit the winner on the whole outer training set, predict
 # the outer assessment genes. The assessment genes take no part in choosing
@@ -256,7 +380,7 @@ oof_wide <- oof |>
 write_csv(oof_wide, file.path(TABLE_DIR, "xgb_structure_gini_oof_predictions.csv"))
 
 
-# ----------------------------- 5. Metrics and paired bootstrap --------------
+# ----------------------------- 6. Metrics and paired bootstrap --------------
 
 pooled <- oof |>
   group_by(model) |>
@@ -314,12 +438,12 @@ print(as.data.frame(delta_table), row.names = FALSE, digits = 4)
 write_csv(delta_table, file.path(TABLE_DIR, "xgb_structure_gini_deltas.csv"))
 
 
-# ----------------------------- 6. Figure ------------------------------------
+# ----------------------------- 7. Figure ------------------------------------
 # Drawn by xgb_structure_plots.R from the CSV written above, like every other
 # figure in this analysis. Rendered at the end of section 7.
 
 
-# ----------------------------- 7. Manifest ----------------------------------
+# ----------------------------- 8. Manifest ----------------------------------
 
 saveRDS(list(
   role          = "SECONDARY analysis; see xgb_structure_comparison.R for the primary",
@@ -330,27 +454,29 @@ saveRDS(list(
   design_note   = paste("cross-validation rather than the committed holdout,",
                         "because `test` holds only ~98 Gini-complete genes"),
   caveats       = c(
-    selection   = paste("icSHAPE coverage tracks expression; these genes are",
-                        "biased toward abundant transcripts and do not represent",
-                        "the corpus"),
+    selection   = selection_caveat(target_row, lo, hi, is_sub),
     measured    = paste("Gini is an experimental readout, not computed from",
                         "sequence, so model C cannot score an unprobed transcript"),
     confounding = paste("Gini is derived from probing read depth, which tracks",
                         "abundance, which is associated with half-life; this design",
-                        "cannot separate a structure effect from an abundance proxy")),
+                        "cannot separate a structure effect from an abundance proxy.",
+                        "The selection profile shows the confound is present in",
+                        "the data, not merely conceivable")),
   predictors    = PREDS,
   gini_block    = GINI,
   seed          = SEED,
   grid_size     = GRID_SIZE,
   pooled        = pooled,
   delta_table   = delta_table,
+  subset_profile     = profile,
+  coverage_by_decile = coverage,
   fitted_at     = Sys.time()
 ), file.path(RUN_DIR, "gini_run_manifest.rds"))
 
 log_msg("Secondary run complete. n = ", nrow(sub), " genes.")
 
 
-# ----------------------------- 8. Figure ------------------------------------
+# ----------------------------- 9. Figure ------------------------------------
 # Sourced after the manifest, because the figure's subtitle reads its design
 # string and gene count from it. See section 16 of the comparison script for
 # why rendering lives in a separate file.
