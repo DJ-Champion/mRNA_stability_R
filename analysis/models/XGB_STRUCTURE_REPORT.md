@@ -424,13 +424,47 @@ The three metrics agreeing is *not* three independent confirmations — they are
 computed from the same predictions on the same genes and are strongly
 correlated. The sign-flip p-values are likewise on the same predictions.
 
-**What would settle it:** refit S-select under S-core's winning configuration
-and see whether the gap survives. If it vanishes, it was tuning variance; if it
-holds, the `mfe_delta` block is genuinely harmful on complete cases and deserves
-a proper look. That refit has not been run.
+**This has now been tested.** `xgb_structure_tuning_diagnostic.R` refits all
+four rungs under each configuration in turn and scores them on the same
+held-out genes. Within one configuration block the only thing differing between
+rungs is the feature set, so the ladder reads feature-only:
 
-Note also what this row is *not* evidence for: it points the wrong way for the
-structure hypothesis. Nothing in either variant favours structure at any rung.
+| Held-out R² | under `mod16` (S-core's) | under `mod54` (S-select's) |
+|---|---|---|
+| Baseline | 0.4673 | 0.4652 |
+| S-core | 0.4634 | 0.4630 |
+| S-select | **0.4752** | **0.4567** |
+| S-full | 0.4642 | 0.4634 |
+
+| S-select vs Baseline | ΔR² | 95% CI | |
+|---|---|---|---|
+| both under `mod16` | +0.0079 | −0.0013 to +0.0166 | not conclusive |
+| both under `mod54` | −0.0085 | −0.0171 to +0.0008 | not conclusive |
+| *as tuned (each rung its own winner)* | *−0.0106* | *−0.0188 to −0.0025* | *conclusive* |
+
+**The deficit does not survive holding the configuration fixed, and its sign
+flips.** The conclusive row is an artefact of comparing S-select's unlucky
+tuning draw against the baseline's own winner, not evidence about the
+`mfe_delta` columns.
+
+The magnitude is worth internalising: **the same feature set moves 0.0185 in
+held-out R² between two configurations** — from 0.4567 to 0.4752 — while the
+largest feature effect measured anywhere in this study is about 0.011. Tuning
+variance is bigger than everything the ladder is trying to measure. The other
+three rungs barely move between configurations (≤0.002), so the sensitivity is
+concentrated in S-select, which is itself consistent with an unlucky draw rather
+than a property of the block.
+
+**Do not read the 0.4752 cell as "structure helps."** It is the best of 8
+post-hoc fits under configurations chosen after seeing the result, and its own
+interval spans zero. The diagnostic explains a row; it does not estimate an
+effect, and it does not change the pre-specified design — under which every rung
+is entitled to its own search, and under which the primary contrast (S-core, not
+S-select) is unaffected either way.
+
+Note also what the original row is *not* evidence for: it points the wrong way
+for the structure hypothesis. Nothing in either variant favours structure at any
+rung.
 
 ---
 
@@ -464,7 +498,7 @@ plan.
 Tempting, and it may even be true, but this design cannot support it. The Gini
 increment is measured on a non-random 7% of the corpus, and Gini is derived from
 probing read depth, which tracks abundance, which is itself associated with
-half-life. An abundance proxy would produce exactly this result. Caveats 5–7
+half-life. An abundance proxy would produce exactly this result. Caveats 6–8
 below are the ones to have ready.
 
 ---
@@ -479,23 +513,30 @@ below are the ones to have ready.
    generalisation to small and mid-sized families, not to the largest ones.
 3. **One conclusive secondary row exists**, and it favours the baseline
    (`complete_case`, S-select). It is unadjusted, does not replicate in
-   `default`, and does not persist at S-full — see the sensitivity section. Have
-   the explanation ready rather than being surprised by it.
-4. **The response is a PC1 score, not hours.** RMSE and MAE are in score units
+   `default`, does not persist at S-full, and does not survive holding the
+   hyperparameter configuration fixed — it is tuning variance, diagnosed in the
+   sensitivity section. Have the explanation ready rather than being surprised
+   by it.
+4. **Tuning variance is larger than any effect measured here.** The same feature
+   set can move 0.0185 in held-out R² between two legitimately selected
+   configurations, against a largest-observed feature effect of about 0.011.
+   This is the strongest argument for the paired design and against reading
+   single R² values across models.
+5. **The response is a PC1 score, not hours.** RMSE and MAE are in score units
    and are not interpretable as a duration.
-5. **The icSHAPE genes aren't a random sample.** Probing coverage tracks
+6. **The icSHAPE genes aren't a random sample.** Probing coverage tracks
    expression, so those 861 genes skew toward abundant transcripts and do not
    represent the corpus.
-6. **Gini is measured, not computed.** A model using it cannot score a
+7. **Gini is measured, not computed.** A model using it cannot score a
    transcript nobody has probed — a fundamentally different kind of model from
    the ladder, which runs on sequence alone.
-7. **Gini may be an abundance proxy.** It derives from probing read depth, read
+8. **Gini may be an abundance proxy.** It derives from probing read depth, read
    depth tracks abundance, and abundance relates to half-life. This design
    cannot separate those; it would need an expression covariate, which is not
    in the dataset.
-8. **Predictions are shrunk toward the mean** by design, so the model never
+9. **Predictions are shrunk toward the mean** by design, so the model never
    calls the most extreme half-lives. Applies to every rung equally.
-9. **Gain importance is exploratory context**, not an effect estimate.
+10. **Gain importance is exploratory context**, not an effect estimate.
    Correlated predictors share and redistribute importance.
 
 ---
