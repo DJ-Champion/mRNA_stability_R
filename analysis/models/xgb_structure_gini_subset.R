@@ -97,20 +97,37 @@ future::plan(future::multisession, workers = N_WORKERS)
 # xgb_structure_features.R), then cut down further to complete cases on Gini.
 
 log_msg("Building the Gini-complete subset")
-el <- eligible_dataset("human", resolve_variant("default"))
+
+# The main run is a four-rung ladder; this secondary design is a three-model
+# comparison and only needs one structure block, so it takes the PRIMARY rung —
+# the same block the headline claim rests on. Restricting the ladder here also
+# keeps the complete-case screen honest: eligible_dataset() screens on the UNION
+# of every rung's structure columns, so leaving the full ladder in place would
+# drop genes for missingness in S-full columns this analysis never uses.
+#
+# `complete_case` rather than the default row policy because this design is
+# already down to ~861 genes and fits a linear-algebra step (the redundancy
+# regression in the main script's terms) badly on NAs; complete cases are also
+# what this run's published n refers to.
+gini_variant <- resolve_variant("complete_case")
+gini_variant$ladder <- gini_variant$ladder[c(REFERENCE_MODEL, PRIMARY_MODEL)]
+
+el <- eligible_dataset("human", gini_variant)
 
 BASELINE  <- el$baseline
-STRUCTURE <- el$structure
+STRUCTURE <- el$models[[PRIMARY_MODEL]]
 GINI      <- el$gini
 
 sub <- el$data
 sub <- sub[stats::complete.cases(sub[, GINI, drop = FALSE]), , drop = FALSE]
 
-PREDS <- list(
-  `A: baseline`                   = BASELINE,
-  `B: baseline + structure`       = c(BASELINE, STRUCTURE),
-  `C: + icSHAPE Gini`             = c(BASELINE, STRUCTURE, GINI)
-)
+PREDS <- setNames(
+  list(BASELINE,
+       c(BASELINE, STRUCTURE),
+       c(BASELINE, STRUCTURE, GINI)),
+  c(REFERENCE_MODEL,
+    PRIMARY_MODEL,
+    paste0(PRIMARY_MODEL, " + icSHAPE Gini")))
 
 cat("\n=== icSHAPE secondary subset ===\n")
 cat(sprintf("Genes with complete baseline + structure + Gini: %d of %d eligible\n",
@@ -278,13 +295,16 @@ paired_boot <- function(lhs, rhs, label) {
     mutate(conclusive = !(ci_low <= 0 & ci_high >= 0))
 }
 
+.M_BASE <- names(PREDS)[1]
+.M_STR  <- names(PREDS)[2]
+.M_GINI <- names(PREDS)[3]
+
 delta_table <- bind_rows(
-  paired_boot("B: baseline + structure", "A: baseline",
-              "structure vs baseline (replicated on subset)"),
-  paired_boot("C: + icSHAPE Gini", "B: baseline + structure",
-              "icSHAPE Gini increment"),
-  paired_boot("C: + icSHAPE Gini", "A: baseline",
-              "structure + Gini vs baseline")
+  paired_boot(.M_STR,  .M_BASE,
+              sprintf("%s vs %s (replicated on subset)", .M_STR, .M_BASE)),
+  paired_boot(.M_GINI, .M_STR,  "icSHAPE Gini increment"),
+  paired_boot(.M_GINI, .M_BASE,
+              sprintf("%s + Gini vs %s", .M_STR, .M_BASE))
 ) |>
   mutate(favours_candidate = if_else(metric == "rsq_trad",
                                      "delta > 0", "delta < 0"))
