@@ -15,8 +15,9 @@ does not replicate, and is dissected in the sensitivity section.)
 **The interesting exception.** On the 861 genes with experimental icSHAPE
 probing, *measured* structural Gini does add predictive information — ΔR²
 **+0.026**, CI **+0.007 to +0.045** — while computed folding on those same genes
-adds nothing. Computed and measured structure are not interchangeable here. See
-the secondary test, and the three caveats that come with it.
+adds nothing. Computed and measured structure are not interchangeable here.
+That result has its own document — [`XGB_ICSHAPE_REPORT.md`](XGB_ICSHAPE_REPORT.md)
+— because its caveats are heavy enough to need one.
 
 ---
 
@@ -321,37 +322,28 @@ one baseline feature carries 4× the whole block.
 
 ### Secondary test — icSHAPE Gini
 
-Run 2026-08-17 against this same 107-feature baseline, on the **861 genes that
-actually have icSHAPE data** (7.3% of the complete-case eligible set). Because
-the committed test split holds only ~98 Gini-complete genes, this design uses
-5-fold cross-validation blocked on `family_id_medium`, with 4-fold inner tuning
-over a 20-point grid, and reports out-of-fold predictions.
+**Reported in full in [`XGB_ICSHAPE_REPORT.md`](XGB_ICSHAPE_REPORT.md).** It has
+its own document because its design, its eligible set and its caveats are all
+different from this one's, and because its caveats are heavy enough that a
+summary row on a slide would misrepresent it.
 
-Three models: Baseline (107) → S-core (122, the primary rung's 15 z-scores) →
-S-core + Gini (130, adding 8 measured Gini columns).
-
-| Out-of-fold, 861 genes | R² | RMSE | MAE |
-|---|---|---|---|
-| Baseline | 0.4785 | 3.568 | 2.734 |
-| S-core | 0.4805 | 3.561 | 2.741 |
-| **S-core + icSHAPE Gini** | **0.5066** | **3.470** | **2.653** |
+The headline, on the 861 genes with probing data, out-of-fold:
 
 | Comparison | ΔR² | 95% CI | |
 |---|---|---|---|
-| S-core vs Baseline *(the ladder's primary, replicated on this subset)* | +0.0020 | −0.0070 to +0.0111 | no effect |
-| **icSHAPE Gini increment** | **+0.0261** | **+0.0074 to +0.0452** | **real effect** |
-| **S-core + Gini vs Baseline** | **+0.0281** | **+0.0084 to +0.0485** | **real effect** |
-
-All three metrics agree, and all three clear zero for both Gini rows. The
-computed-structure row does not, reproducing the main null on this subset.
+| S-core vs Baseline *(computed structure, replicated on this subset)* | +0.0020 | −0.0070 to +0.0111 | no effect |
+| **icSHAPE Gini increment** *(measured structure)* | **+0.0261** | **+0.0074 to +0.0452** | **real effect** |
 
 So: **computed folding energy adds nothing; experimentally measured structure
-does.** This replicates the pre-ladder result (which gave +0.029 against the old
-127-column baseline) now that the baseline has been cleaned of its redundant
-blocks — the increment shrank slightly, from +0.029 to +0.026, and survived.
+does.** This replicates the pre-ladder result (+0.029 against the old 127-column
+baseline) now that the baseline has been cleaned — the increment shrank to
++0.026 and survived.
 
-**Read the three caveats below before this goes on a slide.** The effect is
-real, but this design cannot say it is a *structure* effect.
+**Do not quote this without its caveats.** The probed genes are 10×
+over-represented among the most stable transcripts, and Gini derives from
+probing read depth, which tracks abundance, which tracks stability. The effect
+is real; that it is a *structure* effect is not established. The other report
+quantifies all of this.
 
 ---
 
@@ -524,9 +516,10 @@ below are the ones to have ready.
    single R² values across models.
 5. **The response is a PC1 score, not hours.** RMSE and MAE are in score units
    and are not interpretable as a duration.
-6. **The icSHAPE genes aren't a random sample.** Probing coverage tracks
-   expression, so those 861 genes skew toward abundant transcripts and do not
-   represent the corpus.
+6. **The icSHAPE genes aren't a random sample, and the bias is aligned with
+   the outcome.** They are 10× over-represented among the most stable
+   transcripts (26.8% of the top half-life decile, 2.7% of the bottom) and are
+   markedly shorter than the corpus.
 7. **Gini is measured, not computed.** A model using it cannot score a
    transcript nobody has probed — a fundamentally different kind of model from
    the ladder, which runs on sequence alone.
@@ -543,6 +536,13 @@ below are the ones to have ready.
 
 ## Files
 
+### Related reports
+
+| Report | Covers |
+|---|---|
+| **This file** | The four-rung ladder: does *computed* structure help? (no) |
+| [`XGB_ICSHAPE_REPORT.md`](XGB_ICSHAPE_REPORT.md) | The icSHAPE secondary: does *measured* structure help? (yes, with caveats) |
+
 ### Scripts
 
 | What | Where |
@@ -550,6 +550,7 @@ below are the ones to have ready.
 | Main comparison (models + figures) | `analysis/models/xgb_structure_comparison.R [variant]` |
 | Figures only (~5 s) | `analysis/models/xgb_structure_plots.R` |
 | Sensitivity table across variants | `analysis/models/xgb_structure_variant_summary.R` |
+| Tuning-variance diagnostic | `analysis/models/xgb_structure_tuning_diagnostic.R` |
 | icSHAPE secondary | `analysis/models/xgb_structure_gini_subset.R` |
 | Feature blocks, ladder + variant registry | `analysis/models/xgb_structure_features.R` |
 
