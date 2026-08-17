@@ -61,9 +61,6 @@ dir.create(PLOT_DIR, showWarnings = FALSE, recursive = TRUE)
 METRIC_LABEL <- c(rsq_trad = "R² (held-out)", rmse = "RMSE", mae = "MAE",
                   rsq = "r² (correlation)")
 
-KIND_LABEL <- c(vs_baseline = "Each rung vs the baseline",
-                increment   = "Rung-to-rung increments")
-
 # Any figure from a non-default specification carries the variant in its title.
 # Without it, a sensitivity figure is visually indistinguishable from the
 # committed result and could be presented as the headline by accident — which
@@ -160,18 +157,25 @@ message("Rendering figures from ", RUN_DIR, " (", N_TEST, " held-out genes, ",
 # landing a hair on the favourable side of zero with an interval ten times its
 # own width, which is the exact misreading this figure exists to prevent.
 #
-# The pre-specified contrast is marked with a bold label and a caret. Every
-# other row is secondary and unadjusted, and the subtitle says so on the
-# figure, not only in the report — a plot travels further than its caption.
+# Only the vs-baseline family is drawn, on R² and RMSE. The rung-to-rung
+# increments and MAE remain in xgb_structure_delta_bootstrap.csv and in the
+# report; they are simply not on the slide.
+#
+# The subtitle carries sample sizes only. What each model NAME contains is
+# documented alongside the figure rather than on it.
 
 delta_plot_data <- deltas |>
+  filter(kind == "vs_baseline", metric %in% c("rsq_trad", "rmse")) |>
   mutate(
-    metric_lab = factor(METRIC_LABEL[metric],
-                        levels = METRIC_LABEL[c("rsq_trad", "rmse", "mae")]),
-    kind_lab   = factor(KIND_LABEL[kind], levels = KIND_LABEL),
-    contrast_lab = fct_rev(factor(contrast, levels = unique(deltas$contrast))),
-    face       = if_else(primary, "bold", "plain")
+    metric_lab   = factor(METRIC_LABEL[metric],
+                          levels = METRIC_LABEL[c("rsq_trad", "rmse")]),
+    contrast_lab = fct_rev(factor(contrast, levels = unique(contrast)))
   )
+
+# Predictor counts per rung, read from the manifest — the one place they are
+# recorded — so the caption cannot drift from what was actually fitted.
+n_pred <- manifest$model_metrics |>
+  mutate(txt = sprintf("%s %d", model, n_predictors))
 
 p_delta <- delta_plot_data |>
   ggplot(aes(x = delta, y = contrast_lab)) +
@@ -180,32 +184,28 @@ p_delta <- delta_plot_data |>
                 width = 0.2, linewidth = 0.8, colour = "grey25") +
   geom_point(aes(fill = conclusive), size = 4, shape = 21, colour = "grey20",
              show.legend = FALSE) +
-  geom_text(data = filter(delta_plot_data, primary),
-            aes(x = delta, y = contrast_lab, label = "▲"),
-            vjust = 2.1, size = 3, colour = COL_PRIMARY) +
   scale_fill_manual(values = c(`TRUE` = COL_PRIMARY, `FALSE` = COL_NULL)) +
-  # Free x per metric column, free y per contrast row, row heights proportional
-  # to the number of contrasts. Sharing the x scale down a column is deliberate:
-  # it puts the vs-baseline and increment families on one axis per metric, so
-  # their magnitudes are read against each other rather than separately rescaled.
-  facet_grid(kind_lab ~ metric_lab, scales = "free", space = "free_y") +
+  facet_wrap(~ metric_lab, scales = "free_x") +
   labs(
-    title    = title_for("Change in held-out performance along the structure ladder"),
-    subtitle = sprintf(paste0("%d held-out genes; point estimate and 95%% paired-",
-                              "bootstrap CI (%d reps, every rung scored on the same draw).\n",
-                              "R²: higher is better, so positive favours the larger model. ",
-                              "RMSE / MAE: lower is better, so negative does.\n",
-                              "Filled points clear zero; grey points do not. ",
-                              "▲ marks the ONE pre-specified contrast (%s vs %s);\n",
-                              "every other row is secondary and unadjusted — read them ",
-                              "for the SHAPE of the ladder, not individually.%s"),
-                       N_TEST, N_BOOT, PRIMARY, REFMOD, variant_note()),
-    x = "Delta (larger model - smaller model), PC1 units", y = NULL
+    title    = title_for("Change in held-out performance between models"),
+    # The fill key is not decoration. Fill encodes "the CI clears zero", NOT
+    # "the larger model won" — complete_case has a filled point that clears zero
+    # in the direction favouring the BASELINE, and unlabelled it reads as a win.
+    subtitle = sprintf(paste0("n = %s genes trained, %s held out, %s bootstrap ",
+                              "replicates.\nPredictors: %s.\n",
+                              "Filled points: CI excludes zero — read which ",
+                              "side. Grey points: CI spans zero.%s"),
+                       format(manifest$n_trainval, big.mark = ","),
+                       format(N_TEST, big.mark = ","),
+                       format(N_BOOT, big.mark = ","),
+                       paste(n_pred$txt, collapse = ", "), variant_note()),
+    x = "Change vs Baseline (R² unitless; RMSE in half-life score units)",
+    y = NULL
   ) +
   theme_xgb(subtitle_size = 9) +
   theme(panel.grid.major.y = element_blank())
 
-save_plot(p_delta, "xgb_structure_delta_metrics", w = 280, h = 175)
+save_plot(p_delta, "xgb_structure_delta_metrics", w = 250, h = 95)
 
 
 # ----------------------------- 2. Paired slices -----------------------------
@@ -256,15 +256,12 @@ obspred_stats <- preds |>
     spearman  = cor(observed, predicted, method = "spearman"),
     rsq_trad  = 1 - sum((observed - predicted)^2) /
                     sum((observed - mean(observed))^2),
-    cal_slope = stats::coef(stats::lm(observed ~ predicted))[2],
-    sd_pred   = sd(predicted),
     .groups   = "drop"
   ) |>
   mutate(label = sprintf("Pearson r = %.3f\nSpearman %s = %.3f\nR%s = %.3f",
                          pearson, "ρ", spearman, "²", rsq_trad))
 
 lims <- range(c(preds$observed, preds$predicted))
-ref_stats <- obspred_stats |> filter(model == REFMOD)
 
 p_obspred <- preds |>
   ggplot(aes(observed, predicted)) +
@@ -276,27 +273,17 @@ p_obspred <- preds |>
             colour = "grey15") +
   scale_colour_manual(values = MODEL_COLS) +
   coord_equal(xlim = lims, ylim = lims) +
-  facet_wrap(~ model, nrow = 1) +
+  facet_wrap(~ model, nrow = 2) +
   labs(title = title_for("Observed vs held-out predicted half-life"),
-       subtitle = sprintf(paste0("Identical axis limits. Dashed line is y = x, not a fit. ",
-                                 "Agarwal & Kelley consensus PC1, untransformed.\n",
-                                 "R² is the coefficient of determination (1 - SSres/SStot), ",
-                                 "so it measures scatter about the dashed line.\n",
-                                 "Predictions span less than observations (sd %.1f vs %.1f). ",
-                                 "That is calibrated shrinkage, not a defect: a well-\n",
-                                 "calibrated model shrinks by about factor r, and r x %.1f = ",
-                                 "%.1f. Regressing observed on predicted gives slope %.2f.\n",
-                                 "Consequence: the model never predicts the most extreme ",
-                                 "half-lives. Applies equally to every rung.\n",
-                                 "Secondary to the paired comparison."),
-                          ref_stats$sd_pred, sd(preds$observed[preds$model == REFMOD]),
-                          sd(preds$observed[preds$model == REFMOD]),
-                          ref_stats$pearson * sd(preds$observed[preds$model == REFMOD]),
-                          ref_stats$cal_slope),
-       x = "Observed half-life (PC1)", y = "Predicted half-life (PC1)") +
-  theme_xgb(subtitle_size = 8.5)
+       subtitle = sprintf(paste0("n = %s genes trained, %s held out and plotted ",
+                                 "in every panel.\nPredictors: %s.%s"),
+                          format(manifest$n_trainval, big.mark = ","),
+                          format(N_TEST, big.mark = ","),
+                          paste(n_pred$txt, collapse = ", "), variant_note()),
+       x = "Observed half-life score", y = "Predicted half-life score") +
+  theme_xgb(subtitle_size = 9)
 
-save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 300, h = 155)
+save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 200, h = 200)
 
 
 # ----------------------------- 4. Gain importance ---------------------------
