@@ -18,7 +18,7 @@ spans zero). So measured and computed structure are not interchangeable.
 **And the caveat that has to travel with it.** These 861 genes are not a random
 sample of the transcriptome, and the way they are selected is aligned with the
 outcome: they are **10× over-represented among the most stable transcripts**
-(26.8% of the corpus's top half-life decile, against 2.7% of the bottom). Gini
+(26.7% of the corpus's top half-life decile, against 2.7% of the bottom). Gini
 is computed from probing read depth, read depth tracks abundance, and abundance
 tracks stability. This design cannot separate "measured structure carries
 information" from "probing depth is an abundance proxy". The effect is real;
@@ -108,28 +108,44 @@ metric's sensitivity to outliers.
 ## Who these 861 genes are
 
 This is the part that determines what the result means, and it is worth more
-than the assertion "probing tracks expression". Comparing the 861 Gini-complete
-genes against the other 10,940 eligible genes:
+than the assertion "probing tracks expression". The script profiles **every**
+baseline column plus the response against the other 10,940 eligible genes and
+writes the lot to `xgb_structure_gini_subset_profile.csv` — choosing which
+variables to report after seeing which ones moved would be the selective
+reporting this analysis is built to avoid. The largest imbalances:
 
 | | Gini-complete (861) | Rest (10,940) | Std. diff |
 |---|---|---|---|
-| **Half-life score, mean** | **4.18** | **0.01** | **+0.88** |
-| Half-life score, median | 4.67 | 0.12 | |
-| Half-life 10th–90th pct | −2.03 to 9.95 | −5.88 to 5.81 | |
-| Transcript length (mean, nt) | 2,717 | 4,047 | −0.60 |
-| CDS length (mean, nt) | 1,218 | 1,909 | −0.52 |
+| **Half-life score** | **4.18** | **0.01** | **+0.88** |
+| Transcript length (nt) | 2,717 | 4,047 | −0.60 |
+| uORF present | 0.19 | 0.44 | −0.55 |
+| Stop-free length, mRNA (nt) | 1,301 | 1,987 | −0.52 |
+| CDS length (nt) | 1,218 | 1,909 | −0.52 |
 | Exon density (CDS) | 8.23 | 6.76 | +0.50 |
 | CAI | 0.769 | 0.768 | +0.01 |
 
-**The selection is aligned with the outcome.** The probed genes sit almost a
-full standard deviation higher in half-life. Split the corpus into deciles by
-half-life and the Gini-complete share runs from **2.7% in the least stable
-decile to 26.8% in the most stable** — against a base rate of 7.3%. Probing
-coverage is roughly 10× denser among stable transcripts than unstable ones.
+**The single largest imbalance in the whole feature space is the response
+itself.** Nothing else comes close to +0.88.
 
-They are also **shorter** and more **exon-dense** than the corpus. CAI is the
-one thing that does not move, but CAI is a weak proxy for expression and its
-flatness should not be read as reassurance.
+Split the corpus into deciles by half-life and probing coverage rises
+monotonically across all ten:
+
+| Half-life decile | 1 (least stable) | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 (most stable) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| % probed | 2.7 | 2.0 | 2.5 | 4.2 | 3.7 | 4.3 | 6.5 | 8.6 | 11.8 | **26.7** |
+
+Against a base rate of 7.3%, coverage is **roughly 10× denser among the most
+stable transcripts than the least**. That is not a subtle imbalance to note in
+passing; it is the dominant structure of the subset.
+
+**And the shift is broad, not confined to one axis.** Of the 107 baseline
+columns, **42 differ by more than 0.2 standardised units, 11 by more than 0.4,
+and 6 by more than 0.5** — length, uORF presence, exon density and a spread of
+codon frequencies. The probed set is a systematically different kind of gene,
+not a random draw with one quirk.
+
+CAI is the one thing that does not move, but CAI is a weak proxy for expression
+and its flatness should not be read as reassurance.
 
 Two consequences:
 
@@ -213,7 +229,9 @@ corpus, in a model that cannot be run on unprobed transcripts.
 | Script | `analysis/models/xgb_structure_gini_subset.R` |
 | Deltas | `data/outputs/xgb_structure/gini/tables/xgb_structure_gini_deltas.csv` |
 | Out-of-fold predictions | `.../tables/xgb_structure_gini_oof_predictions.csv` |
-| Manifest (design, caveats, n) | `.../gini_run_manifest.rds` |
+| Subset profile (all 107 baseline cols + response) | `.../tables/xgb_structure_gini_subset_profile.csv` |
+| Probing coverage by outcome decile | `.../tables/xgb_structure_gini_coverage_by_decile.csv` |
+| Manifest (design, caveats, n, profile) | `.../gini_run_manifest.rds` |
 | Figure | `.../plots/xgb_structure_gini_deltas` |
 
 ```bash
@@ -223,10 +241,15 @@ Rscript analysis/models/xgb_structure_gini_subset.R
 About 80 minutes: 5 outer folds × 3 models × 20 configurations × 4 inner folds.
 `XGB_GINI_GRID_SIZE=6` runs it end to end in a few minutes for a code check.
 
-The subset characterisation table above is computed from the v9 human cache and
-is not written to disk by the script; it is reproducible from `eligible_dataset()`
-with the `complete_case` variant, comparing rows complete on the Gini block
-against the rest.
+The subset characterisation does not depend on any model, so it can be
+regenerated without the 80-minute re-tune:
+
+```bash
+XGB_GINI_PROFILE_ONLY=1 Rscript analysis/models/xgb_structure_gini_subset.R
+```
+
+That writes both profile tables and back-fills them into an existing manifest,
+rather than leaving behind a manifest with no results in it.
 
 ---
 

@@ -518,7 +518,7 @@ below are the ones to have ready.
    and are not interpretable as a duration.
 6. **The icSHAPE genes aren't a random sample, and the bias is aligned with
    the outcome.** They are 10× over-represented among the most stable
-   transcripts (26.8% of the top half-life decile, 2.7% of the bottom) and are
+   transcripts (26.7% of the top half-life decile, 2.7% of the bottom) and are
    markedly shorter than the corpus.
 7. **Gini is measured, not computed.** A model using it cannot score a
    transcript nobody has probed — a fundamentally different kind of model from
