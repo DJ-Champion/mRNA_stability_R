@@ -459,6 +459,9 @@ chk("Each rung adds exactly its declared structure columns",
 chk("No amino-acid or nucleotide-fraction column is a predictor",
     !any(grepl("^(aa_|frac_|purine_|amino_)", unlist(used))),
     "exact functions of retained codon / GC / skew columns")
+chk("No last-exon-length column is a predictor",
+    !any(grepl("^exon_length_", unlist(used))),
+    "3'UTR-length proxy; length_3utr is already in the baseline")
 chk("No translation-efficiency variable in any rung",
     !any(grepl("translation_efficiency", unlist(used))))
 chk("No identifier, family or outcome-derived column is a predictor",
@@ -871,6 +874,8 @@ summary_txt <- c(
   "  aa_*                       exact function of the retained codon columns:",
   "                             aa_x = sum(codons for x)/(1-stops-other).",
   "  frac_*, purine_/amino_*    exact function of GC content and the two skews.",
+  "  exon_length_last_mrna      3'UTR-length proxy: Spearman 0.949 with",
+  "                             length_3utr, which is itself in the baseline.",
   "  translation_efficiency     measured phenotype, not a sequence feature.",
   "  gini_* (icSHAPE)           80-91% missing. See the secondary run.",
   "",

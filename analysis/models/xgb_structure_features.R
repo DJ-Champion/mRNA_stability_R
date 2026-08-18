@@ -277,12 +277,22 @@ ladder_contrasts <- function(variant = resolve_variant()) {
 #'   translation_efficiency         measured phenotype, not a sequence feature;
 #'                                  also 25.8% missing.
 #'
-#'   every `structure` supergroup member   that is the experimental variable.
+#'   exons         (exon_length_last_mrna, 1)  a 3'UTR-length proxy. The last
+#'                                  exon carries the stop codon plus almost all
+#'                                  of the 3'UTR, so on the v10 human cache it
+#'                                  is Spearman 0.949 with length_3utr
+#'                                  (rho^2 = 0.90) and exceeds the 3'UTR length
+#'                                  in 96.3% of transcripts. length_3utr is
+#'                                  already in the baseline via `lengths`, so
+#'                                  this is a second, noisier copy of a
+#'                                  retained column. It was previously kept as
+#'                                  the NMD 50-nt-rule covariate, but that
+#'                                  rationale does not survive the redundancy:
+#'                                  the junction-distance features
+#'                                  (eej_dist_closest_*) carry the 50-nt-rule
+#'                                  geometry directly and are retained.
 #'
-#' Kept beyond the obvious list: `exon_length_last_mrna`, the only surviving
-#' member of the `exons` group. It is non-structure transcript architecture
-#' (last-exon length is the classical NMD 50-nt-rule covariate), so it belongs
-#' with the junction-distance features.
+#'   every `structure` supergroup member   that is the experimental variable.
 #'
 #' @param df A dataset from build_dataset() after drop_excluded().
 #' @param variant A resolved variant; `baseline_add` / `baseline_drop` adjust
@@ -300,8 +310,9 @@ baseline_columns <- function(df, variant = resolve_variant()) {
     fg_columns(df, "uorfs"),         # 1   uorf_present_mrna (numeric 0/1)
     fg_columns(df, "exon_density"),  # 4   CDS-exon density
     fg_columns(df, "eej_dist"),      # 2   junction distance
-    fg_columns(df, "nmd"),           # 5   fragile-codon / alternative-stop
-    fg_columns(df, "exons")          # 1   exon_length_last_mrna
+    fg_columns(df, "nmd")            # 5   fragile-codon / alternative-stop
+    # `exons` (exon_length_last_mrna) deliberately omitted — 3'UTR-length
+    # proxy, see the exclusion list above.
   )
   cols <- unique(c(cols, intersect(variant$baseline_add, names(df))))
   setdiff(cols, variant$baseline_drop)
@@ -496,6 +507,7 @@ report_feature_sets <- function(el) {
     cat("  (standalone: cai; translation_efficiency excluded)\n")
   }
   cat("  (aa_freqs, frac_*, purine_/amino_* excluded as exact functions of\n")
-  cat("   retained columns — see baseline_columns())\n")
+  cat("   retained columns; exon_length_last_mrna excluded as a 3'UTR-length\n")
+  cat("   proxy at rho 0.949 — see baseline_columns())\n")
   invisible(el)
 }
