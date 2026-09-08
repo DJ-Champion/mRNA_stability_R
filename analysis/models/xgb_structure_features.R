@@ -1,17 +1,22 @@
 # =============================================================================
-# Shared feature-block, model-ladder and eligible-set definition
+# Shared feature-block and eligible-set definition for the two XGBoost models
 # =============================================================================
-# The one place the baseline block, the structure ladder and the eligible row
-# set are defined. xgb_structure_comparison.R (the main held-out comparison)
-# and xgb_structure_gini_subset.R (the icSHAPE secondary run) both source this
-# file, so the two runs cannot drift apart in what "baseline" or "structure"
-# means.
+# The one place the two models are defined:
 #
-# The nesting the ladder argument depends on — Baseline < S-core < S-select <
-# S-full — is a property of THIS file: each rung's predictors are constructed
-# as BASELINE_COLS + that rung's structure groups, by definition rather than by
-# four parallel edits kept in step by hand. resolve_variant() asserts the
-# nesting rather than trusting it.
+#   Baseline    non-structure transcript features
+#   Structure   Baseline + every computed secondary-structure feature
+#
+# Structure is the ONLY difference between them. Rows, gene ids, preprocessing,
+# tuning resamples, tuning grid, budget, seeds and evaluation are shared by
+# construction — `Structure` is built as BASELINE + the structure block, not as
+# a second hand-maintained list that has to be kept in step.
+#
+# WHAT COUNTS AS STRUCTURE. Every member of the `structure` supergroup
+# (config.R) EXCEPT `probing`. That is the computed, sequence-derived folding
+# block: RNAfold and RNALfold MFE, their z-scores against shuffled sequence,
+# the per-nucleotide normalisation, and MFE delta (observed - expected).
+# icSHAPE structural Gini (`probing`) is experimental readout, not computed
+# from sequence, and is deliberately outside both models — see PROBING_GROUP.
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -22,225 +27,46 @@ suppressPackageStartupMessages({
 # --- Response ----------------------------------------------------------------
 # `halflife` is PC1 of the Agarwal & Kelley (2022) consensus half-life measure,
 # not a duration in hours: it is already a signed, roughly symmetric score
-# (range -17.2 to +18.2, sd 4.81 on the human v9 cache). No project code
+# (range -17.2 to +18.2, sd 4.81 on the human v10 cache). No project code
 # transforms it, and a log is undefined on a variable that takes negative
-# values, so it is modelled RAW. RMSE and MAE below are therefore in PC1 units.
+# values, so it is modelled RAW. RMSE and MAE are therefore in PC1 units.
 TARGET_COL <- "halflife"
 
 
-# --- The model ladder --------------------------------------------------------
-# Four nested models. Each rung is the previous rung plus one more family of
-# folding metrics, so a difference between adjacent rungs is attributable to
-# the family that was added and nothing else.
-#
-#   Baseline   non-structure transcript features only
-#   S-core     + MFE z-scores (8) and local MFE z-scores (7)          = 15
-#   S-select   + MFE delta, observed minus expected (7)               = 22
-#   S-full     + raw MFE (8+7) and per-nucleotide MFE (7)             = 44
-#
-# WHY THIS ORDER. It is not arbitrary: the rungs are ordered from least to most
-# confounded with the baseline, so the ladder walks from the cleanest test of
-# structure to the dirtiest.
-#
-#   S-core     the z-scores are the only folding metrics normalised against
-#              shuffled sequence. The earlier redundancy regression put them at
-#              R^2 0.015-0.45 from baseline (median ~0.13) — genuinely new
-#              numbers. This is the PRIMARY test.
-#   S-select   adds mfe_delta_*, which that same regression reconstructed from
-#              baseline at R^2 0.68-0.92. Delta is observed minus EXPECTED MFE,
-#              and expected MFE is a deterministic function of GC and length,
-#              both already in the baseline. Expect it to add little.
-#   S-full     adds raw and per-nucleotide MFE, which are near-deterministic in
-#              length and GC. If the ladder turns positive only here, the
-#              likely explanation is length re-entering the model under a
-#              structure label, not structure.
-#
-# So the ladder has a PREDICTED SHAPE under each hypothesis, which is what
-# makes it evidence rather than three more chances to clear zero. If structure
-# carries information, the gain should appear at S-core and persist. A gain
-# that appears only at S-full is the confounding signature, not a discovery.
+# --- The two models ----------------------------------------------------------
 
-LADDER <- list(
-  "Baseline" = character(),
-  "S-core"   = c("rnafold_zscores", "rnalfold_zscores"),
-  "S-select" = c("rnafold_zscores", "rnalfold_zscores", "mfe_deltas"),
-  "S-full"   = c("rnafold_zscores", "rnalfold_zscores", "mfe_deltas",
-                 "rnafold_scores", "rnalfold_scores", "rnafold_per_nt")
-)
-
-# The rung every other rung is compared against.
 REFERENCE_MODEL <- "Baseline"
+STRUCTURE_MODEL <- "Structure"
 
-# PRE-SPECIFIED before any of these models were fitted. The ladder produces
-# three contrasts against Baseline and three rung-to-rung increments on one
-# held-out set; naming the primary in the code, in the registry that the
-# summary table reads, is what stops the most publishable of the six becoming
-# the headline after the fact. Everything else is secondary and unadjusted, and
-# is reported that way.
-PRIMARY_MODEL <- "S-core"
+# Order matters: reference first. Every table, figure and factor level in the
+# downstream scripts reads this vector rather than restating the order.
+MODELS <- c(REFERENCE_MODEL, STRUCTURE_MODEL)
 
-
-# --- Variant registry --------------------------------------------------------
-# A variant is a named, declarative deviation from the committed default. It
-# may change TWO things and nothing else: which rows are eligible, and which
-# columns go in each block. Resampling, the split artefact, the tuning grid and
-# budget, and the seed are deliberately NOT variant-controlled, so any two
-# variants differ in exactly the stated way and a difference between them is
-# attributable.
-#
-# WHY THIS IS A SENSITIVITY ANALYSIS, NOT A SET OF TESTS. Running many
-# specifications and reporting the one that clears zero is the garden of
-# forking paths, and it would destroy the value of the committed result — which
-# is defensible precisely because it was specified before anyone saw an answer.
-# Every variant here must be reported, every time, in the table produced by
-# xgb_structure_variant_summary.R. The claim to make is "the conclusion holds
-# across every reasonable specification", which is stronger than a single run,
-# not weaker. If one variant disagrees with the rest, that is a finding about
-# the specification, to be explained rather than promoted.
-#
-# CROSS-VARIANT METRICS ARE NOT ALWAYS COMPARABLE. Variants that change row
-# eligibility are scored on different genes, so their absolute R^2 values are
-# not on the same footing. The paired contrasts WITHIN a variant are always
-# meaningful; the absolute numbers between variants are not. The summary table
-# prints n for every variant for exactly this reason.
-#
-# Each entry lists only what differs; the rest is inherited from `default`.
-
-VARIANTS <- list(
-
-  default = list(
-    label = "all genes with a target; XGBoost handles NA natively",
-    # "native_na" = keep every gene with a target and a split, let XGBoost
-    #               learn a default split direction for NAs
-    # "complete"  = complete cases on baseline + the widest structure block
-    #               (no imputation, informative missingness cannot leak)
-    rows          = "native_na",
-    ladder        = LADDER,
-    baseline_add  = character(),
-    baseline_drop = character()
-  ),
-
-  complete_case = list(
-    label = "complete cases on baseline + all structure columns",
-    # The sensitivity arm for the default's row policy, and the ONLY run in
-    # which the informative-missingness channel is closed by construction.
-    #
-    # Structure missingness is informative: a missing 5'UTR MFE means a 5'UTR
-    # too short to fold, not a failed computation. Under `native_na` a
-    # structure rung can therefore split on an annotation artefact and bank it
-    # as a structure effect. Under complete cases it cannot, because the rows
-    # carrying the artefact are gone from every rung equally.
-    #
-    # Costs ~13% of the corpus (1,800 of 13,601 genes on the v9 human cache).
-    # If the default and this variant disagree, the missingness channel is the
-    # first explanation to rule out, not a discovery.
-    rows = "complete"
-  )
-)
+# The `structure` supergroup member that is NOT part of the structure block.
+# icSHAPE Gini is 80-91% missing on the human cache, and — more importantly —
+# it is MEASURED rather than computed, so a model containing it cannot score a
+# transcript nobody has probed. Anything using it is a different kind of model
+# and belongs in its own, later, supplementary analysis.
+PROBING_GROUP <- "probing"
 
 
-#' Resolve a variant name into a complete specification
+#' The FEATURE_PATTERNS keys that make up the structure block.
 #'
-#' Also validates the ladder, because every downstream claim rests on its
-#' shape: the first rung must be the pure reference, and each rung must be a
-#' superset of the one before it. A ladder that is not nested would still run
-#' and still produce intervals, but the increments would no longer mean "what
-#' this family of features added" — so this is checked, not assumed.
-#'
-#' @param name Character, a key of VARIANTS.
-#' @return The variant list, with every field filled in from `default`.
+#' Derived from SUPERGROUPS rather than hand-listed, so a folding family added
+#' to the schema joins the structure block automatically instead of silently
+#' sitting in neither model. A function, not a constant, so it resolves
+#' SUPERGROUPS at call time and this file can be sourced in any order.
 #' @export
-resolve_variant <- function(name = "default") {
-  if (!name %in% names(VARIANTS)) {
-    stop("unknown variant '", name, "'. Known: ",
-         paste(names(VARIANTS), collapse = ", "), call. = FALSE)
-  }
-  v <- utils::modifyList(VARIANTS$default, VARIANTS[[name]])
-  if (!v$rows %in% c("complete", "native_na")) {
-    stop("variant '", name, "' has an unknown rows policy: ", v$rows,
-         call. = FALSE)
-  }
-
-  lad <- v$ladder
-  if (!is.list(lad) || length(lad) < 2 || is.null(names(lad))) {
-    stop("variant '", name, "' has a malformed ladder", call. = FALSE)
-  }
-  if (!identical(names(lad)[[1]], REFERENCE_MODEL) ||
-      length(lad[[1]]) != 0) {
-    stop("variant '", name, "': the first rung must be '", REFERENCE_MODEL,
-         "' with no structure groups", call. = FALSE)
-  }
-  for (i in seq_len(length(lad) - 1)) {
-    if (!all(lad[[i]] %in% lad[[i + 1]])) {
-      stop("variant '", name, "': ladder is not nested — '", names(lad)[i],
-           "' is not a subset of '", names(lad)[i + 1], "'", call. = FALSE)
-    }
-  }
-  if (!PRIMARY_MODEL %in% names(lad)) {
-    stop("variant '", name, "': primary model '", PRIMARY_MODEL,
-         "' is not a rung of the ladder", call. = FALSE)
-  }
-
-  v$name <- name
-  v
-}
+structure_groups <- function() setdiff(SUPERGROUPS$structure, PROBING_GROUP)
 
 
-#' Where a variant's artefacts live. One self-contained directory per variant.
+#' Where this analysis's artefacts live.
+#' @param what "root", "tables" or "plots".
 #' @export
-variant_dir <- function(variant, what = c("root", "tables", "plots")) {
+run_dir <- function(what = c("root", "tables", "plots")) {
   what <- match.arg(what)
-  root <- file.path(OUTPUT_DIR, "xgb_structure",
-                    if (is.list(variant)) variant$name else variant)
+  root <- file.path(OUTPUT_DIR, "xgb_structure")
   if (what == "root") root else file.path(root, what)
-}
-
-
-#' The ordered contrasts the ladder implies
-#'
-#' Two families, both paired and both computed on the same bootstrap draws:
-#'
-#'   vs_baseline  each structure rung against the reference. Answers "does this
-#'                much structure beat no structure at all".
-#'   increment    each rung against the rung below it. Answers "what did THIS
-#'                family of features add, given everything below it". This is
-#'                the family that makes the ladder an argument rather than
-#'                three separate comparisons.
-#'
-#' @param variant A resolved variant.
-#' @return A tibble with columns kind, contrast, lhs, rhs, primary.
-#' @export
-ladder_contrasts <- function(variant = resolve_variant()) {
-  nm   <- names(variant$ladder)
-  rest <- setdiff(nm, REFERENCE_MODEL)
-
-  vs_base <- tibble::tibble(
-    kind     = "vs_baseline",
-    lhs      = rest,
-    rhs      = REFERENCE_MODEL
-  )
-  incr <- tibble::tibble(
-    kind     = "increment",
-    lhs      = nm[-1],
-    rhs      = nm[-length(nm)]
-  )
-
-  # The first increment IS the first vs-baseline contrast — rung two against
-  # the reference — so it would otherwise appear twice, once flagged primary
-  # and once not. The same number turning up in both the headline row and the
-  # "secondary, unadjusted" list is exactly the kind of double-count a reviewer
-  # is right to be suspicious of, so it is removed here rather than filtered
-  # in each consumer. vs_baseline wins because that is the framing the primary
-  # contrast is specified in.
-  incr <- dplyr::anti_join(incr, vs_base, by = c("lhs", "rhs"))
-
-  dplyr::bind_rows(vs_base, incr) |>
-    dplyr::mutate(
-      contrast = paste(lhs, "vs", rhs),
-      # The single pre-specified comparison; see PRIMARY_MODEL above.
-      primary  = kind == "vs_baseline" & lhs == PRIMARY_MODEL
-    ) |>
-    dplyr::select(kind, contrast, lhs, rhs, primary)
 }
 
 
@@ -252,16 +78,15 @@ ladder_contrasts <- function(variant = resolve_variant()) {
 #'
 #'   aa_freqs      (aa_*, 20 cols)  an EXACT deterministic function of the
 #'                                  codon columns that are kept. Verified on
-#'                                  the v9 human cache to 5.6e-17:
+#'                                  the human cache to 5.6e-17:
 #'                                    aa_x = sum(codons encoding x)
 #'                                           / (1 - stop_fraction - codon_other)
 #'                                  So they add no information, and 20 exact
 #'                                  substitutes for retained columns splinter
 #'                                  gain importance and shrink the share of any
-#'                                  column subsample that the structure block
-#'                                  can occupy. Dropped from the MODEL baseline
-#'                                  only — they stay in the cache and in
-#'                                  EXCLUDED_FEATURES' complement, because the
+#'                                  column subsample the structure block can
+#'                                  occupy. Dropped from the MODEL baseline
+#'                                  only — they stay in the cache, because the
 #'                                  correlation plots and the intrinsic_select
 #'                                  bundle legitimately use them.
 #'
@@ -285,22 +110,17 @@ ladder_contrasts <- function(variant = resolve_variant()) {
 #'                                  in 96.3% of transcripts. length_3utr is
 #'                                  already in the baseline via `lengths`, so
 #'                                  this is a second, noisier copy of a
-#'                                  retained column. It was previously kept as
-#'                                  the NMD 50-nt-rule covariate, but that
-#'                                  rationale does not survive the redundancy:
-#'                                  the junction-distance features
-#'                                  (eej_dist_closest_*) carry the 50-nt-rule
-#'                                  geometry directly and are retained.
+#'                                  retained column. The 50-nt-rule geometry it
+#'                                  was once kept for is carried directly by
+#'                                  the retained eej_dist_closest_* columns.
 #'
 #'   every `structure` supergroup member   that is the experimental variable.
 #'
 #' @param df A dataset from build_dataset() after drop_excluded().
-#' @param variant A resolved variant; `baseline_add` / `baseline_drop` adjust
-#'   the list below without editing it.
 #' @return Character vector of column names present in `df`.
 #' @export
-baseline_columns <- function(df, variant = resolve_variant()) {
-  cols <- c(
+baseline_columns <- function(df) {
+  c(
     fg_columns(df, "lengths"),       # 4   regional sequence length
     fg_columns(df, "gc"),            # 7   regional GC content
     fg_columns(df, "skews"),         # 14  AT-skew and GC-skew
@@ -313,59 +133,52 @@ baseline_columns <- function(df, variant = resolve_variant()) {
     fg_columns(df, "nmd")            # 5   fragile-codon / alternative-stop
     # `exons` (exon_length_last_mrna) deliberately omitted — 3'UTR-length
     # proxy, see the exclusion list above.
-  )
-  cols <- unique(c(cols, intersect(variant$baseline_add, names(df))))
-  setdiff(cols, variant$baseline_drop)
+  ) |> unique()
 }
 
 
-#' Build the structure column list for one rung of the ladder
+#' Build the structure column list
 #'
-#' icSHAPE Gini is NOT here — see `gini_columns()` and the secondary run. It is
-#' 80-91% missing, and a common complete analysis set containing it costs 93%
-#' of the corpus.
+#' Every computed folding feature: RNAfold and RNALfold MFE and z-scores, the
+#' per-nucleotide normalisation, and MFE delta. `mfe_expected` is a member of
+#' the supergroup but contributes nothing here — drop_excluded() removes it as
+#' engineering scaffolding for mfe_delta_*, so fg_columns() finds none of it.
+#'
+#' CONFOUNDING, TO REPORT WITH ANY RESULT. This block is NOT length- and
+#' GC-neutral. Raw MFE scales almost linearly with sequence length and shifts
+#' with GC content, both of which are already in the baseline; MFE delta is
+#' observed minus an expected value that is itself a deterministic function of
+#' GC and length. The z-scores are the only members normalised against
+#' shuffled sequence. So a win for `Structure` is incremental predictive
+#' information carried by the folding block AS A WHOLE, and cannot on its own
+#' be attributed to secondary structure rather than to length and GC
+#' re-entering the model under a structure label. Section 13e of the comparison
+#' script quantifies exactly how much of each column the baseline already
+#' explains, which is the check that separates the two readings.
 #'
 #' @param df A dataset from build_dataset() after drop_excluded().
-#' @param variant A resolved variant.
-#' @param model Character, a rung name (a key of `variant$ladder`).
 #' @return Character vector of column names present in `df`.
 #' @export
-structure_columns <- function(df, variant = resolve_variant(),
-                              model = PRIMARY_MODEL) {
-  if (!model %in% names(variant$ladder)) {
-    stop("unknown model '", model, "'. Ladder: ",
-         paste(names(variant$ladder), collapse = ", "), call. = FALSE)
-  }
-  unique(unlist(lapply(variant$ladder[[model]],
-                       function(g) fg_columns(df, g))))
+structure_columns <- function(df) {
+  unique(unlist(lapply(structure_groups(), function(g) fg_columns(df, g))))
 }
 
 
-#' Every structure column any rung uses — the widest block
+#' The icSHAPE structural-Gini block — excluded from both models
 #'
-#' Because the ladder is nested this is the top rung's block, but deriving it
-#' from the union rather than from `ladder[[length(ladder)]]` keeps it correct
-#' if a variant ever defines a ladder that widens non-monotonically in a way
-#' the nesting check still permits.
+#' Retained so the validation checklist can ASSERT its absence rather than
+#' assume it. See PROBING_GROUP.
 #' @export
-all_structure_columns <- function(df, variant = resolve_variant()) {
-  unique(unlist(lapply(names(variant$ladder),
-                       function(m) structure_columns(df, variant, m))))
-}
+probing_columns <- function(df) fg_columns(df, PROBING_GROUP)
 
 
-#' The icSHAPE structural-Gini block (secondary analysis only)
-#' @export
-gini_columns <- function(df) fg_columns(df, "probing")
-
-
-#' The predictor list for one rung
+#' The predictor list for one model
 #' @param el Result of eligible_dataset().
-#' @param model Character, a rung name.
+#' @param model Character, one of MODELS.
 #' @export
 predictors_for <- function(el, model) {
   if (!model %in% names(el$models)) {
-    stop("unknown model '", model, "'. Ladder: ",
+    stop("unknown model '", model, "'. Known: ",
          paste(names(el$models), collapse = ", "), call. = FALSE)
   }
   c(el$baseline, el$models[[model]])
@@ -376,126 +189,104 @@ predictors_for <- function(el, model) {
 
 #' Load the human dataset and cut it to the common eligible analysis set
 #'
-#' Whatever the row policy, the guarantee is the same and is provided here
-#' rather than downstream: every rung of the ladder is handed the SAME rows and
-#' the same gene ids, and no rung can lose rows to the extra missingness in its
-#' own block. Eligibility is decided once, from the union of every block, before
-#' any model exists — which is why `complete` screens on
-#' all_structure_columns() and not on the primary rung's block.
+#' The guarantee provided here rather than downstream: both models are handed
+#' the SAME rows and the same gene ids, and neither can lose rows to the extra
+#' missingness in the structure block.
 #'
-#' Two policies, selected by the variant:
+#' ROW POLICY: every gene with a target and a split. XGBoost learns a default
+#' split direction for NAs, so nothing is imputed and no row is discarded —
+#' 13,601 genes on the human v10 cache. Eligibility does not depend on either
+#' model's columns, which is what keeps the rows identical.
 #'
-#'   "native_na" (default) every gene with a target and a split; XGBoost
-#'               handles NA internally. Keeps all 13,601. Every rung still sees
-#'               identical rows, because eligibility no longer depends on any
-#'               block. The informative-missingness concern is real here and is
-#'               what the `complete_case` variant exists to quantify.
-#'
-#'   "complete"  complete cases on baseline + every structure column. Closes
-#'               the missingness channel by construction. Costs 1,800 of 13,601
-#'               genes (13%).
+#' The cost of that policy, to state rather than bury: structure missingness is
+#' INFORMATIVE. A missing 5'UTR MFE means a 5'UTR too short to fold, not a
+#' failed computation. `Structure` can therefore split on an annotation
+#' artefact and bank it as a structure effect, and this design cannot rule that
+#' out. report_feature_sets() prints the share of genes carrying at least one
+#' missing predictor so the size of the channel is visible on every run.
 #'
 #' Zero-variance baseline columns are removed here, on train+val only, so the
-#' predictor sets are fixed before any model sees them and the rungs cannot end
-#' up with different baseline blocks via a recipe filter.
+#' predictor sets are fixed before any model sees them and the two models
+#' cannot end up with different baseline blocks via a recipe filter.
 #'
 #' @param species Character, passed to build_dataset().
-#' @param variant A resolved variant (see resolve_variant()).
-#' @return list(data, baseline, models, structure_all, gini, dropped_zv, variant)
+#' @return list(data, baseline, models, structure, probing, dropped_zv)
 #' @export
-eligible_dataset <- function(species = "human", variant = resolve_variant()) {
+eligible_dataset <- function(species = "human") {
 
   df <- build_dataset(species) |>
     drop_excluded(verbose = FALSE) |>
     attach_splits()
 
-  base_cols <- baseline_columns(df, variant)
-  all_str   <- all_structure_columns(df, variant)
-  gini_cols <- gini_columns(df)
+  base_cols <- baseline_columns(df)
+  str_cols  <- structure_columns(df)
+  gini_cols <- probing_columns(df)
 
-  stopifnot(length(intersect(base_cols, all_str)) == 0,
+  stopifnot(length(intersect(base_cols, str_cols)) == 0,
             length(intersect(base_cols, gini_cols)) == 0,
-            !TARGET_COL %in% c(base_cols, all_str, gini_cols),
-            length(intersect(META_COLS, c(base_cols, all_str))) == 0)
+            length(intersect(str_cols, gini_cols)) == 0,
+            !TARGET_COL %in% c(base_cols, str_cols),
+            length(intersect(META_COLS, c(base_cols, str_cols))) == 0)
 
   keep <- df |>
     filter(!is.na(.data[[TARGET_COL]]), !is.na(split))
 
-  if (identical(variant$rows, "complete")) {
-    ok   <- stats::complete.cases(keep[, c(base_cols, all_str), drop = FALSE])
-    keep <- keep[ok, , drop = FALSE]
-  }
-
   # Constant on the data the model may learn from. Checked on train+val rather
   # than on everything, because inspecting test to decide the predictor set is
   # a (mild) use of held-out data.
-  # NAs dropped before counting: under the "native_na" policy a column with one
-  # observed value and the rest missing has two distinct values (v and NA) and
-  # would sneak past a naive uniqueness test while carrying no information.
+  # NAs dropped before counting: a column with one observed value and the rest
+  # missing has two distinct values (v and NA) and would sneak past a naive
+  # uniqueness test while carrying no information.
   learnable <- keep[keep$split != "test", , drop = FALSE]
   zv <- names(which(vapply(learnable[base_cols], function(x)
     length(unique(x[!is.na(x)])) < 2L, logical(1))))
   base_cols <- setdiff(base_cols, zv)
 
-  models <- lapply(names(variant$ladder),
-                   function(m) structure_columns(keep, variant, m))
-  names(models) <- names(variant$ladder)
+  models <- list(character(), str_cols)
+  names(models) <- MODELS
 
   list(
-    data          = keep,
-    baseline      = base_cols,
-    models        = models,
-    structure_all = all_str,
-    gini          = gini_cols,
-    dropped_zv    = zv,
-    variant       = variant
+    data       = keep,
+    baseline   = base_cols,
+    models     = models,
+    structure  = str_cols,
+    probing    = gini_cols,
+    dropped_zv = zv
   )
 }
 
 
-#' Print the feature lists, the ladder and the sample sizes
+#' Print the feature lists and the sample sizes
 #' @export
 report_feature_sets <- function(el) {
   d <- el$data
   cat("\n=== Eligible analysis set ===\n")
-  cat(sprintf("Variant           : %s — %s\n", el$variant$name, el$variant$label))
-  cat(sprintf("Row policy        : %s\n", el$variant$rows))
   cat(sprintf("Response          : %s (Agarwal & Kelley consensus PC1, untransformed)\n",
               TARGET_COL))
   cat(sprintf("Genes             : %d (1 row per gene, %d distinct gene_id)\n",
               nrow(d), dplyr::n_distinct(d$gene_id)))
-  if (identical(el$variant$rows, "native_na")) {
-    miss <- mean(!stats::complete.cases(
-      d[, c(el$baseline, el$structure_all), drop = FALSE]))
-    cat(sprintf("                    %.1f%% of them have at least one missing predictor\n",
-                100 * miss))
-  }
+  miss <- mean(!stats::complete.cases(
+    d[, c(el$baseline, el$structure), drop = FALSE]))
+  cat(sprintf("                    %.1f%% of them have at least one missing predictor\n",
+              100 * miss))
   cat(sprintf("Split (blocked on family_id_%s):\n", BLOCK_LEVEL))
   print(table(d$split))
+
+  cat("\n--- The two models ---\n")
+  cat(sprintf("  %-10s %-11s %-11s %s\n",
+              "model", "structure", "predictors", "structure groups"))
+  for (m in MODELS) {
+    cat(sprintf("  %-10s %-11d %-11d %s\n", m,
+                length(el$models[[m]]),
+                length(el$baseline) + length(el$models[[m]]),
+                if (length(el$models[[m]])) paste(structure_groups(), collapse = ", ")
+                else "—"))
+  }
 
   cat(sprintf("\nBaseline features : %d\n", length(el$baseline)))
   if (length(el$dropped_zv)) {
     cat("Dropped (zero variance on train+val): ",
         paste(el$dropped_zv, collapse = ", "), "\n")
-  }
-
-  cat("\n--- The ladder ---\n")
-  cat(sprintf("  %-10s %-11s %-11s %s\n",
-              "rung", "structure", "predictors", "structure groups"))
-  for (m in names(el$models)) {
-    star <- if (identical(m, PRIMARY_MODEL)) " *" else "  "
-    cat(sprintf("%s%-10s %-11d %-11d %s\n", star, m,
-                length(el$models[[m]]),
-                length(el$baseline) + length(el$models[[m]]),
-                paste(el$variant$ladder[[m]], collapse = ", ")))
-  }
-  cat("  * primary, pre-specified\n")
-
-  cat("\n--- Structure columns by rung ---\n")
-  for (m in setdiff(names(el$models), REFERENCE_MODEL)) {
-    added <- setdiff(el$models[[m]], el$models[[which(names(el$models) == m) - 1]])
-    cat(sprintf("  %-10s adds %2d: %s\n", m, length(added),
-                paste(added, collapse = ", ")))
   }
 
   cat("\n--- Baseline block by family ---\n")
@@ -509,5 +300,19 @@ report_feature_sets <- function(el) {
   cat("  (aa_freqs, frac_*, purine_/amino_* excluded as exact functions of\n")
   cat("   retained columns; exon_length_last_mrna excluded as a 3'UTR-length\n")
   cat("   proxy at rho 0.949 — see baseline_columns())\n")
+
+  cat("\n--- Structure block by family ---\n")
+  for (g in structure_groups()) {
+    cc <- intersect(fg_columns(d, g), el$structure)
+    # A registered folding family that contributes nothing is expected for
+    # mfe_expected — drop_excluded() removes it as scaffolding for mfe_delta_*
+    # — but is worth flagging rather than showing as a bare 0, so a family that
+    # empties for any OTHER reason is visible on the run that first does it.
+    cat(sprintf("  %-16s %3d%s\n", g, length(cc),
+                if (length(cc) == 0) "   (empty — removed by drop_excluded)" else ""))
+  }
+  cat(sprintf("  (%s excluded from both models: %d columns, measured rather\n",
+              PROBING_GROUP, length(el$probing)))
+  cat("   than computed from sequence — a later, supplementary model)\n")
   invisible(el)
 }

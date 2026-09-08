@@ -86,13 +86,10 @@ RNAstab/
 │   │   └── quadrant_export.R
 │   ├── cross_species/
 │   │   └── cross_species_probing_concordance.R
-│   └── models/
-│       ├── lasso.R                     # run_lasso(), lasso_coefficient_plot()
-│       ├── elastic-net_sanity_test.R
-│       ├── train_halflife_model.R
-│       ├── predict_halflife.R
-│       ├── diagnose_halflife_model.R
-│       └── diagnose_mouse_transfer.R
+│   └── models/                         # two XGBoost models: Baseline, Structure
+│       ├── xgb_structure_features.R    # feature blocks + eligible row set
+│       ├── xgb_structure_comparison.R  # tune, fit, evaluate, write tables
+│       └── xgb_structure_plots.R       # figures, from the tables only
 ├── scripts/
 │   ├── preprocess_saluki.R     # one-off: HDF5 → .rds
 │   ├── build_human.R           # CLI runner for human
@@ -406,20 +403,6 @@ create_scatter_plot(df,
                     log_color = TRUE,
                     add_density_rings = TRUE)
 
-# --- LASSO model ---
-source("analysis/models/lasso.R")
-fit <- run_lasso(df)
-fit$r_squared
-print(lasso_coefficient_plot(fit, top_n = 12))
-
-# --- Custom predictor bundle ---
-# `groups` accepts groups, supergroups and bundles; `pick`/`drop` refine them.
-custom <- list(
-  groups  = c("rnafold_zscores", "rnalfold_zscores", "standalone"),
-  columns = c()
-)
-fit2 <- run_lasso(df, predictor_spec = custom)
-
 # --- The default feature set, as a dotplot ---
 source("analysis/correlations/feature_correlation_dotplot.R")
 out <- feature_correlation_dotplot(df)          # groups = INCLUDED_GROUPS
@@ -427,12 +410,57 @@ print(out$plot)
 ```
 
 
+## Models
+
+Two, and only two:
+
+| Model | Predictors |
+|---|---|
+| `Baseline` | non-structure transcript features (lengths, GC, skews, codon composition, CAI, stop-free lengths, uORF presence, exon density, junction distances, NMD) |
+| `Structure` | `Baseline` **+** every computed secondary-structure feature (RNAfold / RNALfold MFE, their z-scores against shuffled sequence, per-nucleotide MFE, MFE delta) |
+
+Structure is the only difference between them: both are handed the same rows,
+the same gene ids, the same preprocessing, the same family-blocked tuning
+resamples, the same 60-configuration grid and the same seed. The single
+pre-specified contrast is `Structure` vs `Baseline` on held-out R², evaluated
+once on the untouched `test` split of the committed family-blocked holdout.
+
+```bash
+Rscript analysis/models/xgb_structure_comparison.R      # tune, fit, evaluate, plot
+XGB_GRID_SIZE=6 Rscript analysis/models/xgb_structure_comparison.R   # fast smoke test
+Rscript analysis/models/xgb_structure_plots.R           # figures only, from the tables
+```
+
+Fits are cached in `data/outputs/xgb_structure/final_fits.rds`, keyed on
+everything that determines them (both predictor lists, the exact genes, the
+seed, the grid, the fold count). Change any of those and it re-tunes; set
+`XGB_REFIT=1` to force it.
+
+Two things to carry with any number from this comparison, both stated in
+`SUMMARY.txt` on every run:
+
+- **The structure block is not length- and GC-neutral.** Raw and
+  per-nucleotide MFE scale with length and shift with GC, both already in the
+  baseline. `xgb_structure_redundancy.csv` reports how much of each structure
+  column the baseline already explains — read it alongside the headline delta.
+- **Structure missingness is informative.** A missing 5'UTR MFE means a 5'UTR
+  too short to fold. XGBoost handles NA natively, so `Structure` can split on
+  an annotation artefact; this design cannot rule that out.
+
+icSHAPE structural Gini (`probing`) is deliberately in neither model: it is
+measured rather than computed from sequence, so a model using it cannot score
+an unprobed transcript. If it is ever modelled, that is a separate,
+supplementary analysis.
+
+
 ## Required R packages
 
 Core pipeline: `dplyr`, `tidyr`, `readr`, `purrr`, `stringr`, `tibble`,
 `tidyselect`, `rlang`.
 
-Analysis layer: `ggplot2`, `forcats`, `viridis`, `scales`, `glmnet`.
+Analysis layer: `ggplot2`, `forcats`, `viridis`, `scales`.
+
+Modelling: `tidymodels`, `finetune`, `xgboost`, `future`.
 
 Saluki preprocessing only: `rhdf5` (Bioconductor).
 
