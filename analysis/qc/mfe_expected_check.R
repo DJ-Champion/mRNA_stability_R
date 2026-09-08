@@ -28,7 +28,10 @@ suppressPackageStartupMessages({
 
 species <- "human"                              # change as needed
 region  <- "mrna"                               # 5utr / cds / 3utr / mrna
-df <- build_dataset(species)
+# min_utr = NULL: this check is about the built table, not the analysed cohort
+# — the short-UTR transcripts are precisely where expected-MFE is most likely
+# to misbehave, so excluding them would hide the failure. See MIN_UTR_LENGTH.
+df <- build_dataset(species, min_utr = NULL)
 
 score_col <- paste0("rnafold_score_", region)
 exp_col   <- paste0("mfe_expected_",  region)

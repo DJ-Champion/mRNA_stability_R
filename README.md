@@ -410,6 +410,41 @@ print(out$plot)
 ```
 
 
+## The analysed cohort
+
+`build_dataset()` drops any transcript whose 5'UTR **or** 3'UTR is shorter than
+`MIN_UTR_LENGTH` (30 nt), or whose UTR length is missing. A UTR of a few
+nucleotides is an absent or mis-annotated one, and it makes every regional
+feature degenerate — folding energy over 12 nt is not comparable to folding
+energy over 1,200, and the length-normalised z-scores divide by a
+shuffled-sequence distribution that is itself near-degenerate.
+
+```
+human  13,660 → 12,302 built rows  (9.9% removed; 12,277 modellable)
+mouse  14,197 → 13,215 built rows  (6.9% removed)
+```
+
+The filter applies to the frame `build_dataset()` **returns**, not to what it
+writes — so `data/cache/*.rds` stays complete, changing the threshold never
+invalidates a cache, and no `CACHE_VERSION` bump is involved. It is selection
+intent, like `INCLUDED_GROUPS` and `EXCLUDED_FEATURES`.
+
+```r
+df  <- build_dataset("human")                   # filtered — the default
+all <- build_dataset("human", min_utr = NULL)   # everything, for QC
+```
+
+The three `analysis/qc/` scripts pass `min_utr = NULL`: a coverage and
+missingness diagnostic should describe the whole built table, including what
+the filter removes.
+
+**The split artefact does not need rebuilding.** Blocking survives any
+subsetting — removing genes cannot make a family span two splits — and the
+proportions barely move (80.12 / 9.99 / 9.90 against a target of 80/10/10,
+inside `validate_splits()`'s tolerance). `holdout_medium.rds` stays valid, so
+results remain traceable to the clustering run behind it.
+
+
 ## Models
 
 Two, and only two:
