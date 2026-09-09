@@ -164,12 +164,18 @@ format_single_name <- function(name) {
   # Codon / amino-acid composition: token uppercased, region suffix dropped.
   # Cheap special-case avoids 84 exact-match rules in REPLACEMENTS and
   # avoids needing PCRE2 case-folding (which R's sub() doesn't support).
+  # No trailing space on either: these return EARLY, so they never reach the
+  # trimws() at the foot of this function the way every REPLACEMENTS-driven
+  # name does. They previously carried one, which the documented examples above
+  # ("Codon.AAA%", "aa.L%") already said they should not — visible as a ragged
+  # right edge wherever codon labels are set flush, i.e. most of the gain
+  # importance figure, since codons are 64 of the 106 baseline columns.
   m <- regmatches(name, regexec("^codon_([acgtu]{3})_cds$", name))[[1]]
-  if (length(m) == 2) return(paste0("Codon.", toupper(m[2]), "% "))
-  
+  if (length(m) == 2) return(paste0("Codon.", toupper(m[2]), "%"))
+
   m <- regmatches(name, regexec("^aa_([a-z])_cds$", name))[[1]]
-  if (length(m) == 2) return(paste0("aa.", toupper(m[2]), "% "))
-  
+  if (length(m) == 2) return(paste0("aa.", toupper(m[2]), "%"))
+
   for (rule in REPLACEMENTS) {
     name <- sub(rule[[1]], rule[[2]], name)
   }

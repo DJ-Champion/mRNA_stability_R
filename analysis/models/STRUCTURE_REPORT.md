@@ -111,10 +111,11 @@ training rows only, so no test information enters even a descriptive table.
 **This defends both flanks at once**, which is unusual value for one
 supplementary panel:
 
-- *"Your structure block was degenerate / duplicative."* No. 23 of 44 columns
-  fall below R² 0.6, and all **15 z-score columns** retain a mean **87.9%** of
-  their variance as not linearly reconstructible from the baseline. The block
-  carried genuinely new numbers. They did not predict half-life.
+- *"Your structure block was degenerate / duplicative."* No. The two z-score
+  families have median R² of 0.11 and 0.14, and all **15 z-score columns**
+  retain a mean **87.9%** of their variance as not linearly reconstructible
+  from the baseline. The block carried genuinely new numbers. They did not
+  predict half-life.
 - *"Of course nothing happened — MFE is just length in disguise."* True of raw
   MFE (R² 0.85–0.97, mechanically expected: folding energy scales with how much
   sequence there is to fold and shifts with GC) and demonstrably **false** of
@@ -124,6 +125,12 @@ supplementary panel:
 Neither the bound in §2 nor this table is sufficient alone. The bound
 quantifies the effect; this establishes that the bound is *informative* rather
 than an artefact of a broken feature set.
+
+**The figure** (`plots/xgb_structure_redundancy.*`) plots one point per
+structure column against its R², grouped by folding family and ordered by
+family median, with the median marked as a crossbar. There is deliberately no
+reference line: any cutoff would be arbitrary, and a dashed line invites being
+read as a threshold or a test. The families separate without one.
 
 **State the limitation, because it cuts in our favour.** These R² are linear
 and unadjusted. Linear, so a tree could exploit curvature and interactions this
@@ -225,8 +232,17 @@ Everything above is derived from artefacts in `data/outputs/xgb_structure/`:
 | `tables/xgb_structure_redundancy.csv` | the regression in §3 |
 | `tables/xgb_structure_gain_share.csv`, `..._gain_importance.csv` | §4 |
 | `tables/xgb_structure_validation_checks.csv` | the 17 design assertions |
-| `plots/xgb_structure_redundancy.*` | the Fig. SX candidate |
-| `plots/xgb_structure_delta_metrics.*` | the Δ figure |
+| `plots/xgb_structure_redundancy.*` | the Fig. SX candidate (§3) |
+| `plots/xgb_structure_delta_metrics.*` | the Δ figure (§2) |
+| `plots/xgb_structure_paired_slices.*` | per-slice consistency (§2) |
+| `plots/xgb_structure_observed_vs_predicted.*` | calibration, both models |
+| `plots/xgb_structure_gain_importance.*` | the gain pattern (§4) |
+
+Figures carry a short title, a subtitle with sample sizes, and nothing else —
+interpretation belongs in the paper's legend, where it is read alongside the
+text. MAE is computed, bootstrapped and tabulated but not plotted; adding
+`"mae"` to `PLOT_METRICS` in `xgb_structure_plots.R` puts it back on the two
+metric figures with no re-run.
 
 To regenerate from scratch:
 

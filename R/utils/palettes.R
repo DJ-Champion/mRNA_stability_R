@@ -139,7 +139,9 @@ FEATURE_GROUP_DISPLAY_NAMES <- c(
   rnafold_scores         = "MFE",
   rnafold_zscores        = "MFE z-score",
   rnafold_per_nt         = "MFE/nt",
-  mfe_deltas             = "MFE Delta",
+  # Sentence case, matching "MFE z-score" and "MFE expected" — every other
+  # entry here capitalises only the leading word and any proper noun.
+  mfe_deltas             = "MFE delta",
   mfe_expected           = "MFE expected",
   rnalfold_scores        = "Local MFE",
   rnalfold_zscores       = "Local MFE z-score",
