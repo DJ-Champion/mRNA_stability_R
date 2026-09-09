@@ -208,6 +208,53 @@ INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core",
                      "intrinsic_select", "translation_core")
 
 
+# --- Cohort definition -------------------------------------------------------
+# The minimum length, in nucleotides, that BOTH UTRs must reach for a
+# transcript to enter the analysis. A transcript failing it is dropped
+# entirely — this is a ROW filter, and the counterpart to EXCLUDED_FEATURES
+# below, which is a column filter.
+#
+# WHY. A UTR of a few nucleotides is not a short UTR so much as an absent or
+# mis-annotated one, and it poisons the regional features rather than merely
+# weakening them. Every per-region metric becomes degenerate at that scale:
+# folding energy over 12 nt is not comparable to folding energy over 1,200,
+# GC content over 12 nt takes a handful of distinct values, and the
+# length-normalised z-scores divide by a shuffled-sequence distribution that
+# is itself near-degenerate. The models cannot tell "this UTR is unstructured"
+# from "this UTR is barely there".
+#
+# 30 nt is the project's agreed threshold. Measured on the v10 caches:
+#
+#   human  13,660 -> 12,302 built rows      (1,358 removed, 9.9%)
+#          13,601 -> 12,277 modellable      (1,324 removed, 9.7%)
+#   mouse  14,197 -> 13,215 built rows        (982 removed, 6.9%)
+#
+# The cut falls overwhelmingly on the 5' side: 1,244 human transcripts have a
+# 5'UTR under 30 nt against 50 with a short 3'UTR.
+#
+# NA COUNTS AS FAILING. A missing UTR length cannot be shown to clear the
+# threshold, and no transcript in either cache has a recorded length of 0
+# while the minimum observed is 1 nt — so NA reads as "no annotated UTR", not
+# as a failed measurement. 72 human and 302 mouse rows are dropped on this
+# branch, and they are included in the totals above.
+#
+# WHERE IT IS APPLIED. build_dataset() applies it to the frame it RETURNS,
+# after the cache is read or written — so the cache on disk stays complete and
+# this needs no CACHE_VERSION bump. It is selection intent, like
+# INCLUDED_GROUPS and EXCLUDED_FEATURES, not a schema change. Pass
+# `min_utr = NULL` to build_dataset() / build_all() for the unfiltered table;
+# the QC scripts do exactly that, because a coverage and missingness diagnostic
+# should describe the whole built table including what this removes.
+#
+# THE SPLIT ARTEFACT DOES NOT NEED REBUILDING. Blocking is preserved under any
+# subsetting (removing genes cannot make a family span two splits), and the
+# proportions barely move: 80.12 / 9.99 / 9.90 against a target of 80/10/10,
+# inside validate_splits()'s tolerance. holdout_medium.rds therefore remains
+# valid, and results stay traceable to the clustering run behind it.
+
+MIN_UTR_LENGTH <- 30L
+
+
 # --- Model-pipeline exclusions -----------------------------------------------
 # Columns that are built and cached, but are NOT admissible as covariates.
 # Applied by drop_excluded() (R/utils/feature_groups.R) at the head of a

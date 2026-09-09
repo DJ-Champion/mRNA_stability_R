@@ -1,13 +1,13 @@
 # =============================================================================
-# Figures for the structure ladder — rendering only, no modelling
+# Figures for the Baseline / Structure comparison — rendering only, no modelling
 # =============================================================================
 # Every figure here is built from tables already written to disk by
-# xgb_structure_comparison.R and xgb_structure_gini_subset.R. Nothing in this
-# file fits, tunes or predicts anything, and it never loads the fitted models.
+# xgb_structure_comparison.R. Nothing in this file fits, tunes or predicts
+# anything, and it never loads the fitted models.
 #
 # WHY IT IS SEPARATE. Tuning is the great majority of the comparison script's
 # runtime and every figure takes about a second. Restyling a plot should not
-# cost a re-tune, and for a while it did. Now:
+# cost a re-tune, so:
 #
 #   Rscript analysis/models/xgb_structure_plots.R      # figures only, ~5 s
 #   Rscript analysis/models/xgb_structure_comparison.R # models, then figures
@@ -17,7 +17,7 @@
 # every run — it cannot silently rot against a changed table format.
 #
 # THE CONTRACT. This script reads; it does not compute. If a number belongs on
-# a figure it must first exist in a table written by the modelling scripts, so
+# a figure it must first exist in a table written by the modelling script, so
 # that what is on the slide can always be traced to a file. The one thing
 # computed here is arithmetic already implied by those tables (a mean, an axis
 # range) — never a metric, an interval or a model quantity.
@@ -31,55 +31,57 @@ suppressPackageStartupMessages({
 })
 
 if (!exists("OUTPUT_DIR")) source("R/load_all.R")
-if (!exists("resolve_variant")) source("analysis/models/xgb_structure_features.R")
-
-# Which variant's artefacts to draw. Inherited from the calling script when
-# sourced; otherwise taken from XGB_VARIANT, defaulting to `default`:
-#
-#   Rscript analysis/models/xgb_structure_plots.R                     # default
-#   XGB_VARIANT=complete_case Rscript analysis/models/xgb_structure_plots.R
-PLOT_VARIANT <- if (exists("VARIANT")) VARIANT else
-  resolve_variant(Sys.getenv("XGB_VARIANT", "default"))
+if (!exists("run_dir")) source("analysis/models/xgb_structure_features.R")
 
 
 # ----------------------------- Style knobs ----------------------------------
 # The things worth adjusting when a figure needs to fit a slide. Edit freely;
 # nothing below depends on a model.
 
-COL_REFERENCE <- "#4C6EF5"   # the baseline rung
-COL_PRIMARY   <- "#E8590C"   # the pre-specified primary rung / conclusive result
+COL_BASELINE  <- "#4C6EF5"   # the reference model
+COL_STRUCTURE <- "#E8590C"   # the structure model / a conclusive result
 COL_NULL      <- "grey70"    # a CI that spans zero
 BASE_SIZE     <- 12
 PLOT_DPI      <- 300
 PLOT_FORMATS  <- c("jpg", "pdf")
 
-RUN_DIR   <- variant_dir(PLOT_VARIANT, "root")
-PLOT_DIR  <- variant_dir(PLOT_VARIANT, "plots")
-TABLE_DIR <- variant_dir(PLOT_VARIANT, "tables")
+RUN_DIR   <- run_dir("root")
+PLOT_DIR  <- run_dir("plots")
+TABLE_DIR <- run_dir("tables")
 dir.create(PLOT_DIR, showWarnings = FALSE, recursive = TRUE)
 
-METRIC_LABEL <- c(rsq_trad = "R² (held-out)", rmse = "RMSE", mae = "MAE",
+# The metrics that appear ON A FIGURE, and their panel order. MAE is
+# deliberately absent: it is still computed, bootstrapped, sign-flip tested and
+# written to xgb_structure_delta_bootstrap.csv, so a reviewer asking about
+# absolute error gets an answer without a re-run — it simply is not on a
+# figure. Adding "mae" to this vector is the only change needed to put it back.
+PLOT_METRICS <- c("rsq_trad", "rmse")
+
+METRIC_LABEL <- c(rsq_trad = "R²", rmse = "RMSE", mae = "MAE",
                   rsq = "r² (correlation)")
 
-# Any figure from a non-default specification carries the variant in its title.
-# Without it, a sensitivity figure is visually indistinguishable from the
-# committed result and could be presented as the headline by accident — which
-# is precisely the failure mode the sensitivity framing exists to prevent.
-title_for <- function(txt) {
-  if (identical(PLOT_VARIANT$name, "default")) txt
-  else paste0("[", PLOT_VARIANT$name, "] ", txt)
-}
-variant_note <- function() {
-  if (identical(PLOT_VARIANT$name, "default")) ""
-  else sprintf("\nSENSITIVITY VARIANT '%s': %s. Not the committed result.",
-               PLOT_VARIANT$name, PLOT_VARIANT$label)
+#' Order a metric column as an axis / facet factor, dropping what is not drawn.
+#'
+#' One place decides both which metrics appear and in what order, so a figure
+#' cannot quietly disagree with PLOT_METRICS.
+metric_factor <- function(x) {
+  keep <- intersect(PLOT_METRICS, unique(x))
+  factor(METRIC_LABEL[x], levels = unname(METRIC_LABEL[keep]))
 }
 
-theme_xgb <- function(subtitle_size = 10) {
+#' Restrict a table to the metrics that go on figures.
+plot_metrics_only <- function(df) dplyr::filter(df, metric %in% PLOT_METRICS)
+
+# Annotation policy: a short title, and a subtitle carrying SAMPLE SIZES only.
+# Interpretation belongs in the paper's figure legend, where it can be as long
+# as it needs to be and is read alongside the text. A figure that argues with
+# itself in 9pt grey is harder to read and impossible to typeset.
+theme_xgb <- function() {
   theme_minimal(base_size = BASE_SIZE) +
-    theme(plot.title       = element_text(face = "bold", size = 15),
-          plot.subtitle    = element_text(size = subtitle_size, colour = "grey30"),
-          strip.text       = element_text(face = "bold"))
+    theme(plot.title    = element_text(face = "bold", size = 14),
+          plot.subtitle = element_text(size = 9, colour = "grey35"),
+          strip.text    = element_text(face = "bold"),
+          plot.margin   = margin(6, 10, 6, 6))
 }
 
 #' Write one plot in every configured format.
@@ -107,48 +109,46 @@ save_plot <- function(p, name, w = 210, h = 148, dir = PLOT_DIR) {
 # Named so a missing file names the script that produces it, rather than
 # failing somewhere downstream with an unhelpful "object not found".
 
-need <- function(path, produced_by) {
+MAIN <- "analysis/models/xgb_structure_comparison.R"
+
+need <- function(path) {
   if (!file.exists(path)) {
     stop("missing artefact: ", path,
-         "\n  run `Rscript ", produced_by, "` first", call. = FALSE)
+         "\n  run `Rscript ", MAIN, "` first", call. = FALSE)
   }
   path
 }
 
-optional <- function(path) if (file.exists(path)) path else NULL
+manifest <- readRDS(need(file.path(RUN_DIR, "run_manifest.rds")))
 
-MAIN <- "analysis/models/xgb_structure_comparison.R"
-GINI <- "analysis/models/xgb_structure_gini_subset.R"
+PLOT_MODELS <- manifest$models
+REFMOD      <- manifest$reference_model
+STRMOD      <- manifest$structure_model
 
-manifest <- readRDS(need(file.path(RUN_DIR, "run_manifest.rds"), MAIN))
+as_model <- function(x) factor(x, levels = PLOT_MODELS)
 
-MODELS  <- manifest$models
-PRIMARY <- manifest$primary_model
-REFMOD  <- manifest$reference_model
-
-as_model <- function(x) factor(x, levels = MODELS)
-
-preds   <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_test_predictions.csv"), MAIN),
-                    show_col_types = FALSE) |> mutate(model = as_model(model))
-deltas  <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_delta_bootstrap.csv"), MAIN),
-                    show_col_types = FALSE)
-chunks  <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_chunk_metrics.csv"), MAIN),
-                    show_col_types = FALSE) |> mutate(model = as_model(model))
-imp     <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_gain_importance.csv"), MAIN),
-                    show_col_types = FALSE) |> mutate(model = as_model(model))
+preds  <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_test_predictions.csv")),
+                   show_col_types = FALSE) |> mutate(model = as_model(model))
+deltas <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_delta_bootstrap.csv")),
+                   show_col_types = FALSE)
+chunks <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_chunk_metrics.csv")),
+                   show_col_types = FALSE) |> mutate(model = as_model(model))
+imp    <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_gain_importance.csv")),
+                   show_col_types = FALSE) |> mutate(model = as_model(model))
+redun  <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_redundancy.csv")),
+                   show_col_types = FALSE)
 
 N_BOOT <- manifest$n_boot
 N_TEST <- manifest$n_test
 
-# Reference blue, then warming toward the primary orange as structure is added.
-# Deliberately NOT a rainbow: the ladder is ordered, so the palette is ordered.
-MODEL_COLS <- setNames(
-  c(COL_REFERENCE,
-    colorRampPalette(c("#FFA94D", COL_PRIMARY))(length(MODELS) - 1)),
-  MODELS)
+MODEL_COLS <- setNames(c(COL_BASELINE, COL_STRUCTURE), PLOT_MODELS)
 
-message("Rendering figures from ", RUN_DIR, " (", N_TEST, " held-out genes, ",
-        length(MODELS), " rungs)")
+# Predictor counts per model are no longer on any figure — they belong in the
+# paper's methods, and manifest$model_metrics / the feature-list CSV remain the
+# authority. Sample sizes are the one thing the subtitles still carry, because
+# a reader cannot judge an interval without n.
+
+message("Rendering figures from ", RUN_DIR, " (", N_TEST, " held-out genes)")
 
 
 # ----------------------------- 1. Delta metrics -----------------------------
@@ -156,86 +156,63 @@ message("Rendering figures from ", RUN_DIR, " (", N_TEST, " held-out genes, ",
 # sign of the point estimate — colouring by sign would paint a point orange for
 # landing a hair on the favourable side of zero with an interval ten times its
 # own width, which is the exact misreading this figure exists to prevent.
-#
-# Only the vs-baseline family is drawn, on R² and RMSE. The rung-to-rung
-# increments and MAE remain in xgb_structure_delta_bootstrap.csv and in the
-# report; they are simply not on the slide.
-#
-# The subtitle carries sample sizes only. What each model NAME contains is
-# documented alongside the figure rather than on it.
 
-delta_plot_data <- deltas |>
-  filter(kind == "vs_baseline", metric %in% c("rsq_trad", "rmse")) |>
-  mutate(
-    metric_lab   = factor(METRIC_LABEL[metric],
-                          levels = METRIC_LABEL[c("rsq_trad", "rmse")]),
-    contrast_lab = fct_rev(factor(contrast, levels = unique(contrast)))
-  )
-
-# Predictor counts per rung, read from the manifest — the one place they are
-# recorded — so the caption cannot drift from what was actually fitted.
-n_pred <- manifest$model_metrics |>
-  mutate(txt = sprintf("%s %d", model, n_predictors))
-
-p_delta <- delta_plot_data |>
-  ggplot(aes(x = delta, y = contrast_lab)) +
+# Fill still encodes CONCLUSIVE rather than the sign of the point estimate,
+# but the explanation moves to the paper's legend. Both points are grey here,
+# so nothing is ambiguous on the figure as it stands; the key exists so that a
+# future run in which an interval DOES clear zero cannot be read as a win
+# without checking which side of zero it cleared.
+p_delta <- deltas |>
+  plot_metrics_only() |>
+  mutate(metric_lab = metric_factor(metric)) |>
+  ggplot(aes(x = delta, y = "")) +
   geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
   geom_errorbar(aes(xmin = ci_low, xmax = ci_high), orientation = "y",
-                width = 0.2, linewidth = 0.8, colour = "grey25") +
+                width = 0.15, linewidth = 0.8, colour = "grey25") +
   geom_point(aes(fill = conclusive), size = 4, shape = 21, colour = "grey20",
              show.legend = FALSE) +
-  scale_fill_manual(values = c(`TRUE` = COL_PRIMARY, `FALSE` = COL_NULL)) +
+  scale_fill_manual(values = c(`TRUE` = COL_STRUCTURE, `FALSE` = COL_NULL)) +
   facet_wrap(~ metric_lab, scales = "free_x") +
   labs(
-    title    = title_for("Change in held-out performance between models"),
-    # The fill key is not decoration. Fill encodes "the CI clears zero", NOT
-    # "the larger model won" — complete_case has a filled point that clears zero
-    # in the direction favouring the BASELINE, and unlabelled it reads as a win.
-    subtitle = sprintf(paste0("n = %s genes trained, %s held out, %s bootstrap ",
-                              "replicates.\nPredictors: %s.\n",
-                              "Filled points: CI excludes zero — read which ",
-                              "side. Grey points: CI spans zero.%s"),
-                       format(manifest$n_trainval, big.mark = ","),
+    title    = "Held-out performance: Structure vs Baseline",
+    subtitle = sprintf("%s held-out genes, %s bootstrap replicates, 95%% CI",
                        format(N_TEST, big.mark = ","),
-                       format(N_BOOT, big.mark = ","),
-                       paste(n_pred$txt, collapse = ", "), variant_note()),
-    x = "Change vs Baseline (R² unitless; RMSE in half-life score units)",
+                       format(N_BOOT, big.mark = ",")),
+    x = "Difference (Structure − Baseline)",
     y = NULL
   ) +
-  theme_xgb(subtitle_size = 9) +
-  theme(panel.grid.major.y = element_blank())
+  theme_xgb() +
+  theme(panel.grid.major.y = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.ticks.y = element_blank())
 
-save_plot(p_delta, "xgb_structure_delta_metrics", w = 250, h = 95)
+# Short: one row of data, so height beyond the title block is dead space.
+save_plot(p_delta, "xgb_structure_delta_metrics", w = 200, h = 58)
 
 
 # ----------------------------- 2. Paired slices -----------------------------
-# The brief asked for a paired plot across outer CV folds. Under a single
-# holdout there are no outer folds, so this slices the test set instead and
-# answers the same question: is a pooled delta broad-based, or carried by one
-# corner of the held-out genes?
+# Is a pooled delta broad-based, or carried by one corner of the held-out genes?
 
+# Only the TILT of each line is informative — panel heights differ because some
+# slices contain intrinsically harder genes. That belongs in the legend, not on
+# the figure.
 p_paired <- chunks |>
-  mutate(metric_lab = factor(METRIC_LABEL[metric],
-                             levels = METRIC_LABEL[c("rsq_trad", "rmse", "mae")])) |>
+  plot_metrics_only() |>
+  mutate(metric_lab = metric_factor(metric)) |>
   ggplot(aes(x = model, y = value, group = chunk)) +
   geom_line(colour = "grey60", linewidth = 0.6) +
   geom_point(aes(colour = model), size = 2.6, show.legend = FALSE) +
   scale_colour_manual(values = MODEL_COLS) +
   facet_wrap(~ metric_lab, scales = "free_y") +
   labs(
-    title    = title_for("Paired performance across family-blocked slices of the held-out set"),
-    subtitle = paste0("One line per slice, walking the ladder left to right. ",
-                      "A consistent effect tilts every line the same way;\n",
-                      "lines that cross mean the pooled delta is carried by one ",
-                      "corner of the test set. Heights differ because some\n",
-                      "slices contain intrinsically harder genes — only the TILT ",
-                      "is informative.", variant_note()),
+    title    = "Performance across held-out slices",
+    subtitle = sprintf("%d family-blocked slices of the held-out set, one line each",
+                       n_distinct(chunks$chunk)),
     x = NULL, y = NULL
   ) +
-  theme_xgb(subtitle_size = 9) +
-  theme(axis.text.x = element_text(size = 8, angle = 30, hjust = 1))
+  theme_xgb()
 
-save_plot(p_paired, "xgb_structure_paired_slices", w = 290, h = 155)
+save_plot(p_paired, "xgb_structure_paired_slices", w = 190, h = 110)
 
 
 # ----------------------------- 3. Observed vs predicted ---------------------
@@ -258,11 +235,13 @@ obspred_stats <- preds |>
                     sum((observed - mean(observed))^2),
     .groups   = "drop"
   ) |>
-  mutate(label = sprintf("Pearson r = %.3f\nSpearman %s = %.3f\nR%s = %.3f",
+  mutate(label = sprintf("r = %.3f\n%s = %.3f\nR%s = %.3f",
                          pearson, "ρ", spearman, "²", rsq_trad))
 
 lims <- range(c(preds$observed, preds$predicted))
 
+# The stats block stays: it is data, not commentary. Kept compact — the symbols
+# are defined in the legend rather than spelled out in the panel.
 p_obspred <- preds |>
   ggplot(aes(observed, predicted)) +
   geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = "dashed") +
@@ -273,97 +252,86 @@ p_obspred <- preds |>
             colour = "grey15") +
   scale_colour_manual(values = MODEL_COLS) +
   coord_equal(xlim = lims, ylim = lims) +
-  facet_wrap(~ model, nrow = 2) +
-  labs(title = title_for("Observed vs held-out predicted half-life"),
-       subtitle = sprintf(paste0("n = %s genes trained, %s held out and plotted ",
-                                 "in every panel.\nPredictors: %s.%s"),
-                          format(manifest$n_trainval, big.mark = ","),
-                          format(N_TEST, big.mark = ","),
-                          paste(n_pred$txt, collapse = ", "), variant_note()),
-       x = "Observed half-life score", y = "Predicted half-life score") +
-  theme_xgb(subtitle_size = 9)
+  facet_wrap(~ model) +
+  labs(title = "Observed vs predicted half-life",
+       subtitle = sprintf("%s held-out genes, plotted in both panels",
+                          format(N_TEST, big.mark = ",")),
+       x = "Observed (PC1 score)", y = "Predicted (PC1 score)") +
+  theme_xgb()
 
-save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 200, h = 200)
+save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 190, h = 115)
 
 
 # ----------------------------- 4. Gain importance ---------------------------
-# Exploratory context only, drawn for the PRIMARY rung. The gain values are
+# Exploratory context only, drawn for the Structure model. The gain values are
 # computed upstream from the fitted models; this only draws them.
-#
-# The primary rung rather than the widest: S-full's block is the most
-# confounded with the baseline, so its importance figure would show structure
-# collecting gain for length and GC and invite exactly the misreading this
-# caption warns against. The primary rung is where "genuinely new numbers, used
-# by the model, buying nothing" is visible cleanly.
 
-imp_primary <- imp |> filter(model == PRIMARY)
-
-p_imp <- imp_primary |>
+# Correlated predictors share and redistribute gain, so this is not an effect
+# estimate and does not rank independent contributions — a caveat for the
+# legend, not the panel. The block legend stays: which bars are structure is
+# the whole point of the figure.
+p_imp <- imp |>
+  filter(model == STRMOD) |>
   slice_max(Gain, n = 25) |>
+  mutate(block = factor(block, levels = c("baseline", "structure"),
+                        labels = c("Baseline", "Structure"))) |>
   ggplot(aes(Gain, fct_reorder(Feature, Gain), fill = block)) +
   geom_col() +
-  scale_fill_manual(values = c(baseline = "grey65", structure = COL_PRIMARY)) +
-  scale_y_discrete(labels = function(x) vapply(x, format_col_name, character(1))) +
-  labs(title = title_for(paste0(PRIMARY, " gain importance (top 25): exploratory only")),
-       subtitle = paste0("Correlated predictors share and redistribute gain, so ",
-                         "this is not an effect estimate and does not rank\n",
-                         "independent contributions. The statistical evidence is ",
-                         "the held-out improvement, not this figure."),
+  scale_fill_manual(values = setNames(c("grey65", COL_STRUCTURE),
+                                      c("Baseline", "Structure"))) +
+  scale_y_discrete(labels = function(x) format_col_name(x)) +
+  labs(title = "Gain importance, Structure model (top 25)",
+       subtitle = "Exploratory: gain is shared among correlated predictors",
        x = "Gain", y = NULL, fill = NULL) +
   theme_xgb() +
   theme(legend.position = "top", panel.grid.major.y = element_blank())
 
-save_plot(p_imp, "xgb_structure_primary_importance", h = 180)
+save_plot(p_imp, "xgb_structure_gain_importance", w = 190, h = 160)
 
 
-# ----------------------------- 5. icSHAPE secondary -------------------------
-# Rendered only if the secondary run has been done. Absent is not an error —
-# the main comparison stands on its own.
+# ----------------------------- 5. Structure redundancy ----------------------
+# The companion to figure 1, and the reason it is a figure rather than a
+# buried CSV: the structure block is not length- and GC-neutral, so a positive
+# delta has two readings and this is what tells them apart. Each point is one
+# structure column; the x-axis is the share of its variance a linear model on
+# the whole baseline block already reproduces.
 
-# The icSHAPE run has its own directory, not a variant's — it is a different
-# design on a different eligible set, always built from the primary rung's
-# feature blocks. So this section is independent of PLOT_VARIANT and renders
-# the same figure whichever variant is being drawn.
-GINI_DIR  <- file.path(OUTPUT_DIR, "xgb_structure", "gini")
-gini_path <- optional(file.path(GINI_DIR, "tables", "xgb_structure_gini_deltas.csv"))
-gini_man  <- optional(file.path(GINI_DIR, "gini_run_manifest.rds"))
+if (nrow(redun) > 0) {
 
-if (is.null(gini_path) || is.null(gini_man)) {
-  message("  skipping the icSHAPE figure — run `Rscript ", GINI, "` to produce it")
-} else {
-  gd  <- read_csv(gini_path, show_col_types = FALSE)
-  gm  <- readRDS(gini_man)
-  lab <- c(rsq_trad = "R² (out-of-fold)", rmse = "RMSE", mae = "MAE")
+  # The 0.6 reference line is gone. It was a reading aid I chose, it has no
+  # statistical standing, and a dashed line invites being read as a threshold
+  # or a test. Replaced by each family's MEDIAN R² as a crossbar — the same
+  # at-a-glance ordering, but a property of the data rather than of an
+  # arbitrary cutoff. Colour now encodes the family, not which side of a line
+  # a point fell on.
+  redun_fam <- redun |>
+    group_by(family) |>
+    summarise(median_r2 = median(r2_from_baseline), .groups = "drop")
 
-  p_gini <- gd |>
-    mutate(metric_lab = factor(lab[metric], levels = lab),
-           comparison = factor(comparison, levels = rev(unique(comparison)))) |>
-    ggplot(aes(delta, comparison)) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
-    geom_errorbar(aes(xmin = ci_low, xmax = ci_high), orientation = "y",
-                  width = 0.15, linewidth = 0.8, colour = "grey25") +
-    geom_point(aes(fill = conclusive), size = 4, shape = 21, colour = "grey20",
-               show.legend = FALSE) +
-    scale_fill_manual(values = c(`TRUE` = COL_PRIMARY, `FALSE` = "grey75")) +
-    facet_wrap(~ metric_lab, scales = "free_x") +
+  p_redun <- redun |>
+    left_join(redun_fam, by = "family") |>
+    mutate(family_lab = fct_reorder(format_group_name(family, "group"),
+                                    median_r2)) |>
+    ggplot(aes(r2_from_baseline, family_lab)) +
+    geom_crossbar(data = ~ distinct(.x, family_lab, median_r2),
+                  aes(x = median_r2, xmin = median_r2, xmax = median_r2),
+                  width = 0.55, linewidth = 0.5, colour = "grey35",
+                  middle.linewidth = 0.5) +
+    geom_point(alpha = 0.75, size = 2.4, colour = COL_STRUCTURE,
+               position = position_jitter(height = 0.10, width = 0, seed = 42)) +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
     labs(
-      title = "SECONDARY: icSHAPE Gini on the genes that have it",
-      subtitle = sprintf(paste0("Out-of-fold, %d genes, %s. ",
-                                "Grey points span zero. NOT the headline comparison.\n",
-                                "Caveats: (1) icSHAPE coverage tracks expression, so ",
-                                "this subset is biased toward\nabundant transcripts. ",
-                                "(2) Gini is MEASURED, not computed from sequence, so ",
-                                "a model\nusing it cannot score an unprobed transcript. ",
-                                "(3) Probing read depth tracks abundance,\nwhich this ",
-                                "design cannot separate from a structure effect."),
-                         gm$n_genes, gm$design),
-      x = "Delta (candidate - reference), PC1 units", y = NULL
+      title    = "Structure features explained by the baseline",
+      subtitle = sprintf("One point per structure column (n = %d); bar marks the family median",
+                         nrow(redun)),
+      x = "R² from the baseline block", y = NULL
     ) +
-    theme_xgb(subtitle_size = 9) +
+    theme_xgb() +
     theme(panel.grid.major.y = element_blank())
 
-  save_plot(p_gini, "xgb_structure_gini_deltas", w = 300, h = 155,
-            dir = file.path(GINI_DIR, "plots"))
+  save_plot(p_redun, "xgb_structure_redundancy", w = 190, h = 115)
+} else {
+  message("  skipping the redundancy figure — the regression was not run")
 }
 
 message("Figures written to ", PLOT_DIR)

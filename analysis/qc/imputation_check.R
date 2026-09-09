@@ -22,7 +22,11 @@ suppressPackageStartupMessages({
 })
 
 species <- "human"
-df <- build_dataset(species)
+# min_utr = NULL: QC describes the whole built table, including the short-UTR
+# transcripts the cohort filter removes from every analysis. Their missingness
+# is exactly what a coverage diagnostic should be able to see. See
+# MIN_UTR_LENGTH in config.R.
+df <- build_dataset(species, min_utr = NULL)
 
 # The imputation step writes both the raw mRNA z-score (from direct folding
 # of the full mRNA) and an *_imputed variant (the length-weighted region avg).

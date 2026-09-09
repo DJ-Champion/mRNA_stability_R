@@ -86,13 +86,10 @@ RNAstab/
 │   │   └── quadrant_export.R
 │   ├── cross_species/
 │   │   └── cross_species_probing_concordance.R
-│   └── models/
-│       ├── lasso.R                     # run_lasso(), lasso_coefficient_plot()
-│       ├── elastic-net_sanity_test.R
-│       ├── train_halflife_model.R
-│       ├── predict_halflife.R
-│       ├── diagnose_halflife_model.R
-│       └── diagnose_mouse_transfer.R
+│   └── models/                         # two XGBoost models: Baseline, Structure
+│       ├── xgb_structure_features.R    # feature blocks + eligible row set
+│       ├── xgb_structure_comparison.R  # tune, fit, evaluate, write tables
+│       └── xgb_structure_plots.R       # figures, from the tables only
 ├── scripts/
 │   ├── preprocess_saluki.R     # one-off: HDF5 → .rds
 │   ├── build_human.R           # CLI runner for human
@@ -406,20 +403,6 @@ create_scatter_plot(df,
                     log_color = TRUE,
                     add_density_rings = TRUE)
 
-# --- LASSO model ---
-source("analysis/models/lasso.R")
-fit <- run_lasso(df)
-fit$r_squared
-print(lasso_coefficient_plot(fit, top_n = 12))
-
-# --- Custom predictor bundle ---
-# `groups` accepts groups, supergroups and bundles; `pick`/`drop` refine them.
-custom <- list(
-  groups  = c("rnafold_zscores", "rnalfold_zscores", "standalone"),
-  columns = c()
-)
-fit2 <- run_lasso(df, predictor_spec = custom)
-
 # --- The default feature set, as a dotplot ---
 source("analysis/correlations/feature_correlation_dotplot.R")
 out <- feature_correlation_dotplot(df)          # groups = INCLUDED_GROUPS
@@ -427,12 +410,92 @@ print(out$plot)
 ```
 
 
+## The analysed cohort
+
+`build_dataset()` drops any transcript whose 5'UTR **or** 3'UTR is shorter than
+`MIN_UTR_LENGTH` (30 nt), or whose UTR length is missing. A UTR of a few
+nucleotides is an absent or mis-annotated one, and it makes every regional
+feature degenerate — folding energy over 12 nt is not comparable to folding
+energy over 1,200, and the length-normalised z-scores divide by a
+shuffled-sequence distribution that is itself near-degenerate.
+
+```
+human  13,660 → 12,302 built rows  (9.9% removed; 12,277 modellable)
+mouse  14,197 → 13,215 built rows  (6.9% removed)
+```
+
+The filter applies to the frame `build_dataset()` **returns**, not to what it
+writes — so `data/cache/*.rds` stays complete, changing the threshold never
+invalidates a cache, and no `CACHE_VERSION` bump is involved. It is selection
+intent, like `INCLUDED_GROUPS` and `EXCLUDED_FEATURES`.
+
+```r
+df  <- build_dataset("human")                   # filtered — the default
+all <- build_dataset("human", min_utr = NULL)   # everything, for QC
+```
+
+The three `analysis/qc/` scripts pass `min_utr = NULL`: a coverage and
+missingness diagnostic should describe the whole built table, including what
+the filter removes.
+
+**The split artefact does not need rebuilding.** Blocking survives any
+subsetting — removing genes cannot make a family span two splits — and the
+proportions barely move (80.12 / 9.99 / 9.90 against a target of 80/10/10,
+inside `validate_splits()`'s tolerance). `holdout_medium.rds` stays valid, so
+results remain traceable to the clustering run behind it.
+
+
+## Models
+
+Two, and only two:
+
+| Model | Predictors |
+|---|---|
+| `Baseline` | non-structure transcript features (lengths, GC, skews, codon composition, CAI, stop-free lengths, uORF presence, exon density, junction distances, NMD) |
+| `Structure` | `Baseline` **+** every computed secondary-structure feature (RNAfold / RNALfold MFE, their z-scores against shuffled sequence, per-nucleotide MFE, MFE delta) |
+
+Structure is the only difference between them: both are handed the same rows,
+the same gene ids, the same preprocessing, the same family-blocked tuning
+resamples, the same 60-configuration grid and the same seed. The single
+pre-specified contrast is `Structure` vs `Baseline` on held-out R², evaluated
+once on the untouched `test` split of the committed family-blocked holdout.
+
+```bash
+Rscript analysis/models/xgb_structure_comparison.R      # tune, fit, evaluate, plot
+XGB_GRID_SIZE=6 Rscript analysis/models/xgb_structure_comparison.R   # fast smoke test
+Rscript analysis/models/xgb_structure_plots.R           # figures only, from the tables
+```
+
+Fits are cached in `data/outputs/xgb_structure/final_fits.rds`, keyed on
+everything that determines them (both predictor lists, the exact genes, the
+seed, the grid, the fold count). Change any of those and it re-tunes; set
+`XGB_REFIT=1` to force it.
+
+Two things to carry with any number from this comparison, both stated in
+`SUMMARY.txt` on every run:
+
+- **The structure block is not length- and GC-neutral.** Raw and
+  per-nucleotide MFE scale with length and shift with GC, both already in the
+  baseline. `xgb_structure_redundancy.csv` reports how much of each structure
+  column the baseline already explains — read it alongside the headline delta.
+- **Structure missingness is informative.** A missing 5'UTR MFE means a 5'UTR
+  too short to fold. XGBoost handles NA natively, so `Structure` can split on
+  an annotation artefact; this design cannot rule that out.
+
+icSHAPE structural Gini (`probing`) is deliberately in neither model: it is
+measured rather than computed from sequence, so a model using it cannot score
+an unprobed transcript. If it is ever modelled, that is a separate,
+supplementary analysis.
+
+
 ## Required R packages
 
 Core pipeline: `dplyr`, `tidyr`, `readr`, `purrr`, `stringr`, `tibble`,
 `tidyselect`, `rlang`.
 
-Analysis layer: `ggplot2`, `forcats`, `viridis`, `scales`, `glmnet`.
+Analysis layer: `ggplot2`, `forcats`, `viridis`, `scales`.
+
+Modelling: `tidymodels`, `finetune`, `xgboost`, `future`.
 
 Saluki preprocessing only: `rhdf5` (Bioconductor).
 
