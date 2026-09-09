@@ -507,37 +507,46 @@ feature_correlation_dotplot <- function(df,
       x = NULL,
       y = y_lab
     ) +
-    ggplot2::theme_bw() +
+    # 1. Increase base_size to globally scale all unspecified text (default is 11)
+    ggplot2::theme_bw(base_size = 18) +
     ggplot2::theme(
-      plot.title        = ggplot2::element_text(size = 14, face = "bold"),
-      plot.subtitle     = ggplot2::element_text(size = 10, colour = "grey30"),
-      axis.text.x       = ggplot2::element_text(angle = 315, vjust = 0.5,
-                                                hjust = 0, size = 12),
-      panel.background  = ggplot2::element_rect(fill = "grey95"),
-      panel.grid.major.y = ggplot2::element_line(colour = "grey75",
-                                                 linetype = "dotted"),
-      panel.grid.minor.y = ggplot2::element_line(colour = "grey90",
-                                                 linetype = "dotted"),
-      panel.grid.major.x = ggplot2::element_line(colour = "grey90",
-                                                 linetype = "dashed"),
-      strip.background  = ggplot2::element_rect(fill = "grey90",
-                                                colour = "black"),
-      strip.text        = ggplot2::element_text(face = "bold")
+      # 2. Bump the hardcoded sizes significantly
+      plot.title         = ggplot2::element_text(size = 22, face = "bold"),
+      plot.subtitle      = ggplot2::element_text(size = 16, colour = "grey30"),
+      
+      # 3. Explicitly size both axes and their titles
+      axis.title.y       = ggplot2::element_text(size = 18, face = "bold", margin = ggplot2::margin(r = 10)),
+      axis.text.x        = ggplot2::element_text(angle = 315, vjust = 0.5,
+                                                 hjust = 0, size = 16),
+      axis.text.y        = ggplot2::element_text(size = 16),
+      
+      # 4. Enlarge the facet strips so the supergroups are readable
+      strip.text         = ggplot2::element_text(size = 16, face = "bold"),
+      strip.background   = ggplot2::element_rect(fill = "grey90", colour = "black"),
+      
+      # 5. Make the legend visible from orbit
+      legend.title       = ggplot2::element_text(size = 18, face = "bold"),
+      legend.text        = ggplot2::element_text(size = 16),
+      
+      # Keep your existing grid styling
+      panel.background   = ggplot2::element_rect(fill = "grey95"),
+      panel.grid.major.y = ggplot2::element_line(colour = "grey75", linetype = "dotted"),
+      panel.grid.minor.y = ggplot2::element_line(colour = "grey90", linetype = "dotted"),
+      panel.grid.major.x = ggplot2::element_line(colour = "grey90", linetype = "dashed")
     )
-
+  
   # Reference line and zero line
   if (!is.null(sig_threshold)) {
     p <- p + ggplot2::geom_hline(
       yintercept = sig_threshold,
-      linetype = "dotted", colour = "red", linewidth = 0.4
+      linetype = "dotted", colour = "red", linewidth = 0.6 # slightly thicker line to match scaling
     )
   }
   if (!absolute) {
     p <- p + ggplot2::geom_hline(
-      yintercept = 0, linetype = "solid", colour = "grey40", linewidth = 0.3
+      yintercept = 0, linetype = "solid", colour = "grey40", linewidth = 0.5
     )
   }
-
   # --- Faceting -----------------------------------------------------------
   if (has_species) {
     p <- p + ggplot2::facet_grid(

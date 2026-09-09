@@ -88,7 +88,7 @@ REPLACEMENTS <- list(
   # --- Compound metric tokens (handled before component splitting) ---
   list("^rnafold_zscore_",                 "MFE.z "),
   list("^rnafold_score_",                  "MFE "),
-  list("^mfe_expected_",                   "MFE.exp. "),
+  list("^mfe_expected_",                   "MFE.pred. "),
   list("^mfe_delta_",                      "MFE.delta "),
   list("^rnafold_median_",                 "MFE.median "),
   list("^rnafold_pval_",                   "MFE.p-value "),
@@ -101,7 +101,7 @@ REPLACEMENTS <- list(
   list("^junctions_",                      "Junctions "),
   list("^stopfree_length_",                "Stop-free "),
   list("^length_",                         "Length "),
-  list("^exon_density_",                   "Exon density "),
+  list("^exon_density_",                   "EEJ dens. "),
   list("^cai$",                            "CAI"),
   list("^orfexondensity$",                 "ORF-exon dens."),
   list("^codon_",                          "Codon. "),  # e.g. codon_aaa_cds -> "Codon.AAA% "
