@@ -115,7 +115,15 @@ FEATURE_PATTERNS <- list(
   exon_density   = "^exon_density_",
   stopfree       = "^stopfree_",
   skews          = "^(gc|at)_skew_",
-  codon_freqs    = "^codon_",
+  # The triplet class admits `t` as well as `u` for the same reason
+  # add_codon_aa_fractions() does: columns arrive RNA-spelled only because
+  # normalise_codon_alphabet() folded them at load, and a `[acgu]`-only class
+  # would silently drop a whole species if that fold ever regressed.
+  # Anchored past the triplet so it does not swallow `codon_other_cds`, the
+  # unresolvable-codon bucket — a real column of the normalisation pool, but
+  # identically zero in both species, so never a covariate. See the
+  # EXCLUDED_FEATURES entry.
+  codon_freqs    = "^codon_[acgtu]{3}_",
   aa_freqs       = "^aa_",
   nuc_ratios     = "^frac_",
   compositional  = "^(purine_|amino_)",
@@ -342,6 +350,22 @@ EXCLUDED_FEATURES <- c(
   # fractions (add_codon_aa_fractions), so these are the length proxies that
   # normalisation exists to remove.
   "cds_length_codons_cds", "n_codons_scored_cds", "n_stops_cds",
+
+  # The unresolvable-codon bucket: the 65th member of the codon pool, counting
+  # triplets that are not a plain ACGU triplet (ambiguity codes, a trailing
+  # partial codon). Identically zero in BOTH species at source — 0 non-zero
+  # values across 13,601 human and 14,197 mouse rows of
+  # raw/{species}/codon_aa_counts.tsv — because the MANE CDS set is curated to
+  # complete, unambiguous reading frames. That is the correct answer, not a
+  # broken counter, so there is nothing upstream to fix; it stays in the built
+  # table because the pool it belongs to is what add_codon_aa_fractions()
+  # normalises against (the 65 columns sum to cds_length_codons; this one
+  # contributes 0 to every row sum, so excluding it changes no fraction).
+  # `codon_freqs` is anchored past the triplet so it is not selectable as a
+  # feature; this entry removes it from the covariate pool as well, for the
+  # scripts that take every numeric column rather than going through
+  # select_features().
+  "codon_other_cds",
 
   # Leaves `standalone` as cai + translation_efficiency, both retained as
   # candidate covariates.

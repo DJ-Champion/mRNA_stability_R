@@ -124,7 +124,7 @@ baseline_columns <- function(df) {
     fg_columns(df, "lengths"),       # 4   regional sequence length
     fg_columns(df, "gc"),            # 7   regional GC content
     fg_columns(df, "skews"),         # 14  AT-skew and GC-skew
-    fg_columns(df, "codon_freqs"),   # 65  coding composition
+    fg_columns(df, "codon_freqs"),   # 64  coding composition
     intersect("cai", names(df)),     # 1   CAI (standalone; TE deliberately not)
     fg_columns(df, "stopfree"),      # 4   stop-free length
     fg_columns(df, "uorfs"),         # 1   uorf_present_mrna (numeric 0/1)

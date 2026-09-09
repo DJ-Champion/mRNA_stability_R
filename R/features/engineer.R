@@ -201,6 +201,12 @@ add_eej_min_distance <- function(df) {
 #' `cds_length_codons`). The ~20 AA counts are normalised the same way, so
 #' each family sums to 1.0 per transcript and expresses pure composition.
 #'
+#' `codon_other_cds` survives here, because dropping it would change what the
+#' pool means, but it is not a covariate: the `codon_freqs` pattern is anchored
+#' past the triplet and EXCLUDED_FEATURES lists it (both in config.R). Being
+#' all-zero it contributes 0 to every row sum, so its presence in the
+#' denominator is exact rather than merely harmless.
+#'
 #' The triplet class must admit `u` as well as `t`: codon columns arrive
 #' RNA-spelled (normalise_codon_alphabet() folds the DNA-spelled species onto
 #' the RNA alphabet at load time). A `[acgt]`-only class here previously left
