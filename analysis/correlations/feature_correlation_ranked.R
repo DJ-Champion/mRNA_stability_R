@@ -401,17 +401,40 @@ feature_correlation_ranked <- function(df,
     )
 
   # --- Top-N per group filter ---------------------------------------------
+  # A group already narrowed by a pick list (GROUP_BUNDLES, or the caller's
+  # own `pick`) may hold no more stems than N, in which case this ranks
+  # nothing. That is not harmless: the figure then shows a curated selection
+  # while looking exactly like a top-N ranking, and a reader comparing it to
+  # a full-family figure sees two different "top" sets and reasonably
+  # concludes one is wrong. INCLUDED_GROUPS does this for codon_freqs and
+  # aa_freqs via the intrinsic_select bundle. Record every group where the
+  # cut bound, so the run report can state which axis rows were ranked and
+  # which were chosen.
+  ranking_applied <- list()
   if (length(top_n_per_group) > 0) {
     for (g in names(top_n_per_group)) {
       n_keep <- top_n_per_group[[g]]
       if (!any(result$group == g)) next
 
-      keep_stems <- result |>
+      ranked <- result |>
         dplyr::filter(group == g) |>
         dplyr::group_by(metric_stem) |>
         dplyr::summarise(max_r = max(correlation_abs, na.rm = TRUE),
                          .groups = "drop") |>
-        dplyr::arrange(dplyr::desc(max_r)) |>
+        dplyr::arrange(dplyr::desc(max_r))
+
+      n_avail <- nrow(ranked)
+      ranking_applied[[g]] <- list(
+        requested = n_keep, available = n_avail, bound = n_avail > n_keep
+      )
+      if (n_avail <= n_keep) {
+        message("feature_correlation_ranked: top_n_per_group[[\"", g,
+                "\"]] = ", n_keep, " but only ", n_avail,
+                " stem(s) are selected - no ranking applied. These are a ",
+                "curated pick, not the top ", n_keep, " of the family.")
+      }
+
+      keep_stems <- ranked |>
         dplyr::slice_head(n = n_keep) |>
         dplyr::pull(metric_stem)
 
@@ -729,6 +752,7 @@ feature_correlation_ranked <- function(df,
     sig_at_n_min     = critical_correlation(n_min, method, sig_alpha),
     sig_at_n_max     = critical_correlation(n_max, method, sig_alpha),
     sparse           = sparse,
+    ranking_applied  = ranking_applied,
     below_threshold  = below,
     n_sig_q          = sum(table_out$q_value < sig_alpha, na.rm = TRUE),
     dropped_columns  = dropped,
@@ -819,6 +843,30 @@ format_run_report <- function(report, title, species = "human") {
     lines <- c(lines,
       sprintf("All plotted columns are measured on the same %s transcripts.",
               fmt_n(report$n_max)), "")
+  }
+
+  # Which high-cardinality families were genuinely ranked and which arrived
+  # pre-selected. Without this the figure cannot be told apart from a
+  # top-N ranking, and it will disagree with the full-family figures.
+  if (length(report$ranking_applied) > 0) {
+    lines <- c(lines, "### Family selection", "")
+    for (g in names(report$ranking_applied)) {
+      info <- report$ranking_applied[[g]]
+      lines <- c(lines, if (info$bound) {
+        sprintf(paste0("- `%s`: top **%d** of %d stems, ranked by max |r| ",
+                       "on this cohort."),
+                g, info$requested, info$available)
+      } else {
+        sprintf(paste0("- `%s`: **%d stem(s), pre-selected by a pick list** ",
+                       "(`GROUP_BUNDLES` / caller `pick`), not ranked - the ",
+                       "requested top-%d could not bind. These are a curated ",
+                       "choice and need NOT be the strongest members of the ",
+                       "family; compare against the full-family figure ",
+                       "before reading them as a ranking."),
+                g, info$available, info$requested)
+      })
+    }
+    lines <- c(lines, "")
   }
 
   lines <- c(lines, "### Significance", "")
@@ -922,7 +970,19 @@ format_run_report <- function(report, title, species = "human") {
 if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   species <- "human"
-  df <- build_dataset(species)
+
+  # Filtered cohort, explicitly. build_dataset() applies MIN_UTR_LENGTH to the
+  # frame it returns by default, so this is what you get anyway — naming it
+  # and asserting it means a future change to that default cannot silently
+  # move these figures onto the unfiltered table.
+  df <- build_dataset(species, min_utr = MIN_UTR_LENGTH)
+  stopifnot(
+    all(df$length_5utr >= MIN_UTR_LENGTH, na.rm = TRUE),
+    all(df$length_3utr >= MIN_UTR_LENGTH, na.rm = TRUE),
+    !anyNA(df$length_5utr), !anyNA(df$length_3utr)
+  )
+  message("Cohort: ", nrow(df), " transcripts (both UTRs >= ",
+          MIN_UTR_LENGTH, " nt)")
 
   dir.create(file.path(OUTPUT_DIR, "plots"),
              showWarnings = FALSE, recursive = TRUE)
@@ -953,6 +1013,26 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     max(min_h, base + rows * pitch)
   }
 
+  # Releasing the codon / amino-acid pick lists.
+  #
+  # INCLUDED_GROUPS pulls in the `intrinsic_select` bundle, which pins
+  # codon_freqs to two named columns and aa_freqs to two more. Those names
+  # are a curated choice, not a ranking: the pinned codons (AGU, UCA) are the
+  # two strongest SERINE codons, ranks 2 and 4 of the family by |r|, so the
+  # broad figure disagreed with the full 64-codon figure on which codons are
+  # "top" — and `top_n_per_group` could not fix it, because it can only rank
+  # what was selected.
+  #
+  # resolve_selection() merges bundle and caller pick lists with modifyList(),
+  # where a NULL from the caller DELETES the key. So passing NULL here
+  # releases the whole family for these two groups while leaving every other
+  # pick the bundle carries (lengths, stopfree, standalone) untouched, and
+  # `top_n = 2` then picks the genuine top two from the data.
+  #
+  # Derived per response, so half-life and translation efficiency may well
+  # show different codons. That is the intended behaviour, not drift.
+  release_families <- list(codon_freqs = NULL, aa_freqs = NULL)
+
   # Four figures.
   #
   # The two broad ones use INCLUDED_GROUPS with the default collapse, so the
@@ -971,6 +1051,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
          title    = "Half-life, collapsed supergroups",
          groups   = INCLUDED_GROUPS,
          keep_sg  = c("structure", "intrinsic"),
+         pick     = release_families,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 260,
          pitch    = 9),
@@ -979,6 +1060,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
          title    = "Translation efficiency, collapsed supergroups",
          groups   = INCLUDED_GROUPS,
          keep_sg  = c("structure", "intrinsic"),
+         pick     = release_families,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 260,
          pitch    = 9),
@@ -1025,6 +1107,9 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
       df,
       response         = job$response,
       groups           = job$groups,
+      # The full-family jobs carry no `pick`; resolve_selection() needs a
+      # list, not NULL.
+      pick             = if (is.null(job$pick)) list() else job$pick,
       keep_supergroups = job$keep_sg,
       orientation      = "horizontal",
       sig_threshold    = "auto",
