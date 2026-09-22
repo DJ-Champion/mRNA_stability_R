@@ -144,32 +144,20 @@ add_junction_density <- function(df) {
   # 5' UTR
   if (all(c("junctions_count_5utr", "length_5utr") %in% names(df))) {
     df$junctions_density_5utr <- 1000 * df$junctions_count_5utr / df$length_5utr
-    df$exon_density_5utr <- 1000 * (df$junctions_count_5utr + 1) / df$length_5utr
   }
   # CDS
   if (all(c("junctions_count_cds", "length_cds") %in% names(df))) {
     df$junctions_density_cds <- 1000 * df$junctions_count_cds / df$length_cds
-    df$exon_density_cds <- 1000 * (df$junctions_count_cds + 1) / df$length_cds
   }
   # 3' UTR
   if (all(c("junctions_count_3utr", "length_3utr") %in% names(df))) {
     df$junctions_density_3utr <- 1000 * df$junctions_count_3utr / df$length_3utr
-    df$exon_density_3utr <- 1000 * (df$junctions_count_3utr + 1) / df$length_3utr
   }
 
-  # mRNA total: sum the regional counts. Named junctions_count_mrna (not the
-  # legacy junctions_mrna) so it shares the "Junction count" metric stem with
-  # its regional siblings and dodges under one dotplot tick.
-  if (all(c("junctions_count_5utr", "junctions_count_cds",
-            "junctions_count_3utr") %in% names(df))) {
-    df$junctions_count_mrna <- coalesce(df$junctions_count_5utr, 0) +
-      coalesce(df$junctions_count_cds,  0) +
-      coalesce(df$junctions_count_3utr, 0)
-
-    if ("length_mrna" %in% names(df)) {
-      df$junctions_density_mrna <- 1000 * df$junctions_count_mrna / df$length_mrna
-      df$exon_density_mrna <- 1000 * (df$junctions_count_mrna + 1) / df$length_mrna
-    }
+  # mRNA
+  if ("length_mrna" %in% names(df)) {
+    df$junctions_density_mrna <- 1000 * df$junctions_count_mrna / df$length_mrna
+    df$exon_density_mrna <- 1000 * df$exon_count_mrna / df$length_mrna
   }
 
   df

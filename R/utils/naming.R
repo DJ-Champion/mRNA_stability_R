@@ -97,11 +97,11 @@ REPLACEMENTS <- list(
   list("^rnalfold_score_",                 "min.local.MFE "),
   list("^rnalfold_median_",                "min.local.MFE.median "),
   list("^rnalfold_pval_",                  "min.local.MFE.p-value "),
-  list("^junctions_density_",              "Junction density "),
+  list("^junctions_density_",              "EEJ.dens. "),
   list("^junctions_",                      "Junctions "),
   list("^stopfree_length_",                "Stop-free "),
   list("^length_",                         "Length "),
-  list("^exon_density_",                   "EEJ dens. "),
+  list("^exon_density_",                   "Exon.dens. "),
   list("^cai$",                            "CAI"),
   list("^orfexondensity$",                 "ORF-exon dens."),
   list("^codon_",                          "Codon. "),  # e.g. codon_aaa_cds -> "Codon.AAA% "

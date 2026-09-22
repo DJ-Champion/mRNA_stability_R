@@ -321,6 +321,8 @@ load_junctions_wide <- function(species) {
       junctions_count_5utr = "n_5utr_junctions",
       junctions_count_cds  = "n_cds_junctions",
       junctions_count_3utr = "n_3utr_junctions",
+      junctions_count_mrna = "n_mrna_junctions",
+      exon_count_mrna      = "n_exons",
       # EEJ distances: metric first, anchor (start/stop) region last.
       eej_dist_upstream_start = "start_dist_closest_upstream",
       eej_dist_downstream_start  = "start_dist_closest_downstream",
