@@ -331,10 +331,13 @@ EXCLUDED_FEATURES <- c(
   "length_last100", "length_start", "length_stop",
 
   # Exon / intron architecture summaries superseded by the retained
-  # exon_density_* encoding.
+  # exon_density_* encoding. exon_count_mrna is the loader's name for the raw
+  # n_exons column (renamed in 98a9165). exon_length_last_mrna is mostly the
+  # 3'UTR — Spearman 0.949 with length_3utr on human — so it restates a
+  # retained core feature; it was the sole survivor of the `exons` group.
   "exon_count_internal_mrna", "internal_exon_mean", "internal_exon_median",
   "internal_exon_sd", "intron_length_mean_mrna", "intron_median",
-  "intron_sd", "n_exons",
+  "intron_sd", "exon_count_mrna", "exon_length_last_mrna",
 
   # Junction counts and their per-kb densities. engineer.R turns the counts
   # into exon_density_* ((junctions + 1) / kb), which is what the models use;
