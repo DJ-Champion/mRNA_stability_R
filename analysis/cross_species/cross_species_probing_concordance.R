@@ -463,7 +463,9 @@ ortholog_delta_delta_plot <- function(df,
 
 if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   
-  all_species <- build_all()
+  # Explicitly every registered species: this script is cross-species by
+  # definition, so it must not follow the human-only ANALYSIS_SPECIES default.
+  all_species <- build_all(names(SPECIES_CONFIG))
   
   out_dir <- file.path(OUTPUT_DIR, "plots", "cross_species")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)

@@ -250,7 +250,8 @@ build_dataset <- function(species, rebuild = FALSE, min_utr = MIN_UTR_LENGTH) {
 
 #' Build datasets for multiple species and stack them
 #'
-#' @param species Character vector. Defaults to all species in SPECIES_CONFIG.
+#' @param species Character vector. Defaults to ANALYSIS_SPECIES (config.R);
+#'   pass names(SPECIES_CONFIG) for every registered species.
 #' @param rebuild Logical, passed through to build_dataset.
 #' @param min_utr Integer or NULL, passed through to build_dataset. Applied
 #'   per species before stacking, which is the same result as filtering after —
@@ -258,7 +259,7 @@ build_dataset <- function(species, rebuild = FALSE, min_utr = MIN_UTR_LENGTH) {
 #' @return A single tibble with a `species` column. Columns absent from a
 #'   given species are NA for that species' rows.
 #' @export
-build_all <- function(species = names(SPECIES_CONFIG), rebuild = FALSE,
+build_all <- function(species = ANALYSIS_SPECIES, rebuild = FALSE,
                       min_utr = MIN_UTR_LENGTH) {
   dfs <- lapply(species, build_dataset, rebuild = rebuild, min_utr = min_utr)
   dplyr::bind_rows(dfs)

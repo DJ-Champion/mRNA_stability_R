@@ -4,6 +4,18 @@ Reconciliation of `mRNA_stability_supplementary_table - All Features.csv` (54 fe
 rows) against the code and the built data. **Report only — no code, config, CSV or
 analysis script was modified in producing this.**
 
+## Resolution status (2026-09-23)
+
+| Item | Decision / outcome |
+|---|---|
+| S1 | In progress (exon/junction density renamed in `98a9165`). Note that commit renamed `n_exons` → `exon_count_mrna` but `EXCLUDED_FEATURES` still lists `n_exons`, so `exon_count_mrna` now reaches the pool. |
+| S2 | **Fixed** (`befd141`). Loader normalises `ensembl_gene_id`; joins warn instead of skipping; `saluki_prediction` is in `META_COLS` via `BENCHMARK_COLS`; `CACHE_VERSION` 11. `prediction_difference` is still computed nowhere — its definition is open. |
+| S3, S4 | **Human only.** Mouse was never run through the folding pipeline and is out of every analysis; `ANALYSIS_SPECIES <- "human"` is the default for `build_all()`. Mouse stays registered and still builds, so neither needs further work unless mouse returns. |
+| S5 | **Dropped.** RNAplfold is not to be used anywhere. Nothing in this pipeline references it; the only file is in the separate `RNAstab` project (the path given below is wrong). Remove CSV row 31. |
+| S6 | Open. Lower stakes than stated: `baseline_columns()` in the structure model already omits the `exons` group, so no fitted model carried it. |
+| S7 | **Keep** the three stop-codon columns; the table should say 64 and explain them. |
+| C8 | **Fixed** (`befd141`). Eight stale loader-health canaries corrected; `imputation_check.R` runs the imputation itself. |
+
 ## Sources compared
 
 | Source | What was taken from it |

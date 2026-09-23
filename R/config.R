@@ -79,6 +79,15 @@ SPECIES_CONFIG <- list(
   )
 )
 
+# Species the analyses use by default — build_all() with no `species`
+# argument stacks exactly these. The project is human-only as of 2026-09-23:
+# mouse has no RNAfold/RNALfold features (never run through the folding
+# pipeline) and carries mouse-only stop-free/stop-codon fraction columns, so a
+# cross-species comparison would silently be sequence-only. Mouse stays
+# registered above and still builds; add it back here to re-enable it
+# everywhere at once.
+ANALYSIS_SPECIES <- c("human")
+
 
 # --- Feature groups ----------------------------------------------------------
 # Regex patterns defining named groups of columns. Use downstream with
