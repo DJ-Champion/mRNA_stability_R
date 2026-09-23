@@ -177,7 +177,13 @@ load_translation_efficiency <- function(species) {
 
 
 #' Load pre-processed Saluki predictions (see scripts/preprocess_saluki.R).
-#' Expected columns: gene_id, saluki_prediction.
+#' Returns columns: gene_id, saluki_prediction.
+#'
+#' The key is accepted as either `gene_id` (what preprocess_saluki() writes) or
+#' `ensembl_gene_id` (what the checked-in human .rds actually carries). Before
+#' v11 the loader passed the file through unchanged, join_gene_level() found no
+#' `gene_id`, and the whole file was silently discarded — so this normalises
+#' the key and fails loudly on anything else rather than trusting the file.
 load_saluki_predictions <- function(species) {
   cfg <- SPECIES_CONFIG[[species]]
   if (is.null(cfg$saluki_rds)) return(NULL)
@@ -186,7 +192,23 @@ load_saluki_predictions <- function(species) {
     message("  skip (missing): ", path)
     return(NULL)
   }
-  readRDS(path)
+  df <- readRDS(path) |> lowercase_names()
+  if (!"gene_id" %in% names(df) && "ensembl_gene_id" %in% names(df)) {
+    df <- dplyr::rename(df, gene_id = ensembl_gene_id)
+  }
+  need <- c("gene_id", "saluki_prediction")
+  if (!all(need %in% names(df))) {
+    stop(path, " must carry columns ", paste(need, collapse = ", "),
+         "; found: ", paste(names(df), collapse = ", "), call. = FALSE)
+  }
+  df <- df |>
+    dplyr::mutate(gene_id = sub("\\..*$", "", gene_id)) |>   # drop version
+    dplyr::select(dplyr::all_of(need))
+  if (anyDuplicated(df$gene_id)) {
+    stop(path, ": gene_id is not unique — the gene-level join would ",
+         "duplicate transcripts", call. = FALSE)
+  }
+  df
 }
 
 

@@ -28,21 +28,32 @@ species <- "human"
 # MIN_UTR_LENGTH in config.R.
 df <- build_dataset(species, min_utr = NULL)
 
-# The imputation step writes both the raw mRNA z-score (from direct folding
-# of the full mRNA) and an *_imputed variant (the length-weighted region avg).
-# The coalesce step has already filled rnafold_zscore_mrna with the imputed value
-# where the direct one was missing, but the imputed column is preserved so
-# we can compare them here on transcripts where BOTH exist.
+# impute_mrna_mfe() is switched off in engineer_features(), so the cache holds
+# only the directly-folded mRNA values and no *_imputed columns. Run the
+# imputation here, on a copy, to see how well it would agree if switched on.
+#
+# The direct values are captured BEFORE imputing: impute_mrna_mfe() coalesces
+# the imputed value into rnafold_*_mrna wherever the direct one is missing,
+# and comparing after that would count every filled row as a perfect match.
 
-need <- c("rnafold_zscore_mrna", "rnafold_zscore_mrna_imputed",
-          "rnafold_score_mrna",  "rnafold_score_mrna_imputed")
+need <- c(paste0("rnafold_", c("zscore", "score"), "_mrna"),
+          paste0("rnafold_", rep(c("zscore", "score"), each = 3), "_",
+                 c("5utr", "cds", "3utr")),
+          paste0("length_", c("5utr", "cds", "3utr")))
 missing <- setdiff(need, names(df))
 if (length(missing) > 0) {
   stop("Missing columns: ", paste(missing, collapse = ", "),
        ". Rebuild the dataset with build_dataset('", species, "', rebuild = TRUE).")
 }
 
-cmp <- df |>
+imp <- impute_mrna_mfe(df)
+
+cmp <- tibble(
+  rnafold_zscore_mrna         = df$rnafold_zscore_mrna,
+  rnafold_zscore_mrna_imputed = imp$rnafold_zscore_mrna_imputed,
+  rnafold_score_mrna          = df$rnafold_score_mrna,
+  rnafold_score_mrna_imputed  = imp$rnafold_score_mrna_imputed
+) |>
   filter(!is.na(rnafold_zscore_mrna), !is.na(rnafold_zscore_mrna_imputed),
          !is.na(rnafold_score_mrna),  !is.na(rnafold_score_mrna_imputed))
 

@@ -359,18 +359,17 @@ loader_health_plot <- function(df, formatter = format_col_name) {
     "RNALfold (local MFE)"        = "rnalfold_score_cds",
     "RNAup (UTR pair)"            = "rnaup_score_utrpair",
     "Sequence basic (GC/length)"  = "gc_content_cds",
-    "Stop-free regions"           = "stopfree_cds",
+    "Stop-free regions"           = "stopfree_length_cds",
     "NMD"                         = "nmd_snv_fragile_codon_density_mrna",
-    "Architecture (introns)"      = "intron_mean",
-    "Junctions / distances"       = "n_cds_junctions",
-    "uORFs"                       = "n_uorfs",
-    "Amino-acid frequencies"      = "aa_freq_leu",
+    "Architecture (introns)"      = "intron_length_mean_mrna",
+    "Junctions / distances"       = "junctions_count_cds",
+    "uORFs"                       = "uorf_count_mrna",
+    "Amino-acid frequencies"      = "aa_l_cds",
     "CAI"                         = "cai",
     "Translation efficiency"      = "translation_efficiency",
-    "Agarwal features"            = "expression",
+    "Agarwal features"            = "orfexondensity",
     "Saluki predictions"          = "saluki_prediction",
-    "Dani probing (icSHAPE)"      = "shape_mean_5utr",
-    "Dani probing (Keth-seq)"     = "keth_mean_5utr"
+    "icSHAPE Gini"                = "gini_cytoplasm_mrna"
   )
 
   result <- purrr::map_dfr(unique(df$species), function(sp) {

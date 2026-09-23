@@ -155,8 +155,16 @@ add_junction_density <- function(df) {
   }
 
   # mRNA
-  if ("length_mrna" %in% names(df)) {
+  # Mouse junctions.tsv has no n_mRNA_junctions column. On human it equals
+  # n_exons - 1 on every row (the sum of the regional counts does not — it
+  # differs on ~0.9%), so derive it that way to keep the species identical.
+  if (!"junctions_count_mrna" %in% names(df) && "exon_count_mrna" %in% names(df)) {
+    df$junctions_count_mrna <- df$exon_count_mrna - 1
+  }
+  if (all(c("junctions_count_mrna", "length_mrna") %in% names(df))) {
     df$junctions_density_mrna <- 1000 * df$junctions_count_mrna / df$length_mrna
+  }
+  if (all(c("exon_count_mrna", "length_mrna") %in% names(df))) {
     df$exon_density_mrna <- 1000 * df$exon_count_mrna / df$length_mrna
   }
 

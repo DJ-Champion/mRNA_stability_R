@@ -46,7 +46,11 @@ pivot_regional_to_wide <- function(regional_dfs) {
 join_transcript_level <- function(wide_df, transcript_level_dfs) {
   dfs <- Filter(Negate(is.null), transcript_level_dfs)
   for (df in dfs) {
-    if (!"transcript_id" %in% names(df)) next
+    if (!"transcript_id" %in% names(df)) {
+      warning("join_transcript_level: skipped a frame with no transcript_id column (",
+              paste(head(names(df), 5), collapse = ", "), ")", call. = FALSE)
+      next
+    }
     wide_df <- left_join(wide_df, df, by = "transcript_id")
   }
   wide_df
@@ -54,10 +58,17 @@ join_transcript_level <- function(wide_df, transcript_level_dfs) {
 
 
 #' Attach gene-level features (keyed by gene_id)
+#'
+#' A frame without `gene_id` is skipped with a warning, never silently: the
+#' silent version is what hid the Saluki predictions from every cache up to v10.
 join_gene_level <- function(wide_df, gene_level_dfs) {
   dfs <- Filter(Negate(is.null), gene_level_dfs)
   for (df in dfs) {
-    if (!"gene_id" %in% names(df)) next
+    if (!"gene_id" %in% names(df)) {
+      warning("join_gene_level: skipped a frame with no gene_id column (",
+              paste(head(names(df), 5), collapse = ", "), ")", call. = FALSE)
+      next
+    }
     wide_df <- left_join(wide_df, df, by = "gene_id")
   }
   wide_df
@@ -68,7 +79,11 @@ join_gene_level <- function(wide_df, gene_level_dfs) {
 join_gene_name_level <- function(wide_df, name_level_dfs) {
   dfs <- Filter(Negate(is.null), name_level_dfs)
   for (df in dfs) {
-    if (!"gene_name" %in% names(df)) next
+    if (!"gene_name" %in% names(df)) {
+      warning("join_gene_name_level: skipped a frame with no gene_name column (",
+              paste(head(names(df), 5), collapse = ", "), ")", call. = FALSE)
+      next
+    }
     wide_df <- left_join(wide_df, df, by = "gene_name")
   }
   wide_df

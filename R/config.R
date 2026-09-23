@@ -16,7 +16,11 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 
 # Bump this integer when feature-engineering logic changes so stale caches
 # are regenerated instead of silently reused.
-CACHE_VERSION <- 10L
+#
+# v11: Saluki predictions reach the cache. Up to v10 the .rds keyed on
+# `ensembl_gene_id`, join_gene_level() skipped it silently, and
+# `saluki_prediction` never existed. See load_saluki_predictions().
+CACHE_VERSION <- 11L
 
 
 # --- Region vocabulary -------------------------------------------------------
@@ -403,7 +407,14 @@ FAMILY_COLS <- c(
 # any column NOT named here becomes a predictor by default — which is why
 # family_size_* has to be listed. It is numeric, plausible-looking, and a
 # property of the corpus rather than of the transcript.
-META_COLS <- c(ID_COLS, FAMILY_COLS, "split")
+# External model outputs carried for benchmarking. Never predictors: using a
+# published half-life model's prediction to predict half-life would be
+# leakage, and v11 is the first cache in which this column actually exists —
+# so without this entry it would enter every setdiff()-built predictor matrix
+# the moment the cache rebuilt.
+BENCHMARK_COLS <- c("saluki_prediction")
+
+META_COLS <- c(ID_COLS, FAMILY_COLS, BENCHMARK_COLS, "split")
 
 # NOTE: family columns are deliberately absent from FEATURE_PATTERNS. Adding a
 # `family` key there would make them reachable through select_features() and
