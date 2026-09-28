@@ -37,10 +37,10 @@ human <- attach_splits(build_dataset("human"))
 ```
 RNAstab/
 ├── R/
+│   ├── feature_table.csv       # THE feature definitions (source of truth)
 │   ├── config.R                # paths, species registry, REGIONS,
-│   │                           # FEATURE_PATTERNS, SUPERGROUPS,
-│   │                           # GROUP_BUNDLES, INCLUDED_GROUPS,
-│   │                           # CACHE_VERSION
+│   │                           # reads feature_table.csv, GROUP_BUNDLES,
+│   │                           # DEFAULT_PLOT_GROUPS, CACHE_VERSION
 │   ├── load_all.R              # sources every R/ file in dependency order
 │   ├── utils/
 │   │   ├── normalise.R         # z_score_normalize, min_max_normalize,
@@ -133,18 +133,13 @@ column, not in column names. This is what makes the cross-species stack work.
 
 For pretty plot labels, `format_col_name()` (in `R/utils/naming.R`) turns
 canonical column names into display strings (`"rnafold_zscore_5utr"` →
-`"MFE.z 5' UTR"`, `"gc_content_cds"` → `"G+C% CDS"`). Its sibling
-`format_group_name()` (in `R/utils/palettes.R`) does the same for *selection
-keys* — group, supergroup, and bundle names (`"rnafold_zscores"` →
-`"MFE z-score"`, `"nmd_core"` → `"NMD (core)"`) — for plots that label a facet
-strip or legend by group. A third, `format_metric_name()`, strips the region
+`"MFE.z 5' UTR"`, `"gc_content_cds"` → `"C+G% CDS"`), taking each label from
+the feature table's short name. Its sibling `format_group_name()` (in
+`R/utils/palettes.R`) does the same for *selection keys* — feature, group,
+supergroup and bundle ids (`"rnafold_zscores"` → `"MFE z-score"`,
+`"nmd_core"` → `"NMD (core)"`) — for plots that label a facet strip or legend. A third, `format_metric_name()`, strips the region
 suffix for plots where region is already encoded as colour or shape
 (`"length_cds"` → `"Length"`).
-
-The columns inside the `standalone` group (`cai`, `translation_efficiency`,
-`orfexondensity`) are labelled as *columns* by `format_col_name()`, not by
-`format_group_name()` — only the group key `"standalone"` itself goes through
-the latter.
 
 ### Region vocabulary
 
@@ -155,58 +150,54 @@ the latter.
 These appear as suffixes on metric columns. `utrpair` is the combined non-coding
 regions (5' UTR + 3' UTR)
 
-### Feature groups
+### The feature table
+
+**`R/feature_table.csv` is the single source of truth for every feature.** Each row is one feature:
+
+- its columns (a regex);
+- its place in the **Supergroup > Group > Feature** hierarchy;
+- whether it is **Included in exploratory analysis** and **Included in model**;
+- its display names, colour, regions, and the reason it is in or out.
+
+The code derives everything from it, so to change a feature, edit the table. Then check it against the built cache:
+
+```bash
+Rscript scripts/check_feature_table.R
+```
+
+The two flags do different jobs:
+
+- **Exploratory analysis:** selecting a group or supergroup returns only its exploratory features. Naming a feature id directly always works, so a plot can still show an excluded feature on purpose.
+- **Model:** `model_columns(df)` gives the model's predictors, and nothing else reads this flag.
+- **Excluded from both:** the column is used nowhere, and `drop_excluded()` removes it.
 
 Reach for `fg("rnafold_zscores")` instead of typing out region patterns:
 
 ```r
 df |> select(halflife, fg("rnafold_zscores"), fg("rnalfold_zscores"))
 
-# What does a group resolve to?
+# What does a feature resolve to?
 fg_columns(df, "rnafold_zscores")
 # [1] "rnafold_zscore_3utr"    "rnafold_zscore_5utr"    "rnafold_zscore_cds"
 # [4] "rnafold_zscore_last100" "rnafold_zscore_mrna"    "rnafold_zscore_start"
 # [7] "rnafold_zscore_stop"    "rnafold_zscore_utrpair"
 ```
 
-Defined groups (see `FEATURE_PATTERNS` in `R/config.R`), by supergroup:
-
-| Supergroup    | Groups |
-|---------------|--------|
-| `structure`   | `rnafold_scores`, `rnafold_zscores`, `rnafold_per_nt`, `mfe_deltas`, `mfe_expected`, `rnalfold_scores`, `rnalfold_zscores`, `probing` |
-| `intrinsic`   | `lengths`, `gc`, `stopfree`, `skews`, `codon_freqs`, `aa_freqs`, `nuc_ratios`, `compositional` |
-| `splicing`    | `junctions`, `eej_dist`, `introns`, `exons`, `noncoding` |
-| `translation` | `uorfs`, `exon_density` |
-| `decay`       | `nmd` |
-| `other`       | `standalone` |
-
-`standalone` holds the three genuinely region-less columns — `cai`,
-`translation_efficiency`, `orfexondensity`. They map to the `mrna` slot in
-region-aware plots, and their labels come from `format_col_name()` (they are
-columns) rather than `format_group_name()`.
-
-Don't rely on `list_selection_keys()` being in your head — it prints every
-group, supergroup, and bundle with its display name, and `lookup_key("foo")`
-tells you which namespace a single token belongs to.
-
-Add a new group by appending to `FEATURE_PATTERNS` in `R/config.R`, and give
-it a supergroup, a colour, and a display name at the same time — see
-PIPELINE_GUIDE §6.4. Two invariants hold: the patterns are **mutually
-exclusive** (no column matches two groups), and every group belongs to
-**exactly one** supergroup.
+`list_selection_keys()` prints every supergroup, group, bundle and feature with its display name. `lookup_key("foo")` tells you which kind a single token is.
 
 ### Choosing which columns to plot
  
 Feature groups answer "what are all the codon columns?" Often you want less
 than a whole group — the top few, one named metric, or everything-but-one. That
 is *selection intent*, and it lives in a separate layer from the schema so that
-narrowing a plot never means editing `FEATURE_PATTERNS`.
+narrowing a plot never means editing the feature table.
  
-Three things can name a set of columns:
+Four things can name a set of columns:
  
-- **A group** — a `FEATURE_PATTERNS` key, e.g. `"codon_freqs"`. The schema.
-- **A supergroup** — a coarse family, e.g. `"structure"`, which expands to all
-  its member groups. Also schema (see `SUPERGROUPS` in `R/config.R`).
+- **A feature** — a table row, e.g. `"codon_freqs"`. The schema.
+- **A group** — the table's Group column snake-cased, e.g. `"global_folding"`.
+  Expands to its exploratory features.
+- **A supergroup** — e.g. `"structure"`. Expands to its exploratory features.
 - **A bundle** — a *reusable named selection* you define, e.g. `"nmd_core"`.
   Intent, not schema (see `GROUP_BUNDLES` in `R/config.R`).
 
@@ -220,18 +211,16 @@ select_features(df, groups = "structure")
 # A reusable named subset (defined once in GROUP_BUNDLES)
 select_features(df, groups = "nmd_core")
  
-# One-off: keep only two named columns from the nmd group
-select_features(df, groups = "nmd",
-                pick = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
-                                    "nmd_alt_stop_codon_density_mrna")))
+# A group: every exploratory feature in it
+select_features(df, groups = "nmd_susceptibility")
  
 # One-off: the whole probing group minus one noisy column
 select_features(df, groups = "probing",
                 drop = list(probing = "gini_nucleoplasm_cds"))
 ```
  
-`pick` is an allow-list (columns added to the group later stay out until you
-name them); `drop` removes from the otherwise-whole group (later additions are
+`pick` is an allow-list (columns added to the feature later stay out until you
+name them); `drop` removes from the otherwise-whole feature (later additions are
 included). Use `pick` for a small fixed subset of an open-ended family, `drop`
 for "the family minus a couple of members."
  
@@ -240,33 +229,30 @@ A **bundle** is just the reusable form of the same idea. Define it once:
 ```r
 # in R/config.R
 GROUP_BUNDLES <- list(
-  nmd_core = list(
-    groups = "nmd",
-    pick   = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
-                          "nmd_alt_stop_codon_density_mrna"))
-  )
+  nmd_core = c("nmd_snv_fragile", "nmd_alt_stop")
 )
 ```
  
 …then pass `groups = "nmd_core"` anywhere a plot accepts `groups`. The
 correlation dotplot and the feature/response scatter both understand groups,
 supergroups, bundles, and per-call `pick`/`drop`. If you pass both a bundle and
-a caller `pick`/`drop` for the same group, the caller wins.
+a caller `pick`/`drop` for the same feature, the caller wins.
 
-Currently defined bundles: `nmd_core`, `lengths_core`, `splicing_core`,
-`structure_core`, `intrinsic_core`, `intrinsic_select`, `translation_core`.
+Currently defined bundles: `nmd_core`, `lengths_core`, `junction_core`,
+`structure_core`, `sequence_core`, `sequence_select`, `translation_core`.
 
-### The default selection: `INCLUDED_GROUPS`
+### The default plot selection: `DEFAULT_PLOT_GROUPS`
 
-`INCLUDED_GROUPS` (in `R/config.R`) is the set of bundles the project has
-settled on for routine work — currently `nmd_core`, `splicing_core`,
-`structure_core`, `intrinsic_select`, `translation_core`, ~140 columns in the
+`DEFAULT_PLOT_GROUPS` (in `R/config.R`) is the set of bundles the project has
+settled on for routine plots — currently `nmd_core`, `junction_core`,
+`structure_core`, `sequence_select`, `translation_core`, 137 columns in the
 human dataset. It is the default `groups =` value for the correlation dotplot,
 the feature/response scatter, the region heatmap, and the correlation-heatmap
-workflow, so editing it changes what those plots show everywhere at once.
+workflow. It is a plotting default only: the model's predictors come from the
+table's model flag.
 
 ```r
-select_features(df, INCLUDED_GROUPS)   # what the default plots operate on
+select_features(df, DEFAULT_PLOT_GROUPS)   # what the default plots operate on
 ```
  
 No `CACHE_VERSION` bump is ever needed for any of this — it is selection logic,
@@ -373,11 +359,9 @@ Two patterns depending on what it is.
 the appropriate join block in `R/pipeline/build_dataset.R`. Bump
 `CACHE_VERSION`.
 
-Either way, if the new columns form a group, registering it means **four**
-edits, not one — a regex in `FEATURE_PATTERNS`, membership in `SUPERGROUPS`, a
-colour in `FEATURE_GROUP_COLOURS`, and a label in
-`FEATURE_GROUP_DISPLAY_NAMES`. Miss the last two and the group silently
-renders as grey with a title-cased key.
+Either way, give every new column a row in `R/feature_table.csv` (PIPELINE_GUIDE
+§6.4) and run `Rscript scripts/check_feature_table.R`; it fails on any column
+without a row.
 
 
 ## Common analysis recipes
@@ -405,7 +389,7 @@ create_scatter_plot(df,
 
 # --- The default feature set, as a dotplot ---
 source("analysis/correlations/feature_correlation_dotplot.R")
-out <- feature_correlation_dotplot(df)          # groups = INCLUDED_GROUPS
+out <- feature_correlation_dotplot(df)          # groups = DEFAULT_PLOT_GROUPS
 print(out$plot)
 ```
 
@@ -427,7 +411,7 @@ mouse  14,197 → 13,215 built rows  (6.9% removed)
 The filter applies to the frame `build_dataset()` **returns**, not to what it
 writes — so `data/cache/*.rds` stays complete, changing the threshold never
 invalidates a cache, and no `CACHE_VERSION` bump is involved. It is selection
-intent, like `INCLUDED_GROUPS` and `EXCLUDED_FEATURES`.
+intent, like `DEFAULT_PLOT_GROUPS` and the feature table's flags.
 
 ```r
 df  <- build_dataset("human")                   # filtered — the default
@@ -512,18 +496,8 @@ Saluki preprocessing only: `rhdf5` (Bioconductor).
 - Loaders silently skip missing files. Good for incomplete species, bad if you
   expected a file to be picked up. Watch the `skip (missing): …` messages on
   the first build.
-- **Some loader columns are not yet canonical.** ~43 columns in the human
-  dataset sit outside every `FEATURE_PATTERNS` group, either because they are
-  a family nobody has grouped yet (`rnafold_median_*`, `rnafold_pval_*`,
-  `rnalfold_median_*`, `rnalfold_pval_*` — these do have display rules) or
-  because the loader emits a name that breaks the region-suffix-last
-  convention (`utr5_length`, `internal_exon_mean`, `n_exons`,
-  `stop_dist_last_downstream`, `n_overlapping_uorfs`,
-  `total_classical_uorf_codons`, `max_classical_uorf_codons`,
-  `dist_last_uorf_stop_to_main_atg`, `cds_length_codons_cds`,
-  `n_codons_scored_cds`, `n_stops_cds`). They are invisible to `fg()` and to
-  every region-aware plot. Fixing this means renaming at the loader and
-  bumping `CACHE_VERSION`. See PIPELINE_GUIDE §10.
-- The `noncoding` group currently matches nothing — `load_architecture()` maps
-  `noncoding_length_fraction_mrna`, but that column is absent from the current
-  builds. The group is kept so the column is picked up if the input returns.
+- **A few never-used columns break the region-suffix-last convention**
+  (`internal_exon_mean`, `n_overlapping_uorfs`, `stop_dist_last_downstream`,
+  …). Every one has a feature-table row marked excluded from both flags, so no
+  plot meets them; renaming them means changing the loader and bumping
+  `CACHE_VERSION`.

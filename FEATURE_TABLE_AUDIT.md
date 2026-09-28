@@ -4,17 +4,24 @@ Reconciliation of `mRNA_stability_supplementary_table - All Features.csv` (54 fe
 rows) against the code and the built data. **Report only — no code, config, CSV or
 analysis script was modified in producing this.**
 
-## Resolution status (2026-09-23)
+## Resolution status (updated 2026-09-28)
+
+**The table is now checked in as `R/feature_table.csv` and is the single source of truth** (Part 4). `R/config.R` derives every pattern, group, supergroup and flag from it. `scripts/check_feature_table.R` enforces it against the built cache, so this audit should not need repeating by hand.
 
 | Item | Decision / outcome |
 |---|---|
-| S1 | In progress (exon/junction density renamed in `98a9165`). Note that commit renamed `n_exons` → `exon_count_mrna` but `EXCLUDED_FEATURES` still lists `n_exons`, so `exon_count_mrna` now reaches the pool. |
-| S2 | **Fixed** (`befd141`). Loader normalises `ensembl_gene_id`; joins warn instead of skipping; `saluki_prediction` is in `META_COLS` via `BENCHMARK_COLS`; `CACHE_VERSION` 11. `prediction_difference` is still computed nowhere — its definition is open. |
-| S3, S4 | **Human only.** Mouse was never run through the folding pipeline and is out of every analysis; `ANALYSIS_SPECIES <- "human"` is the default for `build_all()`. Mouse stays registered and still builds, so neither needs further work unless mouse returns. |
-| S5 | **Dropped.** RNAplfold is not to be used anywhere. Nothing in this pipeline references it; the only file is in the separate `RNAstab` project (the path given below is wrong). Remove CSV row 31. |
-| S6 | Open. Lower stakes than stated: `baseline_columns()` in the structure model already omits the `exons` group, so no fitted model carried it. |
-| S7 | **Keep** the three stop-codon columns; the table should say 64 and explain them. |
-| C8 | **Fixed** (`befd141`). Eight stale loader-health canaries corrected; `imputation_check.R` runs the imputation itself. |
+| S1 | In progress (the exon/junction encodings). `exon_count_mrna` (the renamed `n_exons`) is excluded again. Exon density moved to the Transcript architecture supergroup, because a group may sit in one supergroup only. |
+| S2 | **Fixed.** Saluki predictions reach the cache (v11) and are a benchmark column, never a predictor. `prediction_difference` is still undefined. |
+| S3, S4 | **Human only**: `ANALYSIS_SPECIES <- "human"`. The table has no species column. |
+| S5 | **Dropped.** RNAplfold row removed. |
+| S6 | **Fixed.** `exon_length_last_mrna` is excluded from both flags. It never reached the structure model. |
+| S7 | **Kept.** The codon row says 64 and explains the three stop-codon columns. |
+| C1–C3, C7 | **Resolved by construction.** Group and supergroup names, regions and display labels come from the table. The checker verifies regions and labels. |
+| C4 | **Fixed.** Every excluded column has a row (Vienna local median, window lengths, `utr5_length`, CDS codon denominators, `stop_dist_last_downstream`). |
+| C5 | Rows for uORF length, first exon length and non-coding fraction dropped. The expression row is kept as "not yet built". |
+| C6 | `noncoding` and the dead naming rules are gone. |
+| C8 | **Fixed.** |
+| Model flag | Follows the code for now: composition-predicted MFE, nucleotide fractions, purine/amino ratios, TE, junction density and Saluki are out of the model. The three NMD transition/transversion features are in. The model's 147 predictors are unchanged. |
 
 ## Sources compared
 
