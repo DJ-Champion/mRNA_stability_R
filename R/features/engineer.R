@@ -199,7 +199,8 @@ add_eej_min_distance <- function(df) {
 #'
 #' `codon_other_cds` survives here, because dropping it would change what the
 #' pool means, but it is not a covariate: the `codon_freqs` pattern is anchored
-#' past the triplet and EXCLUDED_FEATURES lists it (both in config.R). Being
+#' past the triplet and the feature table marks it never-used (the
+#' cds_codon_counts row of R/feature_table.csv). Being
 #' all-zero it contributes 0 to every row sum, so its presence in the
 #' denominator is exact rather than merely harmless.
 #'

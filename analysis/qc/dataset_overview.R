@@ -129,8 +129,8 @@ halflife_distribution_plot <- function(df, formatter = format_col_name) {
 #' (caller wins per group key).
 #'
 #' @param df         Dataframe from build_dataset() or build_all().
-#' @param groups     Character vector of group / supergroup / bundle names, or
-#'                   NULL (default) = every FEATURE_PATTERNS key.
+#' @param groups     Character vector of selection keys, or NULL (default) =
+#'                   every feature, exploratory or not — QC should see them all.
 #' @param pick       Named list: group key -> columns to keep (allow-list).
 #' @param drop       Named list: group key -> columns to remove.
 #' @param formatter  Display formatter for the species axis (default
@@ -152,7 +152,8 @@ missingness_by_group_plot <- function(df,
   # happens inside the loop. (resolve_selection() does not report pick/drop
   # names that match nothing — select_features() does; this plot does not need
   # that, and its default carries no pick/drop.)
-  sel    <- resolve_selection(groups, pick, drop)
+  sel    <- resolve_selection(if (is.null(groups)) names(FEATURE_PATTERNS) else groups,
+                              pick, drop)
   gkeys  <- sel$groups
 
   result <- purrr::map_dfr(unique(df$species), function(sp) {
@@ -213,7 +214,7 @@ missingness_by_group_plot <- function(df,
       size = 3, colour = "black"
     ) +
     ggplot2::scale_y_discrete(
-      labels = function(x) format_group_name(x, kind = "group")
+      labels = function(x) format_group_name(x, kind = "feature")
     ) +
     ggplot2::scale_fill_gradient2(
       low = "#b2182b", mid = "#f7f7f7", high = "#2166ac",

@@ -19,21 +19,20 @@
 #   * Adjustable significance threshold line.
 #
 # --- v4 region vocabulary ---------------------------------------------------
-# Every splicing and regulatory column carries a real region token as its
-# LAST token:
-#   * junctions   -> junctions_count_<5utr|cds|3utr>
-#   * distances   -> eej_dist_<first|last>_<start|stop>   (start/stop are
+# Every transcript-architecture and regulatory column carries a real region
+# token as its LAST token:
+#   * junctions   -> junctions_count_<5utr|cds|3utr|mrna>
+#   * distances   -> eej_dist_closest_<start|stop>       (start/stop are
 #                                                          real regions)
 #   * architecture-> *_mrna                               (whole-transcript)
 #   * uorfs       -> uorf_*_mrna                           (whole-transcript)
 #   * nmd         -> nmd_*_mrna                            (single model)
-# so the whole splicing supergroup and the transcript-level uORF/architecture
-# columns are picked up by the region-token filter automatically. Two further
+# so they are picked up by the region-token filter automatically. Two further
 # tiers are handled explicitly:
-#   * Tier 1 — reserved single-token scalars (cai, expression,
-#     translation_efficiency, orfexondensity): genuinely region-less. Mapped
-#     to the `mrna` region via the `standalones` argument so they appear in
-#     the "other" supergroup facet rather than being dropped.
+#   * Single region-less columns (cai, translation_efficiency): a feature
+#     whose regex is one literal column (is_regionless_feature()) is mapped to
+#     the `mrna` region. The `standalones` argument does the same for a column
+#     reached through no feature.
 #   * Any column that still has no region token is reported by the diagnostic
 #     block and skipped (it cannot sit on the region-dodged axis).
 #
@@ -166,10 +165,9 @@ correlation_with_ci <- function(x, y,
 #' @param standalones        Character vector of reserved single-token scalar
 #'                           columns to include. These have no region suffix
 #'                           and are mapped to the `mrna` region so they
-#'                           appear on the dotplot (in the "other" supergroup
-#'                           facet). Default = cai,
-#'                           translation_efficiency, orfexondensity. Pass
-#'                           character() to exclude them.
+#'                           appear on the dotplot. Only needed for a column
+#'                           reached through no feature; region-less
+#'                           features are mapped automatically.
 #' @param absolute           Logical. If TRUE (default) plot |correlation|
 #'                           and transform the CI accordingly; if FALSE plot
 #'                           signed correlation.
@@ -228,7 +226,7 @@ feature_correlation_dotplot <- function(df,
   }
 
   # --- Enumerate region-bearing columns -----------------------------------
-  # v4: every splicing/regulatory column ends in a real region token (mrna
+  # v4: every architecture/regulatory column ends in a real region token (mrna
   # for whole-transcript scalars, start/stop for EEJ distances, 5utr/cds/3utr
   # for junction counts), so they are picked up here automatically. Only
   # genuinely malformed columns (no region token at all) fall through to
@@ -236,7 +234,7 @@ feature_correlation_dotplot <- function(df,
   sel      <- resolve_selection(groups, pick, drop)
   expanded <- sel$groups
 
-  col_to_group <- list()   # column -> FEATURE_PATTERNS key (or standalone name)
+  col_to_group <- list()   # column -> feature id (or, via standalones=, the column name)
   col_region   <- list()   # column -> region token (real or pseudo)
   col_stem     <- list()   # column -> metric stem (column minus region token)
   dropped      <- character()
@@ -254,9 +252,9 @@ feature_correlation_dotplot <- function(df,
         col_to_group[[co]] <- g
         col_region[[co]]   <- last
         col_stem[[co]]     <- paste(tokens[-length(tokens)], collapse = "_")
-      } else if (identical(g, "standalone")) {
-        # Standalone group: genuinely region-less columns. Map to "mrna" so
-        # they appear on the dotplot axis (in the "other" supergroup facet).
+      } else if (is_regionless_feature(g)) {
+        # A single region-less column (cai, translation efficiency): map to
+        # "mrna" so it appears on the region-dodged axis.
         col_to_group[[co]] <- g
         col_region[[co]]   <- "mrna"
         col_stem[[co]]     <- co
@@ -269,7 +267,7 @@ feature_correlation_dotplot <- function(df,
 
   # --- Tier 1 fallback: standalones= argument for columns not in any group --
   # Handles backward-compatible usage (e.g. groups="structure", standalones=c("cai"))
-  # and any column not reached by the standalone FEATURE_PATTERNS group above.
+  # and any column not reached through a feature above.
   for (co in standalones) {
     if (co %in% names(df) && is.null(col_to_group[[co]])) {
       col_to_group[[co]] <- co            # group key = column name (legacy)
@@ -609,22 +607,20 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # uses top_n_per_group to keep the figure legible.
   # Reusable narrowings ("the two reported NMD columns", "the four core
   # length columns") live as bundles in GROUP_BUNDLES (config.R), not inline
-  # here. The broad jobs pull the full `intrinsic`/`splicing` supergroups and
-  # additionally name the bundles so the bundles' pick lists attach to the
-  # `lengths`/`nmd` group keys those supergroups bring in.
+  # here; DEFAULT_PLOT_GROUPS is made of them.
   
   jobs <- list(
     list(response = "halflife",
          suffix   = "halflife",
          sig      = 0.02,
-         groups   = INCLUDED_GROUPS,
+         groups   = DEFAULT_PLOT_GROUPS,
          absolute = TRUE,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 380),
     list(response = "translation_efficiency",
          suffix   = "translation_efficiency",
          sig      = 0.02,
-         groups   = INCLUDED_GROUPS,
+         groups   = DEFAULT_PLOT_GROUPS,
          absolute = TRUE,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 380),

@@ -16,7 +16,7 @@
 #
 #   2. COLLAPSED SUPERGROUPS. `keep_supergroups` names the supergroups that
 #      keep their own facet; everything else folds into "other". The default
-#      c("structure", "intrinsic") gives the three-panel figure the project
+#      c("structure", "sequence") gives the three-panel figure the project
 #      actually argues from — is decay driven by folding, or by the things
 #      that covary with transcript composition — instead of spreading the
 #      contrast across six facets of very uneven size.
@@ -193,15 +193,16 @@ critical_correlation <- function(n,
 #' @param df                 Dataframe from build_dataset() or build_all().
 #' @param response           Character. Response column (default "halflife").
 #' @param method             Correlation method (default "spearman").
-#' @param groups             Character vector of FEATURE_PATTERNS keys and/or
-#'                           SUPERGROUPS names. NULL (default) = all groups.
-#' @param pick               Named list: group key -> columns to keep.
-#' @param drop               Named list: group key -> columns to remove.
+#' @param groups             Character vector of selection keys (feature /
+#'                           group / supergroup / bundle ids). NULL (default)
+#'                           = every exploratory feature.
+#' @param pick               Named list: feature id -> columns to keep.
+#' @param drop               Named list: feature id -> columns to remove.
 #' @param standalones        Character vector of reserved region-less scalar
 #'                           columns to include, mapped to the `mrna` region.
 #' @param keep_supergroups   Character vector of supergroups that keep their
 #'                           own facet. Everything else is relabelled
-#'                           "other". Default c("structure", "intrinsic").
+#'                           "other". Default c("structure", "sequence").
 #'                           NULL = no collapsing (original behaviour).
 #' @param orientation        "vertical" (default) puts features on the x axis,
 #'                           as feature_correlation_dotplot does. "horizontal"
@@ -238,7 +239,7 @@ feature_correlation_ranked <- function(df,
                                        drop                 = list(),
                                        standalones          = c(),
                                        keep_supergroups     = c("structure",
-                                                                "intrinsic"),
+                                                                "sequence"),
                                        orientation          = c("vertical",
                                                                 "horizontal"),
                                        absolute             = TRUE,
@@ -288,7 +289,7 @@ feature_correlation_ranked <- function(df,
         col_to_group[[co]] <- g
         col_region[[co]]   <- last
         col_stem[[co]]     <- paste(tokens[-length(tokens)], collapse = "_")
-      } else if (identical(g, "standalone")) {
+      } else if (is_regionless_feature(g)) {
         col_to_group[[co]] <- g
         col_region[[co]]   <- "mrna"
         col_stem[[co]]     <- co
@@ -406,8 +407,8 @@ feature_correlation_ranked <- function(df,
   # nothing. That is not harmless: the figure then shows a curated selection
   # while looking exactly like a top-N ranking, and a reader comparing it to
   # a full-family figure sees two different "top" sets and reasonably
-  # concludes one is wrong. INCLUDED_GROUPS does this for codon_freqs and
-  # aa_freqs via the intrinsic_select bundle. Record every group where the
+  # concludes one is wrong. DEFAULT_PLOT_GROUPS does this for codon_freqs and
+  # aa_freqs via the sequence_select bundle. Record every group where the
   # cut bound, so the run report can state which axis rows were ranked and
   # which were chosen.
   ranking_applied <- list()
@@ -1015,7 +1016,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   # Releasing the codon / amino-acid pick lists.
   #
-  # INCLUDED_GROUPS pulls in the `intrinsic_select` bundle, which pins
+  # DEFAULT_PLOT_GROUPS pulls in the `sequence_select` bundle, which pins
   # codon_freqs to two named columns and aa_freqs to two more. Those names
   # are a curated choice, not a ranking: the pinned codons (AGU, UCA) are the
   # two strongest SERINE codons, ranks 2 and 4 of the family by |r|, so the
@@ -1025,8 +1026,8 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   #
   # resolve_selection() merges bundle and caller pick lists with modifyList(),
   # where a NULL from the caller DELETES the key. So passing NULL here
-  # releases the whole family for these two groups while leaving every other
-  # pick the bundle carries (lengths, stopfree, standalone) untouched, and
+  # releases the whole family for these two features while leaving any other
+  # pick the bundle carries untouched, and
   # `top_n = 2` then picks the genuine top two from the data.
   #
   # Derived per response, so half-life and translation efficiency may well
@@ -1035,22 +1036,22 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   # Four figures.
   #
-  # The two broad ones use INCLUDED_GROUPS with the default collapse, so the
-  # comparison the project cares about — structure against intrinsic, with
+  # The two broad ones use DEFAULT_PLOT_GROUPS with the default collapse, so the
+  # comparison the project cares about — structure against sequence, with
   # everything else pooled — is the figure's primary axis of organisation.
   #
   # The codon and amino-acid figures opt IN to the high-cardinality groups
   # that the default expansion excludes, and take NO top-N cut: the whole
   # family is the point. keep_supergroups = NULL leaves them in a single
-  # panel (both sit in `intrinsic`, so collapsing would be a no-op that only
+  # panel (both sit in `sequence`, so collapsing would be a no-op that only
   # adds a strip). Both families are CDS-only, so there is one region per
   # row and no dodging.
   jobs <- list(
     list(response = "halflife",
          suffix   = "halflife",
          title    = "Half-life, collapsed supergroups",
-         groups   = INCLUDED_GROUPS,
-         keep_sg  = c("structure", "intrinsic"),
+         groups   = DEFAULT_PLOT_GROUPS,
+         keep_sg  = c("structure", "sequence"),
          pick     = release_families,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 260,
@@ -1058,8 +1059,8 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     list(response = "translation_efficiency",
          suffix   = "translation_efficiency",
          title    = "Translation efficiency, collapsed supergroups",
-         groups   = INCLUDED_GROUPS,
-         keep_sg  = c("structure", "intrinsic"),
+         groups   = DEFAULT_PLOT_GROUPS,
+         keep_sg  = c("structure", "sequence"),
          pick     = release_families,
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 260,

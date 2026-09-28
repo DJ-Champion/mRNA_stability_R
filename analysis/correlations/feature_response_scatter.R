@@ -85,11 +85,10 @@ suppressPackageStartupMessages({
 #'                       distance from origin. Default 0.9 = label top 10%.
 #' @param standalones    Legacy escape hatch: character vector of columns to
 #'                       include even though no group reaches them. Empty by
-#'                       default — cai, translation_efficiency and
-#'                       orfexondensity are now in the `standalone` group, so
-#'                       `groups = "standalone"` (or the `other` supergroup)
+#'                       default — cai and translation_efficiency are features
+#'                       in R/feature_table.csv, so `groups = c("cai", "te")`
 #'                       is the supported route. Use this only for a column
-#'                       that genuinely sits outside FEATURE_PATTERNS.
+#'                       that genuinely sits outside the table.
 #' @param exclude        Regex patterns to exclude. Default = R10 derived-
 #'                       prediction set, unless response_x or response_y is
 #'                       one of them (in which case it's auto-removed from
@@ -160,8 +159,7 @@ feature_response_scatter <- function(df,
 
   # Build a column -> group attribution map. First-match wins, so aliases
   # (already removed from FEATURE_PATTERNS) don't cause double-assignment.
-  # Columns in the "standalone" FEATURE_PATTERNS group are included naturally;
-  # the standalones= argument is a fallback for columns not reached by groups.
+  # The standalones= argument is a fallback for columns no feature reaches.
   col_to_group <- list()
   for (g in expanded) {
     # Refine via the shared helper so bundle- and caller-supplied pick/drop
@@ -357,12 +355,12 @@ feature_response_scatter <- function(df,
   # --- Display labels (R4) -------------------------------------------------
   # group_label() dispatches per element: selection keys (group / supergroup /
   # bundle) via format_group_name(); anything else — i.e. a bare column name
-  # such as a standalone reached through the legacy `standalones=` fallback —
+  # such as a column reached through the legacy `standalones=` fallback —
   # via format_col_name(). The key sets are read from the registries rather
   # than hardcoded, so adding a supergroup cannot silently mislabel it.
   group_label <- function(g) {
-    selection_keys <- c(names(FEATURE_PATTERNS), names(SUPERGROUPS),
-                        names(GROUP_BUNDLES), "other")
+    selection_keys <- c(names(FEATURE_PATTERNS), names(FEATURE_GROUPS),
+                        names(SUPERGROUPS), names(GROUP_BUNDLES), "other")
     ifelse(g %in% selection_keys,
            format_group_name(g, kind = "auto"),
            formatter(g))
@@ -524,7 +522,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   
   out_included <- feature_response_scatter(
     df,
-    groups          = INCLUDED_GROUPS,
+    groups          = DEFAULT_PLOT_GROUPS,
     top_n_per_group = list(codon_freqs = 2, aa_freqs = 2),
     noise_filter    = 0,
     label_quantile  = 0.8
@@ -549,7 +547,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # Top view: top n
   out_top_n <- feature_response_scatter(
     df,
-    groups          = INCLUDED_GROUPS,
+    groups          = DEFAULT_PLOT_GROUPS,
     top_n = 3,
     label_quantile = 0.3
     # noise_filter = 0.1
@@ -574,7 +572,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # Top view: top 1
   out_top <- feature_response_scatter(
     df,
-    groups          = INCLUDED_GROUPS,
+    groups          = DEFAULT_PLOT_GROUPS,
     top_n = 1,
     label_quantile = 0
     # noise_filter = 0.1

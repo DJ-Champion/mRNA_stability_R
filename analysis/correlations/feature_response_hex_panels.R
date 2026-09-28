@@ -23,7 +23,7 @@
 #   source("R/load_all.R")
 #   source("analysis/correlations/feature_response_hex_panels.R")
 #   df  <- build_dataset("human")
-#   out <- feature_response_hex_panels(df, groups = "intrinsic")
+#   out <- feature_response_hex_panels(df, groups = "sequence")
 #   print(out$plot); head(out$table)
 # =============================================================================
 
@@ -302,7 +302,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   n_species <- if ("species" %in% names(df)) dplyr::n_distinct(df$species) else 1L
   
   jobs <- list(
-    list(suffix = "intrinsic", groups = "intrinsic", columns = NULL),
+    list(suffix = "sequence", groups = "sequence", columns = NULL),
     list(suffix = "structure", groups = "structure", columns = NULL)
   )
   

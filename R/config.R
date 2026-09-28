@@ -2,7 +2,8 @@
 # Pipeline configuration
 # =============================================================================
 # Central configuration for the RNA half-life analysis pipeline.
-# Edit values here to add species, change paths, or register new feature groups.
+# Edit values here to add species or change paths. Features are defined in
+# R/feature_table.csv, which the feature-table section below reads.
 # =============================================================================
 
 # --- Paths -------------------------------------------------------------------
@@ -89,151 +90,135 @@ SPECIES_CONFIG <- list(
 ANALYSIS_SPECIES <- c("human")
 
 
-# --- Feature groups ----------------------------------------------------------
-# Regex patterns defining named groups of columns. Use downstream with
-# `fg()` / `fg_columns()`. Add a new group by appending a named entry.
+# --- Feature table: the single source of truth -------------------------------
+# R/feature_table.csv defines every feature: its columns (a regex), its place
+# in the Supergroup > Group > Feature hierarchy, whether it is used in the
+# exploratory analysis and in the model, its display names, its colour, and
+# why. Everything below is DERIVED from it — edit the table, not these
+# objects. scripts/check_feature_table.R verifies the table against a built
+# cache (every column claimed by exactly one row, labels, regions, flags).
 #
-# Display labels for the selection-key namespace below — FEATURE_PATTERNS keys,
-# SUPERGROUPS names, and GROUP_BUNDLES names — live in R/utils/palettes.R as
-# FEATURE_GROUP_DISPLAY_NAMES / SUPERGROUP_DISPLAY_NAMES / BUNDLE_DISPLAY_NAMES,
-# formatted via format_group_name(). Add a label there, not here, when a key
-# needs a nicer display string than its title-cased name. The individual
-# columns inside the `standalone` group (cai, translation_efficiency,
-# orfexondensity) are labelled as COLUMNS via format_col_name()
-# (R/utils/naming.R), not as group keys — see the note on `standalone` below.
+# Three levels, one flat selection namespace (ids must not collide):
+#   feature     a table row; `feature_id`. The unit of FEATURE_PATTERNS.
+#   group       the table's Group column, snake-cased ("Global folding" ->
+#               global_folding). Every group sits in exactly one supergroup.
+#   supergroup  the table's Supergroup column, snake-cased.
 #
-# INVARIANT: the patterns are mutually exclusive. No column may match two
-# groups — a plot that builds a column -> group map would double-assign it.
-# When one family's prefix is a prefix of another's, anchor the broader one
-# more tightly (e.g. `gc` is `^gc_content_`, not `^gc_`, so it does not
-# swallow the `skews` columns; `exons` excludes `^exon_density_`).
-
-FEATURE_PATTERNS <- list(
-  lengths        = "^length_",
-  gc             = "^gc_content_",
-  nmd            = "^nmd_",
-  introns        = "^intron_",
-  exons          = "^exon_(count|length)_",
-  noncoding      = "^noncoding_",
-  rnafold_scores = "^rnafold_score_",
-  rnafold_zscores = "^rnafold_zscore_",
-  rnafold_per_nt = "^rnafold_per_nt_",
-  mfe_deltas     = "^mfe_delta_",
-  mfe_expected   = "^mfe_expected_",
-  rnalfold_scores    = "^rnalfold_score_",
-  rnalfold_zscores   = "^rnalfold_zscore_",
-  junctions      = "^junctions_",
-  eej_dist       = "^eej_dist_",
-  uorfs          = "^(uorf_|dist_cap_)",
-  exon_density   = "^exon_density_",
-  stopfree       = "^stopfree_",
-  skews          = "^(gc|at)_skew_",
-  # The triplet class admits `t` as well as `u` for the same reason
-  # add_codon_aa_fractions() does: columns arrive RNA-spelled only because
-  # normalise_codon_alphabet() folded them at load, and a `[acgu]`-only class
-  # would silently drop a whole species if that fold ever regressed.
-  # Anchored past the triplet so it does not swallow `codon_other_cds`, the
-  # unresolvable-codon bucket — a real column of the normalisation pool, but
-  # identically zero in both species, so never a covariate. See the
-  # EXCLUDED_FEATURES entry.
-  codon_freqs    = "^codon_[acgtu]{3}_",
-  aa_freqs       = "^aa_",
-  nuc_ratios     = "^frac_",
-  compositional  = "^(purine_|amino_)",
-  probing        = "^gini_",
-
-  # Genuinely region-less whole-transcript scalars. One group rather than one
-  # group per column: they behave identically to every consumer (no region
-  # suffix, mapped to the `mrna` slot in region-aware plots) and differ only
-  # in their display label, which comes from format_col_name().
-  standalone     = "^(cai|translation_efficiency|orfexondensity)$"
-)
-
-
-# --- Feature supergroups -----------------------------------------------------
-# Coarse-grained categorisation of FEATURE_PATTERNS keys for plotting, palette
-# assignment, and any analysis that wants to colour or facet by category
-# family.
+# The two flags:
+#   Included in exploratory analysis   Selecting a group or supergroup returns
+#       only its exploratory features. Naming a feature id directly always
+#       works, so a plot can still reach an excluded feature on purpose.
+#   Included in model                  The model's predictor list
+#       (model_columns()). Nothing else reads it.
+# A row Excluded from both is never used anywhere; drop_excluded() removes it.
 #
-# INVARIANT: every FEATURE_PATTERNS key belongs to exactly one supergroup —
-# no key omitted, no key listed twice. `standalone` lives in `other`.
-#
-# Update this when adding new groups to FEATURE_PATTERNS.
+# Rows in the "Response / evaluation" supergroup (halflife, saluki) and rows
+# with no `columns` (features not yet built) are documented but are not
+# features: they get no FEATURE_PATTERNS entry and cannot be selected.
 
-SUPERGROUPS <- list(
-  structure  = c("rnafold_scores", "rnafold_zscores", "rnafold_per_nt",
-                 "mfe_deltas", "mfe_expected",
-                 "rnalfold_scores", "rnalfold_zscores",
-                 "probing"),
+FEATURE_TABLE_PATH <- file.path(
+  if (exists(".PIPELINE_ROOT")) .PIPELINE_ROOT else "R", "feature_table.csv")
 
-  intrinsic  = c("lengths", "gc", "stopfree", "skews", "codon_freqs", "aa_freqs",
-                 "nuc_ratios", "compositional"),
+.snake <- function(x) gsub("^_+|_+$", "", gsub("[^a-z0-9]+", "_", tolower(x)))
 
-  splicing   = c("junctions", "introns", "exons", "noncoding", "eej_dist"),
+.read_feature_table <- function(path) {
+  t <- utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE,
+                       fileEncoding = "UTF-8", na.strings = character())
+  flag <- function(col) {
+    bad <- setdiff(t[[col]], c("Included", "Excluded"))
+    if (length(bad)) stop(path, ": `", col, "` must be Included/Excluded; found ",
+                          paste(bad, collapse = ", "), call. = FALSE)
+    t[[col]] == "Included"
+  }
+  t$exploratory   <- flag("Included in exploratory analysis")
+  t$model         <- flag("Included in model")
+  t$group_id      <- .snake(t$Group)
+  t$supergroup_id <- .snake(t$Supergroup)
+  t$is_feature    <- nzchar(t$columns) & t$supergroup_id != "response_evaluation"
 
-  translation = c("uorfs", "exon_density"),
-  decay       = c("nmd"),
-  other       = c("standalone")
-)
+  # Invariants that need no data. The data-dependent ones are in
+  # scripts/check_feature_table.R.
+  dup <- t$feature_id[duplicated(t$feature_id)]
+  if (length(dup)) stop(path, ": duplicate feature_id ", paste(dup, collapse = ", "),
+                        call. = FALSE)
+  split_groups <- names(which(tapply(t$supergroup_id, t$group_id,
+                                     function(s) length(unique(s))) > 1))
+  if (length(split_groups)) stop(path, ": group(s) in more than one supergroup: ",
+                                 paste(split_groups, collapse = ", "), call. = FALSE)
+  ids <- c(t$feature_id, unique(t$group_id), unique(t$supergroup_id))
+  clash <- unique(ids[duplicated(ids)])
+  if (length(clash)) stop(path, ": id used at more than one level: ",
+                          paste(clash, collapse = ", "), call. = FALSE)
+  t
+}
+
+FEATURE_TABLE <- .read_feature_table(FEATURE_TABLE_PATH)
+
+.feature_rows <- FEATURE_TABLE[FEATURE_TABLE$is_feature, ]
+
+#' Regex per feature. Mutually exclusive by construction — the checker
+#' asserts no column matches two rows.
+FEATURE_PATTERNS <- stats::setNames(as.list(.feature_rows$columns),
+                                    .feature_rows$feature_id)
+
+#' Group id -> feature ids; supergroup id -> feature ids. Table order.
+FEATURE_GROUPS <- split(.feature_rows$feature_id,
+                        factor(.feature_rows$group_id, unique(.feature_rows$group_id)))
+SUPERGROUPS    <- split(.feature_rows$feature_id,
+                        factor(.feature_rows$supergroup_id,
+                               unique(.feature_rows$supergroup_id)))
+
+EXPLORATORY_FEATURES <- .feature_rows$feature_id[.feature_rows$exploratory]
+MODEL_FEATURES       <- .feature_rows$feature_id[.feature_rows$model]
+
+#' Built columns that are used nowhere: rows Excluded from both flags. Regexes,
+#' because the table is data-independent; drop_excluded() resolves them.
+NEVER_USED_PATTERNS <- FEATURE_TABLE$columns[nzchar(FEATURE_TABLE$columns) &
+                                             !FEATURE_TABLE$exploratory &
+                                             !FEATURE_TABLE$model]
+rm(.feature_rows)
+
+
+# --- Bundles and plot defaults -------------------------------------------------
+# Selection INTENT, not schema: reusable named selections over the ids above.
+# A bundle is a list with any of:
+#   groups : feature / group / supergroup / other bundle ids
+#   pick   : named list  feature_id -> columns to KEEP from that feature
+#   drop   : named list  feature_id -> columns to REMOVE from that feature
+# A bare character vector is shorthand for list(groups = <vec>). Editing a
+# bundle never needs a CACHE_VERSION bump.
 
 GROUP_BUNDLES <- list(
-  nmd_core = list(
-    groups = "nmd",
-    pick = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
-                        "nmd_alt_stop_codon_density_mrna"))
-  ),
-  lengths_core = list(
-    groups = "lengths",
-    pick = list(lengths = c("length_5utr", "length_cds",
-                            "length_3utr", "length_mrna"))
-  ),
-  splicing_core = list(
-    groups = "eej_dist",
-    pick = list(eej_dist = c("eej_dist_closest_start", "eej_dist_closest_stop"))
-  ),
+  nmd_core       = c("nmd_snv_fragile", "nmd_alt_stop"),
+  lengths_core   = "lengths",
+  junction_core  = "eej_dist_closest",
   structure_core = list(
     groups = "structure",
     pick = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
                             "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
   ),
-  intrinsic_core = list(
-    groups = c("intrinsic", "standalone"),
-    pick = list(lengths = c("length_5utr", "length_cds",
-                            "length_3utr", "length_mrna"),
-                stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
-                             "stopfree_length_cds", "stopfree_length_mrna"),
-                standalone = "cai")
+  sequence_core  = c("sequence", "cai"),
+  sequence_select = list(
+    groups = c("sequence", "cai"),
+    pick = list(codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
+                aa_freqs    = c("aa_s_cds", "aa_v_cds"))
   ),
-  intrinsic_select = list(
-    groups = c("intrinsic", "standalone"),
-    pick = list(lengths = c("length_5utr", "length_cds",
-                            "length_3utr", "length_mrna"),
-                stopfree = c("stopfree_length_5utr", "stopfree_length_3utr",
-                             "stopfree_length_cds", "stopfree_length_mrna"),
-                codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
-                aa_freqs = c("aa_s_cds", "aa_v_cds"),
-                standalone = "cai")
-  ),
-  translation_core = list(
-    groups = c("uorfs", "exon_density"),
-    pick = list(uorfs = c("uorf_present_mrna"))
-  )
+  translation_core = c("uorf_present", "exon_density")
 )
 
-# The main set of groups we've decided to focus on for almost everything.
-# Pass anywhere a `groups =` argument is accepted; it is the default for the
-# correlation dotplot, the response scatter, the region heatmap and the
-# correlation-heatmap workflow. Editing this changes what those plots show by
-# default — it is selection intent, so it never needs a CACHE_VERSION bump.
-INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core",
-                     "intrinsic_select", "translation_core")
+# The main set we focus on for almost everything: the default `groups =` for
+# the correlation dotplot, the response scatter, the region heatmap and the
+# correlation-heatmap workflow. A PLOTTING default only — the model's
+# predictors come from the table's model flag (MODEL_FEATURES).
+DEFAULT_PLOT_GROUPS <- c("nmd_core", "junction_core", "structure_core",
+                         "sequence_select", "translation_core")
 
 
 # --- Cohort definition -------------------------------------------------------
 # The minimum length, in nucleotides, that BOTH UTRs must reach for a
 # transcript to enter the analysis. A transcript failing it is dropped
-# entirely — this is a ROW filter, and the counterpart to EXCLUDED_FEATURES
-# below, which is a column filter.
+# entirely — this is a ROW filter, and the counterpart to drop_excluded(),
+# which is a column filter.
 #
 # WHY. A UTR of a few nucleotides is not a short UTR so much as an absent or
 # mis-annotated one, and it poisons the regional features rather than merely
@@ -262,7 +247,7 @@ INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core",
 # WHERE IT IS APPLIED. build_dataset() applies it to the frame it RETURNS,
 # after the cache is read or written — so the cache on disk stays complete and
 # this needs no CACHE_VERSION bump. It is selection intent, like
-# INCLUDED_GROUPS and EXCLUDED_FEATURES, not a schema change. Pass
+# DEFAULT_PLOT_GROUPS and the feature table's flags, not a schema change. Pass
 # `min_utr = NULL` to build_dataset() / build_all() for the unfiltered table;
 # the QC scripts do exactly that, because a coverage and missingness diagnostic
 # should describe the whole built table including what this removes.
@@ -276,123 +261,10 @@ INCLUDED_GROUPS <- c("nmd_core", "splicing_core", "structure_core",
 MIN_UTR_LENGTH <- 30L
 
 
-# --- Model-pipeline exclusions -----------------------------------------------
-# Columns that are built and cached, but are NOT admissible as covariates.
-# Applied by drop_excluded() (R/utils/feature_groups.R) at the head of a
-# modelling / screening script — never inside build_dataset(), for two reasons:
-#
-#   1. Several entries here are ENGINEERING SCAFFOLDING: engineer.R derives
-#      kept columns from them. mfe_expected_* feeds mfe_delta_*;
-#      junctions_count_* feeds exon_density_*; eej_dist_{up,down}stream_*
-#      feeds eej_dist_closest_*. Remove them before engineering and the
-#      retained derivatives disappear too.
-#   2. QC scripts legitimately want them — analysis/qc/mfe_expected_check.R
-#      reads the mfe_expected_* family this list removes wholesale.
-#
-# The cache therefore stays complete and this needs no CACHE_VERSION bump: it
-# is selection intent, like INCLUDED_GROUPS above, not a schema change.
-#
-# Why a flat denylist rather than GROUP_BUNDLES pick/drop: 43 of these match no
-# FEATURE_PATTERNS key at all (the rnafold/rnalfold median+pval families, and
-# the legacy scalars). select_features() only ever returns columns belonging to
-# a registered group, so the pick/drop machinery cannot address them. A growing
-# table also fails safer with a denylist — a newly ingested feature arrives
-# INCLUDED and surfaces in screening, rather than being silently excluded.
-#
-# Species differ: mouse lacks 37 of these. drop_excluded() uses any_of().
-
-EXCLUDED_FEATURES <- c(
-  # Vienna auxiliary distribution statistics. The score/zscore/per-nt families
-  # are the modelled encoding of the same folding runs; median and p-value are
-  # retained upstream for provenance only. Human-only (absent in mouse).
-  "rnafold_median_3utr", "rnafold_median_5utr", "rnafold_median_cds",
-  "rnafold_median_last100", "rnafold_median_mrna", "rnafold_median_start",
-  "rnafold_median_stop", "rnafold_median_utrpair",
-  "rnafold_pval_3utr", "rnafold_pval_5utr", "rnafold_pval_cds",
-  "rnafold_pval_last100", "rnafold_pval_mrna", "rnafold_pval_start",
-  "rnafold_pval_stop", "rnafold_pval_utrpair",
-  "rnalfold_median_3utr", "rnalfold_median_5utr", "rnalfold_median_cds",
-  "rnalfold_median_last100", "rnalfold_median_mrna", "rnalfold_median_start",
-  "rnalfold_median_stop",
-  "rnalfold_pval_3utr", "rnalfold_pval_5utr", "rnalfold_pval_cds",
-  "rnalfold_pval_last100", "rnalfold_pval_mrna", "rnalfold_pval_start",
-  "rnalfold_pval_stop",
-
-  # Scaffolding for mfe_delta_* (= rnafold_score - mfe_expected). Deterministic
-  # in gc_content_{region} and length_{region}, so it carries no information the
-  # delta and its two inputs do not already hold. Empties the `mfe_expected`
-  # group key; `structure` keeps its other seven members.
-  "mfe_expected_5utr", "mfe_expected_cds", "mfe_expected_3utr",
-  "mfe_expected_mrna", "mfe_expected_last100", "mfe_expected_start",
-  "mfe_expected_stop",
-
-  # Fixed-width analysis windows, not measured transcript properties.
-  # length_last100 takes 2 distinct values across the human table.
-  "length_last100", "length_start", "length_stop",
-
-  # Exon / intron architecture summaries superseded by the retained
-  # exon_density_* encoding. exon_count_mrna is the loader's name for the raw
-  # n_exons column (renamed in 98a9165). exon_length_last_mrna is mostly the
-  # 3'UTR — Spearman 0.949 with length_3utr on human — so it restates a
-  # retained core feature; it was the sole survivor of the `exons` group.
-  "exon_count_internal_mrna", "internal_exon_mean", "internal_exon_median",
-  "internal_exon_sd", "intron_length_mean_mrna", "intron_median",
-  "intron_sd", "exon_count_mrna", "exon_length_last_mrna",
-
-  # Junction counts and their per-kb densities. engineer.R turns the counts
-  # into exon_density_* ((junctions + 1) / kb), which is what the models use;
-  # this drops the whole `junctions` group and keeps `exon_density`.
-  "junctions_count_5utr", "junctions_count_cds", "junctions_count_3utr",
-  "junctions_count_mrna",
-  "junctions_density_5utr", "junctions_density_cds", "junctions_density_3utr",
-  "junctions_density_mrna",
-
-  # Directional exon-exon junction distances. add_eej_min_distance() collapses
-  # each up/downstream pair into the retained eej_dist_closest_{start,stop}.
-  "eej_dist_upstream_stop", "eej_dist_downstream_stop",
-  "stop_dist_last_downstream",
-  "eej_dist_upstream_start", "eej_dist_downstream_start",
-
-  # Exact duplicate of length_5utr (verified identical on the v8 human cache).
-  "utr5_length",
-
-  # uORF counts and distances. Retains uorf_present_mrna, which is what
-  # translation_core picks.
-  "uorf_count_mrna", "n_overlapping_uorfs", "total_classical_uorf_codons",
-  "max_classical_uorf_codons", "dist_cap_to_first_uatg_mrna",
-  "dist_last_uorf_stop_to_main_atg",
-
-  # CDS size / denominator columns. The codon and aa families are row-normalised
-  # fractions (add_codon_aa_fractions), so these are the length proxies that
-  # normalisation exists to remove.
-  "cds_length_codons_cds", "n_codons_scored_cds", "n_stops_cds",
-
-  # The unresolvable-codon bucket: the 65th member of the codon pool, counting
-  # triplets that are not a plain ACGU triplet (ambiguity codes, a trailing
-  # partial codon). Identically zero in BOTH species at source — 0 non-zero
-  # values across 13,601 human and 14,197 mouse rows of
-  # raw/{species}/codon_aa_counts.tsv — because the MANE CDS set is curated to
-  # complete, unambiguous reading frames. That is the correct answer, not a
-  # broken counter, so there is nothing upstream to fix; it stays in the built
-  # table because the pool it belongs to is what add_codon_aa_fractions()
-  # normalises against (the 65 columns sum to cds_length_codons; this one
-  # contributes 0 to every row sum, so excluding it changes no fraction).
-  # `codon_freqs` is anchored past the triplet so it is not selectable as a
-  # feature; this entry removes it from the covariate pool as well, for the
-  # scripts that take every numeric column rather than going through
-  # select_features().
-  "codon_other_cds",
-
-  # Leaves `standalone` as cai + translation_efficiency, both retained as
-  # candidate covariates.
-  "orfexondensity"
-)
-
-
 # --- Identity, family and split columns --------------------------------------
 # Columns that identify a row rather than describe it. Distinct from
-# EXCLUDED_FEATURES in what happens to them: drop_excluded() REMOVES an
-# excluded feature, whereas these must SURVIVE into a modelling frame — the
+# never-used features in what happens to them: drop_excluded() REMOVES a
+# never-used feature, whereas these must SURVIVE into a modelling frame — the
 # family label is the grouping variable for blocked CV and the cluster for
 # robust standard errors, so a script that dropped it could not do its job.
 #
@@ -517,21 +389,21 @@ affix_payload <- function(df, prefix = "", suffix = "",
 }
 
 
-# --- Supergroup helpers ------------------------------------------------------
+# --- Hierarchy lookups -------------------------------------------------------
 
-#' Reverse lookup: which supergroup does a FEATURE_PATTERNS key belong to?
-#' @param group Character vector of FEATURE_PATTERNS keys.
-#' @return Character vector of supergroup names; NA_character_ for unknown keys.
+#' Reverse lookups: the supergroup / group a feature id belongs to.
+#'
+#' Works for every table row, including rows that are not selectable features
+#' (never-used rows, the response rows).
+#' @param feature Character vector of feature ids.
+#' @return Character vector of ids; NA_character_ for unknown feature ids.
 #' @examples
 #' supergroup_of("rnafold_zscores")   # "structure"
-#' supergroup_of(c("gc", "nmd"))      # c("intrinsic", "splicing")
-supergroup_of <- function(group) {
-  vapply(group, function(g) {
-    hits <- names(SUPERGROUPS)[vapply(
-      SUPERGROUPS, function(members) g %in% members, logical(1)
-    )]
-    if (length(hits) == 0) NA_character_ else hits[1]
-  }, character(1), USE.NAMES = FALSE)
+#' group_of(c("gc", "at_skew"))       # c("nucleotide_composition", "nucleotide_asymmetry")
+supergroup_of <- function(feature) {
+  unname(stats::setNames(FEATURE_TABLE$supergroup_id, FEATURE_TABLE$feature_id)[feature])
 }
 
-
+group_of <- function(feature) {
+  unname(stats::setNames(FEATURE_TABLE$group_id, FEATURE_TABLE$feature_id)[feature])
+}

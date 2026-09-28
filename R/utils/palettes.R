@@ -1,15 +1,11 @@
 # =============================================================================
 # Feature group palettes and shape mappings
 # =============================================================================
-# Hand-curated colour scheme for FEATURE_PATTERNS keys, organised by the
-# SUPERGROUPS membership defined in R/config.R:
-#
-#   structure   — purples, magentas, oranges, yellow
-#   intrinsic   — blues, greens, teals
-#   splicing    — reds, browns
-#   decay       — rust
-#   translation — distinct purples (avoids structure family clash)
-#   other       — greys (the `standalone` group and the catch-all)
+# Feature colours and every group/supergroup display label come from
+# R/feature_table.csv (the Colour, Feature, Group and Supergroup columns) —
+# edit them there. Colours follow supergroup families: structure purples,
+# magentas and oranges; sequence blues, greens and teals; translation
+# lavenders; transcript architecture browns and reds; RNA decay rusts.
 #
 # Plus Okabe-Ito colourblind-friendly palette for REGIONS, used when region
 # is the visual variable rather than the grouping (see feature_correlation_
@@ -29,50 +25,14 @@
 # Feature-group colours (used when GROUP is the visual variable)
 # -----------------------------------------------------------------------------
 
-#' Colour for each FEATURE_PATTERNS group, plus the `other` catch-all.
-#'
-#' MUST cover every FEATURE_PATTERNS key — a missing key falls back silently
-#' to the `other` grey via feature_colour(), which reads as a palette bug.
+#' Colour for each feature id (the table's Colour column), plus the `other`
+#' catch-all. Features without a colour (never-used rows) fall back to it via
+#' feature_colour(); scripts/check_feature_table.R requires a colour on every
+#' exploratory feature.
 #' @export
 FEATURE_GROUP_COLOURS <- c(
-
-  # --- Structure: purples + oranges + yellow ---
-  rnafold_scores         = "#2D004B",  # very dark purple
-  rnafold_zscores        = "#E7298A",  # vivid magenta
-  rnafold_per_nt         = "#D4115A",
-  mfe_deltas             = "#542788",  # deep violet
-  mfe_expected           = "#8073AC",  # muted purple
-  rnalfold_scores        = "#FF7F00",  # vivid orange
-  rnalfold_zscores       = "#B35806",  # burnt orange
-  probing                = "#FDB863",
-
-  # --- Intrinsic: blues + greens + teals ---
-  lengths                = "#002642",  # midnight blue
-  gc                     = "#1F78B4",  # vivid blue
-  stopfree               = "#A6CEE3",  # pale blue
-  codon_freqs            = "#33A02C",  # vivid green
-  aa_freqs               = "#B2DF8A",  # pale green
-  nuc_ratios             = "#01665E",  # dark teal
-  skews                  = "#80CDC1",  # light teal
-  compositional          = "#5AA9A2",  # mid teal
-
-  # --- Splicing: reds + browns ---
-  junctions              = "#E31A1C",  # vivid red
-  eej_dist               = "#8C510A",  # earth brown
-  introns                = "#BF812D",  # tan
-  exons                  = "#DFC27D",  # pale tan
-  noncoding              = "#A6611A",  # dark tan
-
-  # --- Decay ---
-  nmd                    = "#B15928",  # rust
-
-  # --- Translation: distinct purples (separate family from structure) ---
-  uorfs                  = "#6A3D9A",  # deep purple
-  exon_density           = "#CAB2A6",
-
-  # --- Other: greys ---
-  standalone             = "#525252",  # dark grey
-  other                  = "#C7C7C7"   # light grey (catch-all)
+  with(FEATURE_TABLE[nzchar(FEATURE_TABLE$Colour), ], stats::setNames(Colour, feature_id)),
+  other = "#C7C7C7"
 )
 
 
@@ -135,95 +95,50 @@ REGION_DISPLAYS <- c(
 # Display formatters
 # -----------------------------------------------------------------------------
 
+#' Display labels for selection keys, from the table: a feature is labelled by
+#' its Feature column, a group by Group, a supergroup by Supergroup. `other` is
+#' the display bucket plots use for anything outside a named supergroup.
 FEATURE_GROUP_DISPLAY_NAMES <- c(
-  rnafold_scores         = "MFE",
-  rnafold_zscores        = "MFE z-score",
-  rnafold_per_nt         = "MFE/nt",
-  # Sentence case, matching "MFE z-score" and "MFE expected" — every other
-  # entry here capitalises only the leading word and any proper noun.
-  mfe_deltas             = "MFE delta",
-  mfe_expected           = "MFE expected",
-  rnalfold_scores        = "Local MFE",
-  rnalfold_zscores       = "Local MFE z-score",
-  probing                = "Probing",
-  lengths                = "Length",
-  gc                     = "GC content",
-  stopfree               = "Stop-free",
-  codon_freqs            = "Codon frequency",
-  aa_freqs               = "Amino acid frequency",
-  nuc_ratios             = "Nucleotide ratios",
-  compositional          = "Compositional bias",
-  exon_density           = "Exon density",
-  eej_dist               = "EEJ distance",
-  introns                = "Introns",
-  exons                  = "Exons",
-  noncoding              = "Non-coding fraction",
-  skews                  = "Skews",
-  junctions              = "Junctions",
-  nmd                    = "NMD fragility",
-  uorfs                  = "uORFs",
-  standalone             = "Standalone",
-  other                  = "Other"
-)
-
-# The COLUMNS inside the `standalone` group (cai, translation_efficiency,
-# orfexondensity) are deliberately NOT in this table: they are columns, not
-# group keys, and are labelled via format_col_name() in R/utils/naming.R. A
-# plot whose `group` column can hold a standalone column name (e.g. the
-# response scatter) dispatches per element — group keys via
-# format_group_name(), everything else via format_col_name(). The `standalone`
-# key itself IS here, because it is a group. `other` stays here too: it is a
-# display bucket that sits alongside group keys in facets/legends.
-
-#' Supergroup name -> display label. The toTitleCase fallback in
-#' format_group_name() handles clean single words ("structure" -> "Structure");
-#' this is seeded for multi-word exceptions.
+  stats::setNames(FEATURE_TABLE$Feature, FEATURE_TABLE$feature_id), other = "Other")
+GROUP_DISPLAY_NAMES <- c(
+  stats::setNames(FEATURE_TABLE$Group, FEATURE_TABLE$group_id)[!duplicated(FEATURE_TABLE$group_id)],
+  other = "Other")
 SUPERGROUP_DISPLAY_NAMES <- c(
-  other = "Other"
-)
+  stats::setNames(FEATURE_TABLE$Supergroup, FEATURE_TABLE$supergroup_id)[!duplicated(FEATURE_TABLE$supergroup_id)],
+  other = "Other")
 
 #' Bundle name -> display label. MUST cover every GROUP_BUNDLES key, or the
 #' toTitleCase fallback produces things like "Nmd Core".
 BUNDLE_DISPLAY_NAMES <- c(
   nmd_core         = "NMD (core)",
   lengths_core     = "Core lengths",
-  splicing_core    = "Core splicing",
+  junction_core    = "Core junction proximity",
   structure_core   = "Core structure",
-  intrinsic_core   = "Core intrinsic",
-  intrinsic_select = "Intrinsic (selected)",
+  sequence_core    = "Core sequence",
+  sequence_select  = "Sequence (selected)",
   translation_core = "Core translation"
 )
 
 
-#' Display name for a selection key (group / supergroup / bundle).
+#' Display name for a selection key (feature / group / supergroup / bundle).
 #'
 #' Looks the key up in the table for its `kind`; on a miss, falls back to
 #' title-cased underscore replacement. Vectorised.
 #'
-#' This is the SELECTION-key namespace only. The columns inside the
-#' `standalone` group (cai, translation_efficiency, orfexondensity) are NOT
-#' handled here — they are columns and use format_col_name(). A plot whose
-#' group column mixes selection keys with standalone column names must
-#' dispatch per element (see feature_response_scatter.R).
-#'
-#' @param g    Character vector of group / supergroup / bundle keys.
-#' @param kind One of "group", "supergroup", "bundle", or "auto". "auto"
-#'   resolves each token's namespace with the same precedence as
-#'   resolve_selection(): supergroup -> bundle -> group, first match wins.
-#'   Pass an explicit kind when known. Default "auto" keeps existing
-#'   single-argument callers working unchanged.
+#' @param g    Character vector of selection keys.
+#' @param kind One of "feature", "group", "supergroup", "bundle", or "auto".
+#'   "auto" resolves each token with the same precedence as
+#'   resolve_selection(): supergroup -> group -> bundle -> feature.
 #' @return Character vector of display strings, same length as `g`.
 #' @export
-format_group_name <- function(g, kind = c("auto", "group",
+format_group_name <- function(g, kind = c("auto", "feature", "group",
                                           "supergroup", "bundle")) {
   kind <- match.arg(kind)
-
-  bundles <- if (exists("GROUP_BUNDLES", inherits = TRUE)) {
-    names(GROUP_BUNDLES)
-  } else character()
+  bundles <- if (exists("GROUP_BUNDLES", inherits = TRUE)) names(GROUP_BUNDLES) else character()
 
   pick_table <- function(k) switch(k,
-    group      = FEATURE_GROUP_DISPLAY_NAMES,
+    feature    = FEATURE_GROUP_DISPLAY_NAMES,
+    group      = GROUP_DISPLAY_NAMES,
     supergroup = SUPERGROUP_DISPLAY_NAMES,
     bundle     = BUNDLE_DISPLAY_NAMES
   )
@@ -232,17 +147,14 @@ format_group_name <- function(g, kind = c("auto", "group",
     this_kind <- kind
     if (this_kind == "auto") {
       this_kind <-
-        if      (exists("SUPERGROUPS", inherits = TRUE) &&
-                 key %in% names(SUPERGROUPS))       "supergroup"
-        else if (key %in% bundles)                  "bundle"
-        else                                        "group"
+        if      (key %in% names(SUPERGROUPS))    "supergroup"
+        else if (key %in% names(FEATURE_GROUPS)) "group"
+        else if (key %in% bundles)               "bundle"
+        else                                     "feature"
     }
     tbl <- pick_table(this_kind)
-    if (!is.null(tbl) && key %in% names(tbl)) {
-      unname(tbl[[key]])
-    } else {
-      tools::toTitleCase(gsub("_", " ", key))
-    }
+    if (key %in% names(tbl)) unname(tbl[[key]])
+    else tools::toTitleCase(gsub("_", " ", key))
   }, character(1), USE.NAMES = FALSE)
 }
 
@@ -290,7 +202,7 @@ format_metric_name <- function(col) {
 # Convenience accessors
 # -----------------------------------------------------------------------------
 
-#' Get colours for a vector of group keys, falling back to "other" grey.
+#' Get colours for a vector of feature ids, falling back to "other" grey.
 #' @export
 feature_colour <- function(group) {
   out <- FEATURE_GROUP_COLOURS[group]

@@ -18,7 +18,7 @@
 #   * Group separator lines mark boundaries where the group changes.
 #
 # top_n mode:
-#   Pass top_n = list(structure = 3, intrinsic = 2) (or a single integer to
+#   Pass top_n = list(structure = 3, sequence = 2) (or a single integer to
 #   apply the same cap to every group) to produce a focused heatmap showing
 #   only the top-N features per group (by |rho with response|), all combined.
 #
@@ -37,7 +37,7 @@
 #   # Top-3 per group across core regions
 #   out <- region_feature_heatmap(
 #     df,
-#     groups    = c("structure", "intrinsic"),
+#     groups    = c("structure", "sequence"),
 #     regions   = c("5utr", "cds", "3utr"),
 #     top_n     = 3,
 #     output_dir = "data/outputs/plots/heatmaps"
@@ -712,7 +712,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   out_top3 <- region_feature_heatmap(
     df,
     response    = "halflife",
-    groups      = INCLUDED_GROUPS,
+    groups      = DEFAULT_PLOT_GROUPS,
     regions     = c("5utr", "cds", "3utr", "mrna", "start", "stop", "last100"),
     label_threshold = 0.3,
     #top_n       = 3,
