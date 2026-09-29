@@ -642,7 +642,7 @@ region_feature_heatmap <- function(df,
       ggplot2::ggsave(
         pdf_path, plot = p,
         width = pdf_sq, height = pdf_sq,
-        units = "mm", device = "pdf"
+        units = "mm", device = grDevices::cairo_pdf
       )
       message("  Saved: ", pdf_path)
     }
