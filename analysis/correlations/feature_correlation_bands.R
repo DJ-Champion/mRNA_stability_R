@@ -15,10 +15,10 @@
 # R/feature_table.csv (SUPERGROUPS, SUPERGROUP_DISPLAY_NAMES, FEATURE_TABLE) —
 # nothing about the feature hierarchy is listed here.
 #
-# ORDER. Bands follow the feature table's supergroup order. Within a band the
-# strongest feature (max |r| over its regions) is on top. Supergroups are not
-# re-ranked against each other: band order is a property of the table, so it
-# is stable between responses.
+# ORDER. Bands are ranked by their strongest member: the band holding the
+# feature with the largest |r| (over its regions) is on top. Within a band the
+# strongest feature is on top too. Band order therefore depends on the
+# response, and ties fall back to the feature table's supergroup order.
 #
 # BAND COLOURS. Set in R/colour_config.R (SUPERGROUP_COLOURS, and the tint
 # strengths SUPERGROUP_BAND_ALPHA / SUPERGROUP_LABEL_ALPHA). The tints are pale
@@ -140,8 +140,12 @@ feature_correlation_bands <- function(df,
   tab$.lo    <- if (absolute) tab$conf.low_abs    else tab$conf.low
   tab$.hi    <- if (absolute) tab$conf.high_abs   else tab$conf.high
 
-  # --- Row order: table supergroup order, then max |r| descending ----------
-  sg_levels <- intersect(names(SUPERGROUPS), unique(tab$supergroup))
+  # --- Row order: bands by their top member's |r|, then rows by max |r| -----
+  # order() is stable, so equal maxima keep the feature table's order.
+  sg_table  <- intersect(names(SUPERGROUPS), unique(tab$supergroup))
+  sg_max    <- vapply(sg_table, function(g)
+    max(tab$correlation_abs[tab$supergroup == g], na.rm = TRUE), numeric(1))
+  sg_levels <- sg_table[order(-sg_max)]
   tab$supergroup <- factor(tab$supergroup, levels = sg_levels)
   tab$row_key    <- paste(tab$supergroup, tab$metric_display, sep = "::")
 
@@ -194,6 +198,9 @@ feature_correlation_bands <- function(df,
   xlo <- if (absolute) 0 else xlo - pad
   xhi <- xhi + pad
   bar_w <- 0.09 * (xhi - xlo)
+  x_breaks <- round(seq(ceiling(xlo * 10 - 1e-9) / 10,
+                        floor(xhi * 10 + 1e-9) / 10, by = 0.1), 1)
+  x_guides <- if (absolute) setdiff(x_breaks, 0) else x_breaks  # 0 is the edge
 
   # Fit each label into its band once rotated: wrap to the band's length,
   # then shrink the text if the longest unbreakable word still overruns.
@@ -231,8 +238,13 @@ feature_correlation_bands <- function(df,
                    fill = I(tint)),
       inherit.aes = FALSE
     ) +
-    ggplot2::geom_hline(yintercept = bands$ymin[-1], colour = "white",
-                        linewidth = 0.8) +
+    # White seam at every internal band boundary (all but the panel's bottom
+    # edge, which is the lowest band's ymin).
+    ggplot2::geom_hline(yintercept = setdiff(bands$ymin, min(bands$ymin)),
+                        colour = "white", linewidth = 0.8) +
+    # Vertical dashed guides every 0.1, over the bands.
+    ggplot2::geom_vline(xintercept = x_guides, linetype = "dashed",
+                        colour = "grey45", linewidth = 0.3, alpha = 0.6) +
     # One dashed guide per feature row, to carry the eye from the label to
     # its points.
     ggplot2::geom_hline(yintercept = rows$y, linetype = "dashed",
@@ -269,7 +281,7 @@ feature_correlation_bands <- function(df,
       expand = ggplot2::expansion(add = 0)
     ) +
     ggplot2::scale_x_continuous(
-      breaks = if (absolute) seq(0, 1, by = 0.1) else ggplot2::waiver(),
+      breaks = x_breaks,
       expand = ggplot2::expansion(0)
     ) +
     ggplot2::coord_cartesian(xlim = c(xlo, xhi),
@@ -302,8 +314,7 @@ feature_correlation_bands <- function(df,
       axis.text.x      = ggplot2::element_text(size = 16),
       legend.title     = ggplot2::element_text(size = 18, face = "bold"),
       legend.text      = ggplot2::element_text(size = 16),
-      panel.grid.major.x = ggplot2::element_line(colour = "white",
-                                                 linewidth = 0.5),
+      panel.grid.major.x = ggplot2::element_blank(),
       panel.grid.minor   = ggplot2::element_blank(),
       panel.grid.major.y = ggplot2::element_blank(),
       panel.border     = ggplot2::element_rect(colour = "grey40", fill = NA,
