@@ -763,7 +763,7 @@ plot_feature_correlation_heatmap <- function(feature_cor_mat,
     ggplot2::ggsave(limitsize = FALSE,
       output_path, plot = p,
       width = pdf_sq, height = pdf_sq,
-      units = "mm", device = "pdf"
+      units = "mm", device = grDevices::cairo_pdf
     )
     message("  Saved: ", output_path)
   }

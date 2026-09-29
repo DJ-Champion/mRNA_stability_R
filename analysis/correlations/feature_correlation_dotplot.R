@@ -596,7 +596,8 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     ggplot2::ggsave(
       file.path(OUTPUT_DIR, "plots", paste0(filename_base, ".pdf")),
       plot = plot,
-      width = width, height = height, units = units
+      width = width, height = height, units = units,
+      device = grDevices::cairo_pdf
     )
   }
   

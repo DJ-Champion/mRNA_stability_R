@@ -477,13 +477,17 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   q3 <- ortholog_delta_delta_plot(all_species)
   
   ggplot2::ggsave(file.path(out_dir, "ortholog_concordance.pdf"),
-                  q1$plot, width = 10, height = 7)
+                  q1$plot, width = 10, height = 7,
+                  device = grDevices::cairo_pdf)
   ggplot2::ggsave(file.path(out_dir, "probing_halflife_species_mrna.pdf"),
-                  q2_mrna$plot, width = 7, height = 6)
+                  q2_mrna$plot, width = 7, height = 6,
+                  device = grDevices::cairo_pdf)
   ggplot2::ggsave(file.path(out_dir, "probing_halflife_species_regions.pdf"),
-                  q2_regions$plot, width = 14, height = 6)
+                  q2_regions$plot, width = 14, height = 6,
+                  device = grDevices::cairo_pdf)
   ggplot2::ggsave(file.path(out_dir, "ortholog_delta_delta.pdf"),
-                  q3$plot, width = 10, height = 7)
+                  q3$plot, width = 10, height = 7,
+                  device = grDevices::cairo_pdf)
   
   readr::write_tsv(q1$table,
                    file.path(out_dir, "ortholog_concordance.tsv"))
