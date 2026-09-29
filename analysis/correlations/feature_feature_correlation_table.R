@@ -36,12 +36,6 @@ suppressPackageStartupMessages({
 })
 
 
-# Default group scope: all FEATURE_PATTERNS keys except compositional groups
-# whose within-group correlations are a mathematical artefact (sum to ~1).
-# Defined at load time so it reflects whatever FEATURE_PATTERNS looks like
-# after source("R/load_all.R").
-.FF_DEFAULT_GROUPS <- setdiff(EXPLORATORY_FEATURES, c("codon_freqs", "aa_freqs"))
-
 # Columns excluded regardless of group membership.
 # Mirrors R10: drop the response and any derived predictions.
 .FF_EXCLUDE_PATTERNS <- c(
@@ -55,39 +49,19 @@ suppressPackageStartupMessages({
 .FF_ID_COLS <- META_COLS
 
 
-# Internal: build column → group and column → region lookup maps.
-#
-# No standalone col→group or col→region helpers exist in feature_groups.R or
-# naming.R; this uses the same token-split heuristic as
-# feature_correlation_dotplot.R (lines 253-268). group = the FEATURE_PATTERNS
-# key whose regex first matched the column (first-group-wins when a column
-# could in principle match multiple patterns). region = the last
-# underscore-delimited token when it is a legal REGIONS member; NA_character_
-# otherwise (e.g. standalone scalars like `cai` carry no region suffix).
-#
-# Note: group_a/group_b reported in the output are always FEATURE_PATTERNS keys
-# (never supergroup or bundle names), because expand_groups() resolves any
-# supergroup/bundle to its constituent FEATURE_PATTERNS keys before we iterate.
-.ff_build_col_maps <- function(df, group_keys) {
-  col_group  <- character(0)
-  col_region <- character(0)
-
-  for (g in group_keys) {
-    cols <- fg_columns(df, g)   # Rule R3: use fg_columns, never hand-rolled regex
-    for (co in cols) {
-      if (co %in% names(col_group)) next   # first group wins
-      tokens <- strsplit(co, "_", fixed = TRUE)[[1]]
-      last   <- tokens[length(tokens)]
-      col_group[co]  <- g
-      col_region[co] <- if (last %in% REGIONS && length(tokens) > 1) {
-        last
-      } else {
-        NA_character_   # genuinely region-less (standalones, malformed)
-      }
-    }
-  }
-
-  list(group = col_group, region = col_region)
+# Internal: build column → group and column → region lookup maps from a
+# select_features() result. group = the feature id the column was selected
+# under. region = the last underscore-delimited token when it is a legal
+# REGIONS member; NA_character_ otherwise (e.g. standalone scalars like `cai`
+# carry no region suffix).
+.ff_build_col_maps <- function(sel) {
+  tokens_last <- sub("^.*_", "", sel$column)
+  has_region  <- tokens_last %in% REGIONS & grepl("_", sel$column, fixed = TRUE)
+  list(
+    group  = stats::setNames(sel$feature_id, sel$column),
+    region = stats::setNames(ifelse(has_region, tokens_last, NA_character_),
+                             sel$column)
+  )
 }
 
 
@@ -101,12 +75,12 @@ suppressPackageStartupMessages({
 #' @param df      A dataframe from build_dataset(). Must contain exactly one
 #'                species (pipeline invariant: pass build_dataset(sp), not
 #'                build_all(), to this function — the runner loops species).
-#' @param groups  Character vector of FEATURE_PATTERNS keys, supergroup names,
-#'                or bundle names (passed through expand_groups()). NULL (default)
-#'                selects all groups EXCEPT codon_freqs and aa_freqs — those are
-#'                excluded by default because their within-group correlations are
-#'                a mathematical artefact (their values sum to ~1 within a
-#'                region). Pass c("codon_freqs", "aa_freqs") explicitly to opt in.
+#' @param include Selection tokens (see select_features()); default
+#'                "exploratory".
+#' @param exclude Tokens to subtract from `include`. Default codon_freqs and
+#'                aa_freqs — their within-group correlations are a
+#'                mathematical artefact (their values sum to ~1 within a
+#'                region). Pass exclude = NULL to opt in.
 #' @param method  Correlation method passed to stats::cor(). Default "spearman".
 #'                Exposed as a parameter for consistency with
 #'                feature_correlation_dotplot.R's signature; no CI machinery is
@@ -125,7 +99,8 @@ suppressPackageStartupMessages({
 #'   display strings (R4) matching what appears on plot axes.
 #' @export
 compute_feature_correlation_table <- function(df,
-                                              groups = NULL,
+                                              include = "exploratory",
+                                              exclude = c("codon_freqs", "aa_freqs"),
                                               method = "spearman",
                                               pool   = FALSE) {
 
@@ -146,21 +121,12 @@ compute_feature_correlation_table <- function(df,
 
   sp_label <- if (pool) "pooled" else unique(df$species)[1]
 
-  # --- Resolve groups --------------------------------------------------------
-  # NULL → default (all groups except the compositional pair).
-  # User-supplied → expand supergroups / bundles to FEATURE_PATTERNS keys.
-  group_keys <- if (is.null(groups)) {
-    .FF_DEFAULT_GROUPS
-  } else {
-    expand_groups(groups)
+  # --- Select candidate columns (R3) ----------------------------------------
+  sel <- select_features(df, include, exclude)
+  if (nrow(sel) == 0) {
+    stop("`include` / `exclude` resolved to zero columns")
   }
-
-  if (length(group_keys) == 0) {
-    stop("groups argument resolved to zero FEATURE_PATTERNS keys")
-  }
-
-  # --- Build column maps and select candidates (R3) -------------------------
-  maps         <- .ff_build_col_maps(df, group_keys)
+  maps           <- .ff_build_col_maps(sel)
   candidate_cols <- names(maps$group)
 
   # R5: keep only columns that are actually in df (all-NA cols are dropped by
@@ -184,7 +150,7 @@ compute_feature_correlation_table <- function(df,
 
   if (length(candidate_cols) < 2) {
     stop("Fewer than 2 numeric feature columns resolved for species '", sp_label,
-         "'. Check groups argument or data availability for this species.")
+         "'. Check include / exclude or data availability for this species.")
   }
 
   n_features <- length(candidate_cols)

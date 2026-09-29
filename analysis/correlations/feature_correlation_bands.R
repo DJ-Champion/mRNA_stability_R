@@ -107,9 +107,9 @@ choose_legend_position <- function(rows, tab, bands, legend_rows) {
 #' @param row_fill     Fraction of a row's height the dodged regions span.
 #' @param row_mm       Approximate millimetres per row on the saved figure;
 #'                     used only to fit the supergroup labels into their bands.
-#' @param ...          Passed to feature_correlation_ranked(): method, groups,
-#'                     pick, drop, standalones, min_abs_correlation,
-#'                     sig_threshold, sig_alpha, conf, min_n, top_n_per_group.
+#' @param ...          Passed to feature_correlation_ranked(): method,
+#'                     include, exclude, regions, top_n, min_abs_correlation,
+#'                     sig_threshold, sig_alpha, conf, min_n.
 #' @return list(plot, table, report), as feature_correlation_ranked() but with
 #'   `table` gaining `row_order` and the report gaining `bands`.
 #' @export
@@ -128,7 +128,6 @@ feature_correlation_bands <- function(df,
     df,
     response         = response,
     absolute         = absolute,
-    keep_supergroups = NULL,     # every supergroup gets its own band
     orientation      = "horizontal",
     ...
   )
@@ -380,17 +379,11 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   dir.create(file.path(OUTPUT_DIR, "plots"),  showWarnings = FALSE, recursive = TRUE)
   dir.create(file.path(OUTPUT_DIR, "tables"), showWarnings = FALSE, recursive = TRUE)
 
-  # Same codon / amino-acid release as the ranked figures: the sequence_select
-  # bundle pins two named codons and two amino acids, which is a curated
-  # choice, not a ranking. NULL releases the family so top_n picks from data.
-  release_families <- list(codon_freqs = NULL, aa_freqs = NULL)
-
-  # DEFAULT_PLOT_GROUPS with `structure_core` replaced by the two folding
-  # groups: structure_core is the whole Structure supergroup, which brings in
-  # experimental probing (icSHAPE), and this figure is about the predicted
-  # folding features only.
-  plot_groups <- c("nmd_core", "junction_core", "global_folding",
-                   "local_folding", "sequence_select", "translation_core")
+  # The core set, minus experimental probing (out of "core"), with codons and
+  # amino acids trimmed to their top two against each figure's own response,
+  # exactly as in the ranked figures. The Structure band therefore holds the
+  # predicted folding features only.
+  top_n <- list(codon_freqs = 2, aa_freqs = 2)
 
   # Millimetres per row. Also tells the label fitter how tall a band is.
   row_mm <- 14
@@ -410,10 +403,9 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     res <- feature_correlation_bands(
       df,
       response        = job$response,
-      groups          = plot_groups,
+      include         = "core",
       row_mm          = row_mm,
-      pick            = release_families,
-      top_n_per_group = list(codon_freqs = 2, aa_freqs = 2)
+      top_n           = top_n
     )
 
     height <- max(140, 70 + res$report$n_rows_plot * row_mm)

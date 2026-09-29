@@ -55,18 +55,35 @@ not_expl <- setdiff(MODEL_FEATURES, EXPLORATORY_FEATURES)
 if (length(not_expl)) note("in the model but not the exploratory analysis: ",
                            paste(not_expl, collapse = ", "))
 
-for (b in names(GROUP_BUNDLES)) {
-  bb <- .as_bundle(GROUP_BUNDLES[[b]])
-  bad <- bb$groups[vapply(bb$groups, lookup_key, character(1)) == "unknown"]
-  if (length(bad)) fail("bundle '", b, "' names unknown key(s): ", paste(bad, collapse = ", "))
-  bad <- setdiff(c(names(bb$pick), names(bb$drop)), names(FEATURE_PATTERNS))
-  if (length(bad)) fail("bundle '", b, "' pick/drop keyed by non-feature(s): ",
-                        paste(bad, collapse = ", "))
-  if (b %in% c(tbl$feature_id, tbl$group_id, tbl$supergroup_id))
-    fail("bundle name '", b, "' collides with a table id")
+# The core flag is a subset of the exploratory one: "core" is the default
+# plotting set, and exploratory is what group/supergroup expansion returns.
+not_expl_core <- setdiff(CORE_FEATURES, EXPLORATORY_FEATURES)
+if (length(not_expl_core)) fail("core plot feature(s) not in the exploratory analysis: ",
+                                paste(not_expl_core, collapse = ", "))
+
+# Selection tokens live in one flat namespace: a flag name must not be a table id.
+flag_clash <- intersect(names(.flag_sets()), c(tbl$feature_id, tbl$group_id, tbl$supergroup_id))
+if (length(flag_clash)) fail("flag name(s) collide with a table id: ",
+                             paste(flag_clash, collapse = ", "))
+
+# The old selection machinery (SELECTION_PLAN.md) is gone. If any of these
+# names reappears in code, a second way of choosing features has crept back.
+retired <- c("GROUP_BUNDLES", "DEFAULT_PLOT_GROUPS", "DEFAULT_SWEEP_SKIP",
+             "BUNDLE_DISPLAY_NAMES", "resolve_selection", "expand_groups",
+             "refine_group_columns", "release_families", "standalones",
+             "keep_supergroups", "top_n_per_group", "select_features_v2",
+             ".as_bundle", ".group_bundles")
+code <- list.files(c("R", "analysis", "scripts"), pattern = "\\.R$",
+                   recursive = TRUE, full.names = TRUE)
+code <- setdiff(code, "scripts/check_feature_table.R")
+for (f in code) {
+  txt <- readLines(f, warn = FALSE)
+  for (nm in retired) {
+    hit <- grep(nm, txt, fixed = TRUE)
+    if (length(hit)) fail("retired selection name '", nm, "' in ", f, " (line ",
+                          paste(head(hit, 3), collapse = ", "), ")")
+  }
 }
-bad <- DEFAULT_PLOT_GROUPS[vapply(DEFAULT_PLOT_GROUPS, lookup_key, character(1)) == "unknown"]
-if (length(bad)) fail("DEFAULT_PLOT_GROUPS names unknown key(s): ", paste(bad, collapse = ", "))
 
 unbuilt <- tbl$feature_id[!nzchar(tbl$columns)]
 if (length(unbuilt)) note("not yet built (no columns): ", paste(unbuilt, collapse = ", "))
@@ -130,10 +147,18 @@ for (sp in species) {
   if (length(leak)) fail(sp, ": model columns include non-predictors: ",
                          paste(leak, collapse = ", "))
   cat("  ", length(cols), " columns checked; model uses ", length(model_columns(df)),
-      "; exploratory features select ", length(select_features(df, EXPLORATORY_FEATURES)),
+      "; exploratory features select ", nrow(select_features(df, "exploratory")),
       "; never used: ", length(excluded_columns(df)), "\n", sep = "")
 
-  # 6. Fallback label rules that no longer fire (dead code in naming.R).
+  # 6. Core plots select something sensible: every core feature has columns,
+  #    and none of them is a column the table leaves out of the analysis.
+  core_sel <- select_features(df)
+  no_cols  <- setdiff(CORE_FEATURES, unique(core_sel$feature_id))
+  if (length(no_cols)) fail(sp, ": core feature(s) with no columns: ",
+                            paste(no_cols, collapse = ", "))
+  cat("  core plots select ", nrow(core_sel), " columns\n", sep = "")
+
+  # 7. Fallback label rules that no longer fire (dead code in naming.R).
   fallback <- Filter(function(r) !grepl("^\\[ _\\]", r[[1]]), REPLACEMENTS)
   dead <- vapply(fallback, function(r) !any(grepl(r[[1]], names(df))), logical(1))
   if (any(dead)) note("naming.R rule(s) matching no column: ",

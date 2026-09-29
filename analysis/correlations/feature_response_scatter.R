@@ -25,14 +25,14 @@
 #   )
 #
 #   # Restrict to structure features only:
-#   out <- feature_response_scatter(df, groups = "structure")
+#   out <- feature_response_scatter(df, include = "structure")
 #
 #   # Saluki diagnostic: which features explain Saluki's residuals?
 #   out <- feature_response_scatter(
 #     df,
 #     response_x = "saluki_prediction",
 #     response_y = "prediction_difference",
-#     exclude    = c("^halflife$")
+#     exclude_columns = c("^halflife$")
 #   )
 # =============================================================================
 
@@ -54,48 +54,37 @@ suppressPackageStartupMessages({
 #' @param response_x     Character. Column for the x-axis correlation.
 #' @param response_y     Character. Column for the y-axis correlation.
 #' @param method         Correlation method (default "spearman").
-#' @param groups         Character vector of FEATURE_PATTERNS keys, SUPERGROUPS
-#'                       names, and/or GROUP_BUNDLES names. NULL (default) =
-#'                       all groups. "structure" expands to all structure
-#'                       groups; a bundle expands to its groups + pick/drop.
-#' @param pick           Named list: group key -> columns to keep (allow-list,
-#'                       caller order). New columns added to the group later
-#'                       stay out until named. Merges with any bundle pick
-#'                       (caller wins per group key).
-#' @param drop           Named list: group key -> columns to remove from the
-#'                       otherwise-whole group. New columns added later are
-#'                       included. Merges with any bundle drop (caller wins).
+#' @param include        Selection tokens: "core" (default), "exploratory",
+#'                       "model", or supergroup / group / feature ids. See
+#'                       select_features().
+#' @param exclude        Tokens to subtract from `include`. NULL = none.
+#' @param regions        Region tokens to keep ("5utr", "cds", ...). NULL
+#'                       (default) = all.
 #' @param collapse       "none" (one point per column, default), "region" (one
 #'                       point per group × region — median r), or "group" (one
 #'                       point per group — median r across all members).
-#' @param top_n          Integer or NULL (default). When set, keep at most this
+#' @param max_features   Integer or NULL (default). When set, keep at most this
 #'                       many points per (species, group) by distance from
-#'                       origin. Useful for dense groups like codons: top_n = 3
-#'                       shows only the three most informative members per group.
-#'                       Applied after noise_filter, before label selection.
-#' @param top_n_per_group Named list: group key -> integer. Like top_n but
-#'                       per-group, so you can cap codon_freqs at 2 while
-#'                       leaving other groups unconstrained. Ranking uses max
-#'                       distance from origin across species so panel selections
-#'                       stay consistent. Applied after noise_filter, before
-#'                       the global top_n filter.
+#'                       origin: max_features = 3 shows only the three most
+#'                       informative members per group. Applied after
+#'                       noise_filter and `top_n`, before label selection.
+#' @param top_n          Named list: feature id -> integer. Trims a family to
+#'                       its N strongest members, so you can cap codon_freqs
+#'                       at 2 while leaving other features unconstrained.
+#'                       Ranked here by distance from origin (both responses),
+#'                       max across species so panel selections stay
+#'                       consistent; applied after noise_filter.
 #' @param noise_filter   Numeric. Drop points with distance-from-origin below
 #'                       this. 0 (default) = no filter. Try 0.1 to declutter.
 #' @param label_quantile Numeric in [0, 1]. Label the top (1 - q) fraction by
 #'                       distance from origin. Default 0.9 = label top 10%.
-#' @param standalones    Legacy escape hatch: character vector of columns to
-#'                       include even though no group reaches them. Empty by
-#'                       default — cai and translation_efficiency are features
-#'                       in R/feature_table.csv, so `groups = c("cai", "te")`
-#'                       is the supported route. Use this only for a column
-#'                       that genuinely sits outside the table.
-#' @param exclude        Regex patterns to exclude. Default = R10 derived-
-#'                       prediction set, unless response_x or response_y is
-#'                       one of them (in which case it's auto-removed from
-#'                       the exclude list).
+#' @param exclude_columns Regex patterns of columns to drop. Default = R10
+#'                       derived-prediction set, unless response_x or
+#'                       response_y is one of them (in which case it's
+#'                       auto-removed from the list).
 #' @param min_n          Minimum non-NA pairs to compute a correlation.
 #' @param formatter      Display formatter (default format_col_name).
-#' @param palette        Named colour vector keyed by group/standalone name.
+#' @param palette        Named colour vector keyed by feature id.
 #'                       Default FEATURE_GROUP_COLOURS.
 #' @param shapes         Named shape vector keyed by region token.
 #'                       Default REGION_SHAPES.
@@ -109,18 +98,17 @@ feature_response_scatter <- function(df,
                                      response_y     = "halflife",
                                      method         = c("spearman", "pearson",
                                                         "kendall"),
-                                     groups         = NULL,
-                                     pick           = list(),
-                                     drop           = list(),
+                                     include        = "core",
+                                     exclude        = NULL,
+                                     regions        = NULL,
                                      collapse       = c("none", "region",
                                                         "group"),
+                                     max_features   = NULL,
                                      top_n          = NULL,
-                                     top_n_per_group = list(),
                                      noise_filter   = 0,
                                      label_quantile = 0.9,
-                                     standalones    = character(),
-                                     exclude        = c("^saluki_prediction$",
-                                                        "^prediction_difference$"),
+                                     exclude_columns = c("^saluki_prediction$",
+                                                         "^prediction_difference$"),
                                      min_n          = 30,
                                      formatter      = format_col_name,
                                      palette        = NULL,
@@ -143,44 +131,28 @@ feature_response_scatter <- function(df,
   if (label_quantile < 0 || label_quantile >= 1) {
     stop("label_quantile must be in [0, 1)")
   }
-  if (!is.null(top_n) && (!is.numeric(top_n) || length(top_n) != 1 ||
-                          top_n < 1 || top_n != floor(top_n))) {
-    stop("top_n must be a positive integer or NULL")
+  if (!is.null(max_features) && (!is.numeric(max_features) ||
+                                 length(max_features) != 1 ||
+                                 max_features < 1 ||
+                                 max_features != floor(max_features))) {
+    stop("max_features must be a positive integer or NULL")
   }
 
   # Don't exclude a response if the user is correlating against it
-  exclude <- exclude[!vapply(exclude, function(rgx) {
+  exclude_columns <- exclude_columns[!vapply(exclude_columns, function(rgx) {
     grepl(rgx, response_x) || grepl(rgx, response_y)
   }, logical(1))]
 
   # --- Enumerate candidate columns ----------------------------------------
-  sel      <- resolve_selection(groups, pick, drop)
-  expanded <- sel$groups
-
-  # Build a column -> group attribution map. First-match wins, so aliases
-  # (already removed from FEATURE_PATTERNS) don't cause double-assignment.
-  # The standalones= argument is a fallback for columns no feature reaches.
-  col_to_group <- list()
-  for (g in expanded) {
-    # Refine via the shared helper so bundle- and caller-supplied pick/drop
-    # (already merged by resolve_selection) apply identically to select_features.
-    cols <- refine_group_columns(fg_columns(df, g), sel$pick[[g]], sel$drop[[g]])
-    for (co in cols) {
-      if (is.null(col_to_group[[co]])) col_to_group[[co]] <- g
-    }
-  }
-
-  # Fallback: standalones= for columns not reached by any group expansion.
-  for (co in standalones) {
-    if (co %in% names(df) && is.null(col_to_group[[co]])) {
-      col_to_group[[co]] <- co        # group key = column name (legacy)
-    }
-  }
+  # Family trimming (`top_n`) is done below, on distance from origin, because
+  # this figure has two responses; select_features() ranks against one.
+  sel <- select_features(df, include, exclude, regions = regions)
+  col_to_group <- stats::setNames(as.list(sel$feature_id), sel$column)
 
   candidates <- names(col_to_group)
 
-  # Apply exclusions
-  for (rgx in exclude) {
+  # Apply column exclusions
+  for (rgx in exclude_columns) {
     candidates <- candidates[!vapply(candidates, function(c) grepl(rgx, c),
                                      logical(1))]
   }
@@ -189,7 +161,7 @@ feature_response_scatter <- function(df,
   candidates <- setdiff(candidates, c(response_x, response_y))
 
   if (length(candidates) == 0) {
-    stop("No candidate features after filtering — check `groups` and `exclude`")
+    stop("No candidate features after filtering — check `include`, `exclude` and `exclude_columns`")
   }
 
   # --- Per-species correlation computation --------------------------------
@@ -306,11 +278,11 @@ feature_response_scatter <- function(df,
     stop("All points filtered out — noise_filter too high?")
   }
 
-  # --- Per-group top_n filter ----------------------------------------------
+  # --- Family trim (top_n) --------------------------------------------------
   # Rank by max distance across species so panel selections stay consistent.
-  if (length(top_n_per_group) > 0) {
-    for (g in names(top_n_per_group)) {
-      n_keep <- top_n_per_group[[g]]
+  if (length(top_n) > 0) {
+    for (g in names(top_n)) {
+      n_keep <- top_n[[g]]
       if (!any(result$group == g)) next
 
       keep_vars <- result |>
@@ -327,17 +299,17 @@ feature_response_scatter <- function(df,
     }
   }
 
-  # --- top_n filter: keep top N per (species, group) by distance -----------
-  if (!is.null(top_n)) {
+  # --- max_features: keep top N per (species, group) by distance -----------
+  if (!is.null(max_features)) {
     result <- result |>
       dplyr::group_by(species, group) |>
       dplyr::slice_max(order_by = distance_from_origin,
-                       n = top_n, with_ties = FALSE) |>
+                       n = max_features, with_ties = FALSE) |>
       dplyr::ungroup()
   }
 
   if (nrow(result) == 0) {
-    stop("All points filtered out — top_n too restrictive?")
+    stop("All points filtered out — max_features too restrictive?")
   }
 
   # --- Label selection by quantile ----------------------------------------
@@ -353,14 +325,13 @@ feature_response_scatter <- function(df,
     dplyr::select(-.thr)
 
   # --- Display labels (R4) -------------------------------------------------
-  # group_label() dispatches per element: selection keys (group / supergroup /
-  # bundle) via format_group_name(); anything else — i.e. a bare column name
-  # such as a column reached through the legacy `standalones=` fallback —
-  # via format_col_name(). The key sets are read from the registries rather
-  # than hardcoded, so adding a supergroup cannot silently mislabel it.
+  # group_label() dispatches per element: selection keys (feature / group /
+  # supergroup) via format_group_name(); anything else via format_col_name().
+  # The key sets are read from the registries rather than hardcoded, so adding
+  # a supergroup cannot silently mislabel it.
   group_label <- function(g) {
     selection_keys <- c(names(FEATURE_PATTERNS), names(FEATURE_GROUPS),
-                        names(SUPERGROUPS), names(GROUP_BUNDLES), "other")
+                        names(SUPERGROUPS), "other")
     ifelse(g %in% selection_keys,
            format_group_name(g, kind = "auto"),
            formatter(g))
@@ -410,9 +381,9 @@ feature_response_scatter <- function(df,
     subtitle_bits <- c(subtitle_bits,
                        sprintf("noise filter |r| >= %.2f", noise_filter))
   }
-  if (!is.null(top_n)) {
+  if (!is.null(max_features)) {
     subtitle_bits <- c(subtitle_bits,
-                       sprintf("top %d per group", as.integer(top_n)))
+                       sprintf("top %d per group", as.integer(max_features)))
   }
   subtitle_bits <- c(subtitle_bits,
                      sprintf("top %d%% labelled",
@@ -523,8 +494,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   
   out_included <- feature_response_scatter(
     df,
-    groups          = DEFAULT_PLOT_GROUPS,
-    top_n_per_group = list(codon_freqs = 2, aa_freqs = 2),
+    top_n           = list(codon_freqs = 2, aa_freqs = 2),
     noise_filter    = 0,
     label_quantile  = 0.8
   )
@@ -548,8 +518,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # Top view: top n
   out_top_n <- feature_response_scatter(
     df,
-    groups          = DEFAULT_PLOT_GROUPS,
-    top_n = 3,
+    max_features = 3,
     label_quantile = 0.3
     # noise_filter = 0.1
   )
@@ -573,8 +542,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # Top view: top 1
   out_top <- feature_response_scatter(
     df,
-    groups          = DEFAULT_PLOT_GROUPS,
-    top_n = 1,
+    max_features = 1,
     label_quantile = 0
     # noise_filter = 0.1
   )

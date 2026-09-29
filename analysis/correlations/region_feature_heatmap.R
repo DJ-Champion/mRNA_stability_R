@@ -17,10 +17,12 @@
 #   * Region suffix stripped from axis labels (format_metric_name()).
 #   * Group separator lines mark boundaries where the group changes.
 #
-# top_n mode:
-#   Pass top_n = list(structure = 3, sequence = 2) (or a single integer to
-#   apply the same cap to every group) to produce a focused heatmap showing
-#   only the top-N features per group (by |rho with response|), all combined.
+# max_features mode:
+#   Pass max_features = list(global_folding = 3, gc = 2) (or a single integer
+#   to apply the same cap to every feature) to produce a focused heatmap
+#   showing only the top features per group (by |rho with response|) within
+#   each region. Different from `top_n`, which trims a family to its N
+#   strongest stems across all regions before any heatmap is drawn.
 #
 # Usage:
 #   source("R/load_all.R")
@@ -29,17 +31,17 @@
 #
 #   # Structure features, CDS, custom order
 #   out <- region_feature_heatmap(
-#     df, groups = "structure", regions = "cds",
+#     df, include = "structure", regions = "cds",
 #     feature_order = c("rnafold_zscore_cds", "mfe_delta_cds", "rnalfold_score_cds")
 #   )
 #   print(out[["cds"]]$plot)
 #
-#   # Top-3 per group across core regions
+#   # Top-3 per feature across core regions
 #   out <- region_feature_heatmap(
 #     df,
-#     groups    = c("structure", "sequence"),
-#     regions   = c("5utr", "cds", "3utr"),
-#     top_n     = 3,
+#     include      = c("structure", "sequence"),
+#     regions      = c("5utr", "cds", "3utr"),
+#     max_features = 3,
 #     output_dir = "data/outputs/plots/heatmaps"
 #   )
 # =============================================================================
@@ -102,11 +104,11 @@ suppressPackageStartupMessages({
 }
 
 
-#' Apply top-N per-group filter to `reg_features`.
+#' Apply the max_features per-group filter to `reg_features`.
 #'
 #' @param reg_features Character vector of feature column names for this region.
 #' @param col_to_group Named list: column → group key.
-#' @param top_n        Single integer, or named list (group → integer).
+#' @param top_n        Single integer, or named list (feature id → integer).
 #'                     Groups absent from the list are not filtered.
 #' @param response     Response column name (used for |rho| ranking).
 #' @param df_sub       Data subset (used for |rho| computation).
@@ -231,10 +233,14 @@ suppressPackageStartupMessages({
 #' @param df               Dataframe from build_dataset() or build_all().
 #' @param response         Response column to include in the matrix
 #'                         (default "halflife").
-#' @param groups           Groups / supergroups / bundles to include
-#'                         (NULL = all groups in FEATURE_PATTERNS).
-#' @param pick             Named list: group key → column allow-list.
-#' @param drop             Named list: group key → columns to remove.
+#' @param include          Selection tokens: "core" (default), "exploratory",
+#'                         "model", or supergroup / group / feature ids. See
+#'                         select_features().
+#' @param exclude          Tokens to subtract from `include`. NULL = none.
+#' @param top_n            Named list: feature id → N. Trims a family to its N
+#'                         strongest stems against `response` (max over
+#'                         regions) before any heatmap is drawn, e.g.
+#'                         list(codon_freqs = 2). NULL = whole families.
 #' @param regions          Character vector of region tokens to plot
 #'                         (NULL = all regions present in the resolved
 #'                         features, in REGIONS canonical order).
@@ -244,10 +250,11 @@ suppressPackageStartupMessages({
 #'                         the end sorted by |rho with response| descending.
 #'                         Ignored when cluster = TRUE.
 #'                         NULL (default) = all features sorted by |rho|.
-#' @param top_n            Retain only the top-N features per group before
-#'                         plotting. Can be a single integer (same cap for
-#'                         every group) or a named list (group key → integer).
-#'                         Groups absent from a named list are not filtered.
+#' @param max_features     Retain only the top features per feature id within
+#'                         each region, by |rho| with the response. Can be a
+#'                         single integer (same cap for every feature) or a
+#'                         named list (feature id → integer). Features absent
+#'                         from a named list are not filtered.
 #'                         NULL (default) = no filtering.
 #' @param cluster          Logical. If TRUE (default FALSE), order features by
 #'                         hierarchical clustering on their pairwise Spearman rho
@@ -280,12 +287,12 @@ suppressPackageStartupMessages({
 #' @export
 region_feature_heatmap <- function(df,
                                    response       = "halflife",
-                                   groups         = NULL,
-                                   pick           = list(),
-                                   drop           = list(),
+                                   include        = "core",
+                                   exclude        = NULL,
+                                   top_n          = NULL,
                                    regions        = NULL,
                                    feature_order  = NULL,
-                                   top_n          = NULL,
+                                   max_features   = NULL,
                                    cluster        = FALSE,
                                    triangle       = c("full", "lower", "upper"),
                                    min_n          = 30,
@@ -308,28 +315,27 @@ region_feature_heatmap <- function(df,
   }
 
   # --- Feature selection ----------------------------------------------------
-  all_features <- select_features(df, groups, pick, drop)
-  all_features <- setdiff(all_features, response)
+  sel <- select_features(df, include, exclude, top_n = top_n,
+                            response = response)
+  sel <- sel[sel$column != response, , drop = FALSE]
+  all_features <- sel$column
 
   if (length(all_features) == 0) {
-    stop("No feature columns after selection — check `groups`")
+    stop("No feature columns after selection — check `include` / `exclude`")
   }
 
-  # Map each feature column → its group key and region token
-  sel           <- resolve_selection(groups, pick, drop)
+  # Map each feature column → its feature id and region token. Only columns
+  # ending in a real region token can be placed in a region's heatmap.
   col_to_group  <- list()
   col_to_region <- list()
 
-  for (g in sel$groups) {
-    cols <- refine_group_columns(fg_columns(df, g), sel$pick[[g]], sel$drop[[g]])
-    for (co in intersect(cols, all_features)) {
-      if (!is.null(col_to_group[[co]])) next
-      tokens <- strsplit(co, "_", fixed = TRUE)[[1]]
-      last   <- tokens[length(tokens)]
-      if (last %in% REGIONS) {
-        col_to_group[[co]]  <- g
-        col_to_region[[co]] <- last
-      }
+  for (i in seq_len(nrow(sel))) {
+    co     <- sel$column[i]
+    tokens <- strsplit(co, "_", fixed = TRUE)[[1]]
+    last   <- tokens[length(tokens)]
+    if (last %in% REGIONS) {
+      col_to_group[[co]]  <- sel$feature_id[i]
+      col_to_region[[co]] <- last
     }
   }
 
@@ -373,11 +379,11 @@ region_feature_heatmap <- function(df,
 
     # Apply top-N per group filter (uses |rho| to rank within each group)
     reg_features <- .apply_top_n(
-      reg_features, col_to_group, top_n, response, sub_df
+      reg_features, col_to_group, max_features, response, sub_df
     )
 
     if (length(reg_features) == 0) {
-      message("  No features remain after top_n filter for region '", reg, "'")
+      message("  No features remain after max_features filter for region '", reg, "'")
       return(NULL)
     }
 
@@ -494,11 +500,12 @@ region_feature_heatmap <- function(df,
     # --- Titles -------------------------------------------------------------
     region_disp <- REGION_DISPLAYS[[reg]]
     sp_title    <- if (!is.null(sp_label)) paste0(" — ", sp_label) else ""
-    tn_str      <- if (!is.null(top_n)) {
-      if (is.numeric(top_n) && length(top_n) == 1 && is.null(names(top_n))) {
-        sprintf("; top %d per group", as.integer(top_n))
+    tn_str      <- if (!is.null(max_features)) {
+      if (is.numeric(max_features) && length(max_features) == 1 &&
+          is.null(names(max_features))) {
+        sprintf("; top %d per feature", as.integer(max_features))
       } else {
-        "; top-N per group"
+        "; top-N per feature"
       }
     } else ""
 
@@ -700,7 +707,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   out_struct <- region_feature_heatmap(
     df,
     response    = "halflife",
-    groups      = "structure",
+    include     = "structure",
     regions     = c("5utr", "cds", "3utr"),
     cluster     = TRUE,
     output_dir  = out_dir,
@@ -712,10 +719,11 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   out_top3 <- region_feature_heatmap(
     df,
     response    = "halflife",
-    groups      = DEFAULT_PLOT_GROUPS,
+    include     = "core",
+    top_n       = list(codon_freqs = 2, aa_freqs = 2),
     regions     = c("5utr", "cds", "3utr", "mrna", "start", "stop", "last100"),
     label_threshold = 0.3,
-    #top_n       = 3,
+    #max_features = 3,
     cluster     = TRUE,
     output_dir  = out_dir,
     file_prefix = "region_heatmap_included"

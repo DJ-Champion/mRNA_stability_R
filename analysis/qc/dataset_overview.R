@@ -118,52 +118,43 @@ halflife_distribution_plot <- function(df, formatter = format_col_name) {
 # 2. Missingness by feature group
 # -----------------------------------------------------------------------------
 
-#' Tile heatmap of mean % non-NA per feature group × species.
+#' Tile heatmap of mean % non-NA per feature × species.
 #'
-#' For each resolved group, computes the average non-NA rate across all member
-#' columns, per species. Tile text shows percentage and the number of columns
-#' in the group. Selection is resolved through the project selection layer, so
-#' `groups` accepts FEATURE_PATTERNS keys, supergroup names, and bundle names;
-#' supergroups expand to one tile per member group (R3a). `pick`/`drop` refine
-#' a group's columns and merge with any pick/drop a named bundle carries
-#' (caller wins per group key).
+#' For each selected feature, computes the average non-NA rate across all its
+#' columns, per species. Tile text shows percentage and the number of columns.
+#' Selection is resolved through select_features(): supergroups and groups
+#' expand to one tile per member feature (R3a), and a feature with no columns
+#' in the data still gets a "no cols" tile.
 #'
 #' @param df         Dataframe from build_dataset() or build_all().
-#' @param groups     Character vector of selection keys, or NULL (default) =
-#'                   every feature, exploratory or not — QC should see them all.
-#' @param pick       Named list: group key -> columns to keep (allow-list).
-#' @param drop       Named list: group key -> columns to remove.
+#' @param include    Selection tokens (see select_features()); default
+#'                   "exploratory" — the features the analysis uses. Use
+#'                   names(FEATURE_PATTERNS) to see every feature, including
+#'                   those the table excludes.
+#' @param exclude    Tokens to subtract from `include`. NULL = none.
 #' @param formatter  Display formatter for the species axis (default
 #'                   format_col_name). Group-axis labels use format_group_name.
 #' @return list(plot, table). Table: species, group, n_columns,
 #'   mean_nonna_pct, min_nonna_pct, n_columns_all_na.
 missingness_by_group_plot <- function(df,
-                                      groups    = NULL,
-                                      pick      = list(),
-                                      drop      = list(),
+                                      include   = "exploratory",
+                                      exclude   = NULL,
                                       formatter = format_col_name) {
 
   if (!"species" %in% names(df)) {
     stop("species column missing — pipeline invariant violated")
   }
 
-  # Resolve the selection ONCE (not per species): expand supergroups/bundles
-  # and merge bundle pick/drop with the caller's. Per-species column refinement
-  # happens inside the loop. (resolve_selection() does not report pick/drop
-  # names that match nothing — select_features() does; this plot does not need
-  # that, and its default carries no pick/drop.)
-  sel    <- resolve_selection(if (is.null(groups)) names(FEATURE_PATTERNS) else groups,
-                              pick, drop)
-  gkeys  <- sel$groups
+  # Resolve the selection ONCE (not per species): column names do not vary by
+  # species, only their values do.
+  gkeys <- selected_features(include, exclude)
 
   result <- purrr::map_dfr(unique(df$species), function(sp) {
     sub <- df |> dplyr::filter(species == sp)
     purrr::map_dfr(gkeys, function(g) {
 
-      # R3 / R3a: enumerate via fg_columns, refine via the shared helper so
-      # bundle- and caller-supplied pick/drop apply identically to every plot.
-      cols <- refine_group_columns(fg_columns(sub, g),
-                                   sel$pick[[g]], sel$drop[[g]])
+      # R3 / R3a: enumerate via fg_columns.
+      cols <- fg_columns(sub, g)
 
       if (length(cols) == 0) {
         tibble::tibble(

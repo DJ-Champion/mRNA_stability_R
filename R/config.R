@@ -104,12 +104,14 @@ ANALYSIS_SPECIES <- c("human")
 #               global_folding). Every group sits in exactly one supergroup.
 #   supergroup  the table's Supergroup column, snake-cased.
 #
-# The two flags:
+# The three flags:
 #   Included in exploratory analysis   Selecting a group or supergroup returns
 #       only its exploratory features. Naming a feature id directly always
 #       works, so a plot can still reach an excluded feature on purpose.
 #   Included in model                  The model's predictor list
 #       (model_columns()). Nothing else reads it.
+#   Included in core plots             The default set for the correlation
+#       figures (CORE_FEATURES). A subset of the exploratory features.
 # A row Excluded from both is never used anywhere; drop_excluded() removes it.
 #
 # Rows in the "Response / evaluation" supergroup (halflife, saluki) and rows
@@ -132,6 +134,7 @@ FEATURE_TABLE_PATH <- file.path(
   }
   t$exploratory   <- flag("Included in exploratory analysis")
   t$model         <- flag("Included in model")
+  t$core          <- flag("Included in core plots")
   t$group_id      <- .snake(t$Group)
   t$supergroup_id <- .snake(t$Supergroup)
   t$is_feature    <- nzchar(t$columns) & t$supergroup_id != "response_evaluation"
@@ -170,6 +173,7 @@ SUPERGROUPS    <- split(.feature_rows$feature_id,
 
 EXPLORATORY_FEATURES <- .feature_rows$feature_id[.feature_rows$exploratory]
 MODEL_FEATURES       <- .feature_rows$feature_id[.feature_rows$model]
+CORE_FEATURES        <- .feature_rows$feature_id[.feature_rows$core]
 
 #' Built columns that are used nowhere: rows Excluded from both flags. Regexes,
 #' because the table is data-independent; drop_excluded() resolves them.
@@ -177,41 +181,6 @@ NEVER_USED_PATTERNS <- FEATURE_TABLE$columns[nzchar(FEATURE_TABLE$columns) &
                                              !FEATURE_TABLE$exploratory &
                                              !FEATURE_TABLE$model]
 rm(.feature_rows)
-
-
-# --- Bundles and plot defaults -------------------------------------------------
-# Selection INTENT, not schema: reusable named selections over the ids above.
-# A bundle is a list with any of:
-#   groups : feature / group / supergroup / other bundle ids
-#   pick   : named list  feature_id -> columns to KEEP from that feature
-#   drop   : named list  feature_id -> columns to REMOVE from that feature
-# A bare character vector is shorthand for list(groups = <vec>). Editing a
-# bundle never needs a CACHE_VERSION bump.
-
-GROUP_BUNDLES <- list(
-  nmd_core       = c("nmd_snv_fragile", "nmd_alt_stop"),
-  lengths_core   = "lengths",
-  junction_core  = "eej_dist_closest",
-  structure_core = list(
-    groups = "structure",
-    pick = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
-                            "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
-  ),
-  sequence_core  = c("sequence", "cai"),
-  sequence_select = list(
-    groups = c("sequence", "cai"),
-    pick = list(codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
-                aa_freqs    = c("aa_s_cds", "aa_v_cds"))
-  ),
-  translation_core = c("uorf_present", "exon_density")
-)
-
-# The main set we focus on for almost everything: the default `groups =` for
-# the correlation dotplot, the response scatter, the region heatmap and the
-# correlation-heatmap workflow. A PLOTTING default only — the model's
-# predictors come from the table's model flag (MODEL_FEATURES).
-DEFAULT_PLOT_GROUPS <- c("nmd_core", "junction_core", "structure_core",
-                         "sequence_select", "translation_core")
 
 
 # --- Cohort definition -------------------------------------------------------
@@ -247,7 +216,7 @@ DEFAULT_PLOT_GROUPS <- c("nmd_core", "junction_core", "structure_core",
 # WHERE IT IS APPLIED. build_dataset() applies it to the frame it RETURNS,
 # after the cache is read or written — so the cache on disk stays complete and
 # this needs no CACHE_VERSION bump. It is selection intent, like
-# DEFAULT_PLOT_GROUPS and the feature table's flags, not a schema change. Pass
+# the feature table's flags, not a schema change. Pass
 # `min_utr = NULL` to build_dataset() / build_all() for the unfiltered table;
 # the QC scripts do exactly that, because a coverage and missingness diagnostic
 # should describe the whole built table including what this removes.

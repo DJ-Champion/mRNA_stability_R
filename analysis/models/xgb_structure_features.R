@@ -58,7 +58,9 @@ PROBING_GROUP <- "probing"
 #' mfe_expected are Structure rows the table keeps out of the model. A
 #' function, not a constant, so this file can be sourced in any order.
 #' @export
-structure_groups <- function() intersect(MODEL_FEATURES, SUPERGROUPS$structure)
+structure_groups <- function() {
+  selected_features("model", exclude = setdiff(names(SUPERGROUPS), "structure"))
+}
 
 
 #' Where this analysis's artefacts live.
@@ -123,7 +125,7 @@ run_dir <- function(what = c("root", "tables", "plots")) {
 #' @return Character vector of column names present in `df`.
 #' @export
 baseline_columns <- function(df) {
-  model_columns(df, setdiff(MODEL_FEATURES, SUPERGROUPS$structure))
+  selected_columns(select_features(df, "model", exclude = "structure"))
 }
 
 
@@ -149,7 +151,10 @@ baseline_columns <- function(df) {
 #' @param df A dataset from build_dataset() after drop_excluded().
 #' @return Character vector of column names present in `df`.
 #' @export
-structure_columns <- function(df) model_columns(df, structure_groups())
+structure_columns <- function(df) {
+  selected_columns(select_features(
+    df, "model", exclude = setdiff(names(SUPERGROUPS), "structure")))
+}
 
 
 #' The icSHAPE structural-Gini block — excluded from both models

@@ -31,8 +31,7 @@
 # tiers are handled explicitly:
 #   * Single region-less columns (cai, translation_efficiency): a feature
 #     whose regex is one literal column (is_regionless_feature()) is mapped to
-#     the `mrna` region. The `standalones` argument does the same for a column
-#     reached through no feature.
+#     the `mrna` region (column_regions()).
 #   * Any column that still has no region token is reported by the diagnostic
 #     block and skipped (it cannot sit on the region-dodged axis).
 #
@@ -58,11 +57,11 @@
 #   out <- feature_correlation_dotplot(df, absolute = FALSE)
 #
 #   # Restrict to structure features, drop low-|r| noise
-#   out <- feature_correlation_dotplot(df, groups = "structure",
+#   out <- feature_correlation_dotplot(df, include = "structure",
 #                                      min_abs_correlation = 0.05)
 #
-#   # Drop the transcript-level standalone scalars
-#   out <- feature_correlation_dotplot(df, standalones = character())
+#   # Core set without the Sequence supergroup, coding sequence only
+#   out <- feature_correlation_dotplot(df, exclude = "sequence", regions = "cds")
 # =============================================================================
 
 source("R/load_all.R")
@@ -150,24 +149,12 @@ correlation_with_ci <- function(x, y,
 #' @param df                 Dataframe from build_dataset() or build_all().
 #' @param response           Character. Response column (default "halflife").
 #' @param method             Correlation method (default "spearman").
-#' @param groups             Character vector of FEATURE_PATTERNS keys and/or
-#'                           SUPERGROUPS names. NULL (default) = all groups.
-#' @param pick               Named list: group key -> columns to keep (allow-
-#'                           list; caller order honoured for the within-group
-#'                           sequence, though the plot re-orders by max |r|).
-#'                           New columns added to the group later stay out
-#'                           until named. Use for a small fixed subset of an
-#'                           open-ended family.
-#' @param drop               Named list: group key -> columns to remove from
-#'                           the otherwise-whole group. New columns added later
-#'                           are included. Use for "the family minus a couple
-#'                           of noisy members".
-#' @param standalones        Character vector of reserved single-token scalar
-#'                           columns to include. These have no region suffix
-#'                           and are mapped to the `mrna` region so they
-#'                           appear on the dotplot. Only needed for a column
-#'                           reached through no feature; region-less
-#'                           features are mapped automatically.
+#' @param include            Selection tokens: "core" (default), "exploratory",
+#'                           "model", or supergroup / group / feature ids. See
+#'                           select_features().
+#' @param exclude            Tokens to subtract from `include`. NULL = none.
+#' @param regions            Region tokens to draw ("5utr", "cds", ...). NULL
+#'                           (default) = all. Applied before `top_n`.
 #' @param absolute           Logical. If TRUE (default) plot |correlation|
 #'                           and transform the CI accordingly; if FALSE plot
 #'                           signed correlation.
@@ -182,15 +169,12 @@ correlation_with_ci <- function(x, y,
 #'                           (default format_col_name).
 #' @param region_colours     Named colour vector. Default REGION_COLOURS.
 #' @param region_shapes      Named shape vector. Default REGION_SHAPES.
-#' @param top_n_per_group  Named list. For each named FEATURE_PATTERNS group,
-#'                         restrict the plot to the top-N metric stems within
-#'                         that group, ranked by max |correlation| across
-#'                         regions and species. Use for high-cardinality
-#'                         groups like codon_freqs (~64) and aa_freqs (~20),
-#'                         which are excluded from the default expansion and
-#'                         must be passed explicitly via `groups`.
-#'                         Example: top_n_per_group = list(codon_freqs = 10,
-#'                                                         aa_freqs    = 5)
+#' @param top_n              Named list: feature id -> keep only the N metric
+#'                           stems with the largest max |r| against `response`
+#'                           (across regions and species). For high-cardinality
+#'                           families like codon_freqs (64) and aa_freqs (20).
+#'                           Example: top_n = list(codon_freqs = 10,
+#'                                                 aa_freqs    = 5)
 #' @return list(plot, table). Table columns: species, variable, group,
 #'   supergroup, metric_stem, metric_display, region, n, correlation,
 #'   conf.low, conf.high, p_value, q_value, correlation_abs, conf.low_abs,
@@ -201,10 +185,9 @@ feature_correlation_dotplot <- function(df,
                                         method               = c("spearman",
                                                                  "pearson",
                                                                  "kendall"),
-                                        groups               = NULL,
-                                        pick                 = list(),
-                                        drop                 = list(),
-                                        standalones          = c(),
+                                        include              = "core",
+                                        exclude              = NULL,
+                                        regions              = NULL,
                                         absolute             = TRUE,
                                         min_abs_correlation  = 0,
                                         sig_threshold        = NULL,
@@ -213,7 +196,7 @@ feature_correlation_dotplot <- function(df,
                                         formatter            = format_col_name,
                                         region_colours       = NULL,
                                         region_shapes        = NULL,
-                                        top_n_per_group = list()) {
+                                        top_n                = NULL) {
 
   method <- match.arg(method)
   if (is.null(region_colours)) region_colours <- REGION_COLOURS
@@ -231,69 +214,35 @@ feature_correlation_dotplot <- function(df,
   # for junction counts), so they are picked up here automatically. Only
   # genuinely malformed columns (no region token at all) fall through to
   # `dropped`.
-  sel      <- resolve_selection(groups, pick, drop)
-  expanded <- sel$groups
+  sel <- select_features(df, include, exclude, top_n = top_n,
+                            response = response, regions = regions,
+                            method = method, min_n = min_n)
+  sel <- sel[sel$column != response, , drop = FALSE]
+  sel$region <- column_regions(sel$column, sel$feature_id)
+  sel$stem   <- ifelse(is.na(sel$region), NA_character_,
+                       ifelse(sub("^.*_", "", sel$column) %in% REGIONS &
+                                grepl("_", sel$column, fixed = TRUE),
+                              sub("_[^_]+$", "", sel$column), sel$column))
+  plottable    <- sel[!is.na(sel$region), , drop = FALSE]
+  col_to_group <- stats::setNames(as.list(plottable$feature_id), plottable$column)
+  col_region   <- stats::setNames(as.list(plottable$region),     plottable$column)
+  col_stem     <- stats::setNames(as.list(plottable$stem),       plottable$column)
+  dropped      <- sel$column[is.na(sel$region)]
 
-  col_to_group <- list()   # column -> feature id (or, via standalones=, the column name)
-  col_region   <- list()   # column -> region token (real or pseudo)
-  col_stem     <- list()   # column -> metric stem (column minus region token)
-  dropped      <- character()
-
-  for (g in expanded) {
-    # Refine via the shared helper so bundle- and caller-supplied pick/drop
-    # (already merged by resolve_selection) apply identically to select_features.
-    cols <- refine_group_columns(fg_columns(df, g), sel$pick[[g]], sel$drop[[g]])
-
-    for (co in cols) {
-      if (!is.null(col_to_group[[co]])) next
-      tokens <- strsplit(co, "_", fixed = TRUE)[[1]]
-      last   <- tokens[length(tokens)]
-      if (last %in% REGIONS && length(tokens) > 1) {
-        col_to_group[[co]] <- g
-        col_region[[co]]   <- last
-        col_stem[[co]]     <- paste(tokens[-length(tokens)], collapse = "_")
-      } else if (is_regionless_feature(g)) {
-        # A single region-less column (cai, translation efficiency): map to
-        # "mrna" so it appears on the region-dodged axis.
-        col_to_group[[co]] <- g
-        col_region[[co]]   <- "mrna"
-        col_stem[[co]]     <- co
-      } else {
-        # No region token — cannot sit on the region-dodged axis.
-        dropped <- c(dropped, co)
-      }
-    }
-  }
-
-  # --- Tier 1 fallback: standalones= argument for columns not in any group --
-  # Handles backward-compatible usage (e.g. groups="structure", standalones=c("cai"))
-  # and any column not reached through a feature above.
-  for (co in standalones) {
-    if (co %in% names(df) && is.null(col_to_group[[co]])) {
-      col_to_group[[co]] <- co            # group key = column name (legacy)
-      col_region[[co]]   <- "mrna"
-      col_stem[[co]]     <- co
-    }
-  }
-
-  candidates <- setdiff(names(col_to_group), response)
+  candidates <- names(col_to_group)
   if (length(candidates) == 0) {
-    stop("No plottable columns after filtering - check `groups` / `standalones`")
+    stop("No plottable columns after filtering - check `include` / `exclude` / `regions`")
   }
 
   # --- Diagnostic: report columns dropped for lacking a region token ------
-  # Turns the silent exclusion into a visible per-group report. After the v3
+  # Turns the silent exclusion into a visible per-feature report. After the v3
   # rename this should normally be empty; a non-empty report flags a column
   # whose loader still violates the region-suffix-last invariant.
-  dropped <- setdiff(unique(dropped), names(col_to_group))
   if (length(dropped) > 0) {
     message("feature_correlation_dotplot: dropped ", length(dropped),
             " column(s) with no region token (not plottable here):")
-    drop_by_group <- vapply(expanded, function(g) {
-      sum(fg_columns(df, g) %in% dropped)
-    }, integer(1))
-    for (g in expanded[drop_by_group > 0]) {
-      message("  ", g, ": ", drop_by_group[[which(expanded == g)]],
+    for (g in unique(sel$feature_id[is.na(sel$region)])) {
+      message("  ", g, ": ", sum(sel$feature_id == g & is.na(sel$region)),
               " column(s)")
     }
     message("  -> use top_n_response_correlations() or ",
@@ -366,29 +315,6 @@ feature_correlation_dotplot <- function(df,
       )
     )
 
-  # --- Top-N per group filter (for high-cardinality groups) ---------------
-  # Rank by metric_stem so all regions of a stem stay together (no half-
-  # plotted stems). Ranking aggregates across species too — keeps the
-  # selected stems consistent between species panels.
-  if (length(top_n_per_group) > 0) {
-    for (g in names(top_n_per_group)) {
-      n_keep <- top_n_per_group[[g]]
-      if (!any(result$group == g)) next
-      
-      keep_stems <- result |>
-        dplyr::filter(group == g) |>
-        dplyr::group_by(metric_stem) |>
-        dplyr::summarise(max_r = max(correlation_abs, na.rm = TRUE),
-                         .groups = "drop") |>
-        dplyr::arrange(dplyr::desc(max_r)) |>
-        dplyr::slice_head(n = n_keep) |>
-        dplyr::pull(metric_stem)
-      
-      result <- result |>
-        dplyr::filter(group != g | metric_stem %in% keep_stems)
-    }
-  }
-  
   # --- Filter by |r| threshold --------------------------------------------
   if (min_abs_correlation > 0) {
     result <- result |>
@@ -601,43 +527,41 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     )
   }
   
-  # Reusable runner: response, suffix for filenames, sig threshold
-  # Each job: response variable, filename suffix, sig threshold, group filter,
-  # top-N filter, output width (mm). The codon/AA job overrides groups to opt
-  # IN to the high-cardinality groups that the default expansion excludes, and
-  # uses top_n_per_group to keep the figure legible.
-  # Reusable narrowings ("the two reported NMD columns", "the four core
-  # length columns") live as bundles in GROUP_BUNDLES (config.R), not inline
-  # here; DEFAULT_PLOT_GROUPS is made of them.
-  
+  # Each job: response variable, filename suffix, sig threshold, what to
+  # include, top-N trim, output width (mm). The codon/AA job includes those
+  # families explicitly (the core set takes them via `top_n`) and trims them
+  # to keep the figure legible.
+
+  core_top2 <- list(codon_freqs = 2, aa_freqs = 2)
+
   jobs <- list(
     list(response = "halflife",
          suffix   = "halflife",
          sig      = 0.02,
-         groups   = DEFAULT_PLOT_GROUPS,
+         include  = "core",
          absolute = TRUE,
-         top_n    = list(codon_freqs = 2, aa_freqs = 2),
+         top_n    = core_top2,
          width    = 380),
     list(response = "translation_efficiency",
          suffix   = "translation_efficiency",
          sig      = 0.02,
-         groups   = DEFAULT_PLOT_GROUPS,
+         include  = "core",
          absolute = TRUE,
-         top_n    = list(codon_freqs = 2, aa_freqs = 2),
+         top_n    = core_top2,
          width    = 380),
     list(response = "halflife",
          suffix   = "halflife_codon_aa",
          sig      = 0.02,
-         groups   = c("codon_freqs", "aa_freqs"),
+         include  = c("codon_freqs", "aa_freqs"),
          absolute = TRUE,
          top_n    = list(codon_freqs = 15, aa_freqs = 20),
          width    = 200),
     list(response = "halflife",
          suffix   = "halflife_nuc_ratios",
          sig      = 0.02,
-         groups   = c("nuc_ratios", "gc"),
+         include  = c("nuc_ratios", "gc"),
          absolute = TRUE,
-         top_n    = list(),
+         top_n    = NULL,
          width    = 200)
   )
   
@@ -653,9 +577,9 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
       df,
       response        = job$response,
       sig_threshold   = job$sig,
-      groups          = job$groups,
+      include         = job$include,
       absolute        = job$absolute,
-      top_n_per_group = job$top_n
+      top_n           = job$top_n
     )
     
     print(out$plot)
