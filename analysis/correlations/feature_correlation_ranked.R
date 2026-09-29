@@ -14,12 +14,10 @@
 #      sideways. That is what makes the full 64-codon and 20-amino-acid
 #      panels below practical at all.
 #
-#   2. COLLAPSED SUPERGROUPS. `keep_supergroups` names the supergroups that
-#      keep their own facet; everything else folds into "other". The default
-#      c("structure", "sequence") gives the three-panel figure the project
-#      actually argues from — is decay driven by folding, or by the things
-#      that covary with transcript composition — instead of spreading the
-#      contrast across six facets of very uneven size.
+#   2. SUPERGROUP FACETS. Every supergroup in the selection gets its own
+#      facet, ordered by the strongest correlation it contains. There is no
+#      collapse into "other": what a facet holds is what the feature table
+#      says the supergroup holds.
 #
 #   3. A DERIVED SIGNIFICANCE LINE. The original draws a reference line at a
 #      hardcoded 0.02. Here `sig_threshold = "auto"` computes the |r| at
@@ -42,17 +40,18 @@
 #   source("analysis/correlations/feature_correlation_ranked.R")
 #   df  <- build_dataset("human")
 #
-#   # Three-panel half-life figure, features on the y axis
-#   out <- feature_correlation_ranked(df, orientation = "horizontal")
+#   # The core set, one facet per supergroup, features on the y axis; the two
+#   # strongest codons and amino acids stand for their families
+#   out <- feature_correlation_ranked(df, orientation = "horizontal",
+#                                     top_n = list(codon_freqs = 2, aa_freqs = 2))
 #   print(out$plot)
 #
 #   # All 64 codons, one region, ranked top to bottom
-#   out <- feature_correlation_ranked(df, groups = "codon_freqs",
-#                                     keep_supergroups = NULL,
+#   out <- feature_correlation_ranked(df, include = "codon_freqs",
 #                                     orientation = "horizontal")
 #
-#   # Keep every supergroup in its own facet, as the original does
-#   out <- feature_correlation_ranked(df, keep_supergroups = NULL)
+#   # Core minus the Sequence supergroup, coding sequence only
+#   out <- feature_correlation_ranked(df, exclude = "sequence", regions = "cds")
 # =============================================================================
 
 source("R/load_all.R")
@@ -188,22 +187,17 @@ critical_correlation <- function(n,
 # -----------------------------------------------------------------------------
 
 #' Feature correlations with a chosen response, ranked, with confidence
-#' intervals, faceted by (optionally collapsed) supergroup.
+#' intervals, faceted by supergroup.
 #'
 #' @param df                 Dataframe from build_dataset() or build_all().
 #' @param response           Character. Response column (default "halflife").
 #' @param method             Correlation method (default "spearman").
-#' @param groups             Character vector of selection keys (feature /
-#'                           group / supergroup / bundle ids). NULL (default)
-#'                           = every exploratory feature.
-#' @param pick               Named list: feature id -> columns to keep.
-#' @param drop               Named list: feature id -> columns to remove.
-#' @param standalones        Character vector of reserved region-less scalar
-#'                           columns to include, mapped to the `mrna` region.
-#' @param keep_supergroups   Character vector of supergroups that keep their
-#'                           own facet. Everything else is relabelled
-#'                           "other". Default c("structure", "sequence").
-#'                           NULL = no collapsing (original behaviour).
+#' @param include            Selection tokens: "core" (default), "exploratory",
+#'                           "model", or supergroup / group / feature ids. See
+#'                           select_features_v2().
+#' @param exclude            Tokens to subtract from `include`. NULL = none.
+#' @param regions            Region tokens to draw ("5utr", "cds", ...). NULL
+#'                           (default) = all. Applied before `top_n`.
 #' @param orientation        "vertical" (default) puts features on the x axis,
 #'                           as feature_correlation_dotplot does. "horizontal"
 #'                           puts features on the y axis and correlations on
@@ -223,9 +217,9 @@ critical_correlation <- function(n,
 #' @param formatter          Display formatter for the response label.
 #' @param region_colours     Named colour vector. Default REGION_COLOURS.
 #' @param region_shapes      Named shape vector. Default REGION_SHAPES.
-#' @param top_n_per_group    Named list: group key -> keep only the top-N
-#'                           metric stems by max |r|. Leave empty for the
-#'                           full family.
+#' @param top_n              Named list: feature id -> keep only the N metric
+#'                           stems with the largest max |r| against `response`.
+#'                           NULL = whole families. See select_features_v2().
 #' @return list(plot, table, report). `report` is the diagnostic list consumed
 #'   by write_run_report(); nothing in it is drawn on the figure.
 #' @export
@@ -234,12 +228,9 @@ feature_correlation_ranked <- function(df,
                                        method               = c("spearman",
                                                                 "pearson",
                                                                 "kendall"),
-                                       groups               = NULL,
-                                       pick                 = list(),
-                                       drop                 = list(),
-                                       standalones          = c(),
-                                       keep_supergroups     = c("structure",
-                                                                "sequence"),
+                                       include              = "core",
+                                       exclude              = NULL,
+                                       regions              = NULL,
                                        orientation          = c("vertical",
                                                                 "horizontal"),
                                        absolute             = TRUE,
@@ -251,7 +242,7 @@ feature_correlation_ranked <- function(df,
                                        formatter            = format_col_name,
                                        region_colours       = NULL,
                                        region_shapes        = NULL,
-                                       top_n_per_group      = list()) {
+                                       top_n                = NULL) {
 
   method      <- match.arg(method)
   orientation <- match.arg(orientation)
@@ -270,49 +261,27 @@ feature_correlation_ranked <- function(df,
   # the feature axis by ending in a real REGIONS token, or by being a
   # registered region-less scalar (mapped to `mrna`). Anything else cannot be
   # positioned against the region legend and is reported, not silently lost.
-  sel      <- resolve_selection(groups, pick, drop)
-  expanded <- sel$groups
-
-  col_to_group <- list()
-  col_region   <- list()
-  col_stem     <- list()
-  dropped      <- character()
-
-  for (g in expanded) {
-    cols <- refine_group_columns(fg_columns(df, g), sel$pick[[g]], sel$drop[[g]])
-
-    for (co in cols) {
-      if (!is.null(col_to_group[[co]])) next
-      tokens <- strsplit(co, "_", fixed = TRUE)[[1]]
-      last   <- tokens[length(tokens)]
-      if (last %in% REGIONS && length(tokens) > 1) {
-        col_to_group[[co]] <- g
-        col_region[[co]]   <- last
-        col_stem[[co]]     <- paste(tokens[-length(tokens)], collapse = "_")
-      } else if (is_regionless_feature(g)) {
-        col_to_group[[co]] <- g
-        col_region[[co]]   <- "mrna"
-        col_stem[[co]]     <- co
-      } else {
-        dropped <- c(dropped, co)
-      }
-    }
-  }
-
-  for (co in standalones) {
-    if (co %in% names(df) && is.null(col_to_group[[co]])) {
-      col_to_group[[co]] <- co
-      col_region[[co]]   <- "mrna"
-      col_stem[[co]]     <- co
-    }
-  }
+  sel <- select_features_v2(df, include, exclude, top_n = top_n,
+                            response = response, regions = regions,
+                            method = method, min_n = min_n)
+  sel <- sel[sel$column != response, , drop = FALSE]
+  ranking_applied <- attr(sel, "top_n")
+  sel$region <- column_regions(sel$column, sel$feature_id)
+  sel$stem   <- ifelse(is.na(sel$region), NA_character_,
+                       ifelse(sub("^.*_", "", sel$column) %in% REGIONS &
+                                grepl("_", sel$column, fixed = TRUE),
+                              sub("_[^_]+$", "", sel$column), sel$column))
+  plottable    <- sel[!is.na(sel$region), , drop = FALSE]
+  col_to_group <- stats::setNames(as.list(plottable$feature_id), plottable$column)
+  col_region   <- stats::setNames(as.list(plottable$region),     plottable$column)
+  col_stem     <- stats::setNames(as.list(plottable$stem),       plottable$column)
+  dropped      <- sel$column[is.na(sel$region)]
 
   candidates <- setdiff(names(col_to_group), response)
   if (length(candidates) == 0) {
-    stop("No plottable columns after filtering - check `groups` / `standalones`")
+    stop("No plottable columns after filtering - check `include` / `exclude` / `regions`")
   }
 
-  dropped <- setdiff(unique(dropped), names(col_to_group))
   if (length(dropped) > 0) {
     message("feature_correlation_ranked: dropped ", length(dropped),
             " column(s) with no region token (not plottable here)")
@@ -362,23 +331,9 @@ feature_correlation_ranked <- function(df,
   # worth watching, since a feature can quietly leave the figure.
   no_estimate <- setdiff(candidates, unique(result$variable))
 
-  # --- Attach supergroup, collapse it, BH q -------------------------------
+  # --- Attach supergroup, BH q ---------------------------------------------
   result <- result |>
-    dplyr::mutate(
-      supergroup_full = dplyr::coalesce(supergroup_of(group), "other")
-    )
-
-  # The collapse. Everything outside `keep_supergroups` becomes "other";
-  # supergroup_full is retained in the returned table so the original
-  # categorisation is still recoverable from the CSV.
-  result <- result |>
-    dplyr::mutate(
-      supergroup = if (is.null(keep_supergroups)) {
-        supergroup_full
-      } else {
-        ifelse(supergroup_full %in% keep_supergroups, supergroup_full, "other")
-      }
-    )
+    dplyr::mutate(supergroup = dplyr::coalesce(supergroup_of(group), "other"))
 
   result <- result |>
     dplyr::group_by(species) |>
@@ -400,49 +355,6 @@ feature_correlation_ranked <- function(df,
         TRUE                         ~ conf.high
       )
     )
-
-  # --- Top-N per group filter ---------------------------------------------
-  # A group already narrowed by a pick list (GROUP_BUNDLES, or the caller's
-  # own `pick`) may hold no more stems than N, in which case this ranks
-  # nothing. That is not harmless: the figure then shows a curated selection
-  # while looking exactly like a top-N ranking, and a reader comparing it to
-  # a full-family figure sees two different "top" sets and reasonably
-  # concludes one is wrong. DEFAULT_PLOT_GROUPS does this for codon_freqs and
-  # aa_freqs via the sequence_select bundle. Record every group where the
-  # cut bound, so the run report can state which axis rows were ranked and
-  # which were chosen.
-  ranking_applied <- list()
-  if (length(top_n_per_group) > 0) {
-    for (g in names(top_n_per_group)) {
-      n_keep <- top_n_per_group[[g]]
-      if (!any(result$group == g)) next
-
-      ranked <- result |>
-        dplyr::filter(group == g) |>
-        dplyr::group_by(metric_stem) |>
-        dplyr::summarise(max_r = max(correlation_abs, na.rm = TRUE),
-                         .groups = "drop") |>
-        dplyr::arrange(dplyr::desc(max_r))
-
-      n_avail <- nrow(ranked)
-      ranking_applied[[g]] <- list(
-        requested = n_keep, available = n_avail, bound = n_avail > n_keep
-      )
-      if (n_avail <= n_keep) {
-        message("feature_correlation_ranked: top_n_per_group[[\"", g,
-                "\"]] = ", n_keep, " but only ", n_avail,
-                " stem(s) are selected - no ranking applied. These are a ",
-                "curated pick, not the top ", n_keep, " of the family.")
-      }
-
-      keep_stems <- ranked |>
-        dplyr::slice_head(n = n_keep) |>
-        dplyr::pull(metric_stem)
-
-      result <- result |>
-        dplyr::filter(group != g | metric_stem %in% keep_stems)
-    }
-  }
 
   # --- Filter by |r| threshold --------------------------------------------
   if (min_abs_correlation > 0) {
@@ -505,18 +417,13 @@ feature_correlation_ranked <- function(df,
     dplyr::arrange(dplyr::desc(max_r))
 
   # Facet order: by the strongest correlation the panel contains, mirroring
-  # the within-panel ordering — EXCEPT that "other" is pinned last. It is a
-  # residual category, not a finding, and letting a single strong member
-  # (exon density, r = 0.55) float it to the top reads as a claim about the
-  # catch-all that the collapse was never meant to make.
+  # the within-panel ordering.
   supergroup_order <- result |>
     dplyr::group_by(supergroup) |>
     dplyr::summarise(max_r = max(correlation_abs, na.rm = TRUE),
                      .groups = "drop") |>
     dplyr::arrange(dplyr::desc(max_r)) |>
     dplyr::pull(supergroup)
-  supergroup_order <- c(setdiff(supergroup_order, "other"),
-                        intersect(supergroup_order, "other"))
 
   # A discrete y axis is drawn bottom-up, so the level order that puts the
   # strongest feature on the LEFT when vertical puts it at the BOTTOM when
@@ -675,11 +582,21 @@ feature_correlation_ranked <- function(df,
   # drop the faceting entirely rather than ship a decorative strip.
   n_supergroups <- nlevels(droplevels(result$supergroup))
   if (n_supergroups > 1 || has_species) {
+    # Horizontal strips sit at the right of short, stacked panels, so a long
+    # name ("Transcript architecture") cannot be set along the strip: it is
+    # wrapped and written horizontally instead.
     strip_labels <- ggplot2::labeller(
-      supergroup = function(s) format_group_name(s, kind = "supergroup"),
+      supergroup = function(s) {
+        nm <- format_group_name(s, kind = "supergroup")
+        if (horizontal) vapply(strwrap(nm, width = 13, simplify = FALSE),
+                               paste, character(1), collapse = "\n")
+        else nm
+      },
       species    = ggplot2::label_value
     )
     if (horizontal) {
+      p <- p + ggplot2::theme(strip.text.y = ggplot2::element_text(
+        angle = 0, size = 16, face = "bold"))
       p <- p + if (has_species) {
         ggplot2::facet_grid(supergroup ~ species, scales = "free_y",
                             space = "free_y", labeller = strip_labels)
@@ -708,7 +625,7 @@ feature_correlation_ranked <- function(df,
   # --- Return table --------------------------------------------------------
   table_out <- result |>
     dplyr::select(dplyr::any_of(c(
-      "species", "variable", "group", "supergroup", "supergroup_full",
+      "species", "variable", "group", "supergroup",
       "metric_stem", "metric_display", "region",
       "n", "correlation", "conf.low", "conf.high",
       "p_value", "q_value",
@@ -738,7 +655,7 @@ feature_correlation_ranked <- function(df,
     orientation      = orientation,
     absolute         = absolute,
     conf             = conf,
-    keep_supergroups = keep_supergroups,
+    supergroups      = levels(droplevels(result$supergroup)),
     n_rows_df        = nrow(df),
     n_response       = sum(!is.na(df[[response]])),
     n_points         = nrow(table_out),
@@ -756,7 +673,7 @@ feature_correlation_ranked <- function(df,
     ranking_applied  = ranking_applied,
     below_threshold  = below,
     n_sig_q          = sum(table_out$q_value < sig_alpha, na.rm = TRUE),
-    dropped_columns  = dropped,
+    dropped_columns  = unique(dropped),
     no_estimate      = no_estimate,
     top              = table_out |>
       dplyr::arrange(dplyr::desc(correlation_abs)) |>
@@ -795,13 +712,7 @@ format_run_report <- function(report, title, species = "human") {
             report$response, report$method, round(report$conf * 100),
             if (report$absolute) "absolute |r|" else "signed r"),
     sprintf("- **Orientation**: %s", report$orientation),
-    sprintf("- **Facets**: %s",
-            if (is.null(report$keep_supergroups)) {
-              "all supergroups, uncollapsed"
-            } else {
-              paste0(paste(report$keep_supergroups, collapse = ", "),
-                     ", + other")
-            }),
+    sprintf("- **Facets**: %s", paste(report$supergroups, collapse = ", ")),
     "",
     "### Cohort",
     "",
@@ -846,9 +757,9 @@ format_run_report <- function(report, title, species = "human") {
               fmt_n(report$n_max)), "")
   }
 
-  # Which high-cardinality families were genuinely ranked and which arrived
-  # pre-selected. Without this the figure cannot be told apart from a
-  # top-N ranking, and it will disagree with the full-family figures.
+  # Which high-cardinality families were trimmed to their top N. The stems come
+  # from the data (select_features_v2), so the same response gives the same
+  # stems in every figure; a different response may give different ones.
   if (length(report$ranking_applied) > 0) {
     lines <- c(lines, "### Family selection", "")
     for (g in names(report$ranking_applied)) {
@@ -858,12 +769,8 @@ format_run_report <- function(report, title, species = "human") {
                        "on this cohort."),
                 g, info$requested, info$available)
       } else {
-        sprintf(paste0("- `%s`: **%d stem(s), pre-selected by a pick list** ",
-                       "(`GROUP_BUNDLES` / caller `pick`), not ranked - the ",
-                       "requested top-%d could not bind. These are a curated ",
-                       "choice and need NOT be the strongest members of the ",
-                       "family; compare against the full-family figure ",
-                       "before reading them as a ranking."),
+        sprintf(paste0("- `%s`: all **%d** stem(s) shown; the requested top-%d ",
+                       "did not bind."),
                 g, info$available, info$requested)
       })
     }
@@ -1014,71 +921,45 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     max(min_h, base + rows * pitch)
   }
 
-  # Releasing the codon / amino-acid pick lists.
-  #
-  # DEFAULT_PLOT_GROUPS pulls in the `sequence_select` bundle, which pins
-  # codon_freqs to two named columns and aa_freqs to two more. Those names
-  # are a curated choice, not a ranking: the pinned codons (AGU, UCA) are the
-  # two strongest SERINE codons, ranks 2 and 4 of the family by |r|, so the
-  # broad figure disagreed with the full 64-codon figure on which codons are
-  # "top" — and `top_n_per_group` could not fix it, because it can only rank
-  # what was selected.
-  #
-  # resolve_selection() merges bundle and caller pick lists with modifyList(),
-  # where a NULL from the caller DELETES the key. So passing NULL here
-  # releases the whole family for these two features while leaving any other
-  # pick the bundle carries untouched, and
-  # `top_n = 2` then picks the genuine top two from the data.
-  #
-  # Derived per response, so half-life and translation efficiency may well
-  # show different codons. That is the intended behaviour, not drift.
-  release_families <- list(codon_freqs = NULL, aa_freqs = NULL)
-
   # Four figures.
   #
-  # The two broad ones use DEFAULT_PLOT_GROUPS with the default collapse, so the
-  # comparison the project cares about — structure against sequence, with
-  # everything else pooled — is the figure's primary axis of organisation.
+  # The two broad ones use the core set, one facet per supergroup. Codons and
+  # amino acids are trimmed by `top_n`, which ranks the whole family against
+  # the figure's own response, so the stems shown are the genuine top two and
+  # agree with the full-family figures below. Derived per response: half-life
+  # and translation efficiency may show different codons, by design.
   #
-  # The codon and amino-acid figures opt IN to the high-cardinality groups
-  # that the default expansion excludes, and take NO top-N cut: the whole
-  # family is the point. keep_supergroups = NULL leaves them in a single
-  # panel (both sit in `sequence`, so collapsing would be a no-op that only
-  # adds a strip). Both families are CDS-only, so there is one region per
-  # row and no dodging.
+  # The codon and amino-acid figures include one family each and take no top-N
+  # cut: the whole family is the point. Both families are CDS-only, so there
+  # is one region per row and no dodging, and a single supergroup, so no
+  # facet strip.
   jobs <- list(
     list(response = "halflife",
          suffix   = "halflife",
-         title    = "Half-life, collapsed supergroups",
-         groups   = DEFAULT_PLOT_GROUPS,
-         keep_sg  = c("structure", "sequence"),
-         pick     = release_families,
+         title    = "Half-life, core features",
+         include  = "core",
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 260,
          pitch    = 9),
     list(response = "translation_efficiency",
          suffix   = "translation_efficiency",
-         title    = "Translation efficiency, collapsed supergroups",
-         groups   = DEFAULT_PLOT_GROUPS,
-         keep_sg  = c("structure", "sequence"),
-         pick     = release_families,
+         title    = "Translation efficiency, core features",
+         include  = "core",
          top_n    = list(codon_freqs = 2, aa_freqs = 2),
          width    = 260,
          pitch    = 9),
     list(response = "halflife",
          suffix   = "halflife_aa_full",
          title    = "Half-life, all amino acids",
-         groups   = "aa_freqs",
-         keep_sg  = NULL,
-         top_n    = list(),
+         include  = "aa_freqs",
+         top_n    = NULL,
          width    = 240,
          pitch    = 8),
     list(response = "halflife",
          suffix   = "halflife_codon_full",
          title    = "Half-life, all codons",
-         groups   = "codon_freqs",
-         keep_sg  = NULL,
-         top_n    = list(),
+         include  = "codon_freqs",
+         top_n    = NULL,
          width    = 240,
          pitch    = 6)
   )
@@ -1107,14 +988,10 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     out <- feature_correlation_ranked(
       df,
       response         = job$response,
-      groups           = job$groups,
-      # The full-family jobs carry no `pick`; resolve_selection() needs a
-      # list, not NULL.
-      pick             = if (is.null(job$pick)) list() else job$pick,
-      keep_supergroups = job$keep_sg,
+      include          = job$include,
       orientation      = "horizontal",
       sig_threshold    = "auto",
-      top_n_per_group  = job$top_n
+      top_n            = job$top_n
     )
 
     height <- auto_height(out$report$n_rows_plot, pitch = job$pitch)

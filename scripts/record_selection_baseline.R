@@ -20,6 +20,11 @@
 # are not callable. If a runner changes, change it here and say so in the
 # commit; the whole point is that this file records the PRE-migration state.
 #
+# NOTE (step 4): this script calls the PRE-migration API (groups / pick /
+# keep_supergroups / top_n_per_group) and so runs only at commit 53f1a3e's
+# parent state of the four migrated scripts. selection_baseline.csv is the
+# record; scripts/diff_selection_baseline.R compares the migrated scripts to it.
+#
 # Usage (project root; needs data/cache/human_dataset_v*.rds):
 #   Rscript scripts/record_selection_baseline.R
 # =============================================================================

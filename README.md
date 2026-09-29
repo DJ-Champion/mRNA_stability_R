@@ -389,7 +389,7 @@ create_scatter_plot(df,
 
 # --- The default feature set, as a dotplot ---
 source("analysis/correlations/feature_correlation_dotplot.R")
-out <- feature_correlation_dotplot(df)          # groups = DEFAULT_PLOT_GROUPS
+out <- feature_correlation_dotplot(df)          # include = "core"
 print(out$plot)
 ```
 
