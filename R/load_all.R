@@ -8,6 +8,7 @@
 #
 # Files are sourced in dependency order:
 #   1. config.R         (constants, paths, species registry)
+#      colour_config.R  (supergroup colours; needs the feature table)
 #   2. utils/           (no dependencies on other pipeline files)
 #   3. io/              (depends on config)
 #   4. features/        (depends on utils + config)
@@ -23,6 +24,7 @@
 }
 
 source(file.path(.PIPELINE_ROOT, "config.R"))
+source(file.path(.PIPELINE_ROOT, "colour_config.R"))
 .source_dir("utils")
 .source_dir("io")
 .source_dir("features")
