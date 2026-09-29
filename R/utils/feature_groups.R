@@ -449,3 +449,141 @@ select_features <- function(df, groups = NULL,
 
   unique(cols)
 }
+
+
+# =============================================================================
+# select_features_v2(): include / exclude / top_n  (SELECTION_PLAN.md, step 3)
+# =============================================================================
+# The replacement for select_features() + resolve_selection() + bundles.
+# Lives beside the old API until the scripts are migrated; step 6 deletes the
+# old one and renames this select_features().
+#
+#   result = expand(include) minus expand(exclude), then top_n trims families.
+#
+# Nothing else applies silently: no bundle pick/drop, no default skips.
+#
+# Tokens (include and exclude alike):
+#   "core", "exploratory", "model"   the table's flags (CORE_FEATURES, ...)
+#   a supergroup or group id         its members; in `include` only the
+#                                    EXPLORATORY ones (the table's eligibility
+#                                    rule), in `exclude` all of them
+#   a feature id                     that feature, always, whatever its flags
+# =============================================================================
+
+.flag_sets <- function() {
+  list(core = CORE_FEATURES, exploratory = EXPLORATORY_FEATURES,
+       model = MODEL_FEATURES)
+}
+
+# Expand selection tokens to feature ids, in table order.
+.expand_tokens <- function(tokens, eligible_only, arg) {
+  flags <- .flag_sets()
+  ids <- character()
+  for (tk in tokens) {
+    members <- if (tk %in% names(flags)) {
+      flags[[tk]]
+    } else if (tk %in% names(SUPERGROUPS)) {
+      if (eligible_only) intersect(SUPERGROUPS[[tk]], EXPLORATORY_FEATURES) else SUPERGROUPS[[tk]]
+    } else if (tk %in% names(FEATURE_GROUPS)) {
+      if (eligible_only) intersect(FEATURE_GROUPS[[tk]], EXPLORATORY_FEATURES) else FEATURE_GROUPS[[tk]]
+    } else if (tk %in% names(FEATURE_PATTERNS)) {
+      tk
+    } else {
+      stop("select_features: unknown ", arg, " '", tk, "'. Use \"core\", ",
+           "\"exploratory\", \"model\", or a supergroup / group / feature id ",
+           "(see list_selection_keys()).", call. = FALSE)
+    }
+    ids <- c(ids, members)
+  }
+  intersect(names(FEATURE_PATTERNS), ids)   # table order, unique
+}
+
+# Metric stem of a column: the name without its region token. Columns with no
+# region token are their own stem.
+.column_stem <- function(cols) {
+  last <- sub("^.*_", "", cols)
+  has_region <- last %in% REGIONS & grepl("_", cols, fixed = TRUE)
+  ifelse(has_region, sub("_[^_]+$", "", cols), cols)
+}
+
+
+#' Select feature columns: include, exclude, trim families
+#'
+#' @param df       Dataframe from build_dataset() / build_all().
+#' @param include  Tokens to start from (see above). Default "core".
+#' @param exclude  Tokens to subtract. NULL for none.
+#' @param top_n    Named list, feature id -> N: keep only the N metric stems of
+#'   that feature with the largest |correlation| with `response` (the maximum
+#'   over regions, and over species when `df` holds several), with all their
+#'   regions. Ranking is over what `include` minus `exclude` left, so a
+#'   feature trimmed here is ranked on the whole family unless you exclude
+#'   part of it. Needs `response`.
+#' @param response Column to rank against for `top_n`.
+#' @param method   Correlation for `top_n`; default "spearman".
+#' @param min_n    Minimum complete pairs for a column to be ranked; columns
+#'   below it rank last. Default 30, as in the correlation figures.
+#' @return A data.frame with columns `column` and `feature_id`, in table order
+#'   then `df` column order. Columns absent from `df` are skipped silently.
+#'   Use selected_columns() for the plain character vector.
+#' @examples
+#' select_features_v2(df)                                    # the core set
+#' select_features_v2(df, exclude = "sequence")              # core minus Sequence
+#' select_features_v2(df, "exploratory", exclude = c("codon_freqs", "aa_freqs"))
+#' select_features_v2(df, top_n = list(codon_freqs = 2), response = "halflife")
+#' @export
+select_features_v2 <- function(df, include = "core", exclude = NULL,
+                               top_n = NULL, response = NULL,
+                               method = "spearman", min_n = 30) {
+  if (length(include) == 0) stop("select_features: `include` is empty", call. = FALSE)
+  ids <- .expand_tokens(include, eligible_only = TRUE, arg = "include")
+  if (length(exclude)) {
+    ids <- setdiff(ids, .expand_tokens(exclude, eligible_only = FALSE, arg = "exclude"))
+  }
+
+  out <- do.call(rbind, lapply(ids, function(g) {
+    cols <- fg_columns(df, g)
+    if (length(cols)) data.frame(column = cols, feature_id = g, stringsAsFactors = FALSE)
+  }))
+  if (is.null(out)) out <- data.frame(column = character(), feature_id = character(),
+                                      stringsAsFactors = FALSE)
+
+  if (length(top_n)) {
+    if (is.null(response) || !response %in% names(df))
+      stop("select_features: `top_n` ranks against `response`, which must be a ",
+           "column of df", call. = FALSE)
+    bad <- setdiff(names(top_n), names(FEATURE_PATTERNS))
+    if (length(bad)) stop("select_features: `top_n` names unknown feature(s): ",
+                          paste(bad, collapse = ", "), call. = FALSE)
+    groups <- if ("species" %in% names(df)) split(seq_len(nrow(df)), df$species)
+              else list(seq_len(nrow(df)))
+    abs_r <- function(co) {
+      max(vapply(groups, function(ix) {
+        x <- df[[co]][ix]; y <- df[[response]][ix]
+        ok <- stats::complete.cases(x, y)
+        if (sum(ok) < min_n || stats::sd(x[ok]) == 0) return(NA_real_)
+        abs(stats::cor(x[ok], y[ok], method = method))
+      }, numeric(1)), na.rm = TRUE)   # -Inf (with a warning) if all NA
+    }
+    keep <- rep(TRUE, nrow(out))
+    for (g in names(top_n)) {
+      rows <- which(out$feature_id == g)
+      if (!length(rows)) next
+      stem <- .column_stem(out$column[rows])
+      r <- suppressWarnings(vapply(out$column[rows], abs_r, numeric(1)))
+      by_stem <- tapply(r, stem, max)
+      by_stem <- by_stem[order(-by_stem, names(by_stem))]   # ties: name order
+      keep_stems <- names(by_stem)[seq_len(min(top_n[[g]], length(by_stem)))]
+      keep[rows] <- stem %in% keep_stems
+    }
+    out <- out[keep, , drop = FALSE]
+  }
+  rownames(out) <- NULL
+  out
+}
+
+
+#' The plain column-name view of a select_features_v2() result
+#' @param sel Result of select_features_v2().
+#' @return Character vector of column names.
+#' @export
+selected_columns <- function(sel) sel$column
