@@ -32,7 +32,8 @@
 #      are represented.
 #
 # FEATURE SELECTION:
-#   Starts from DEFAULT_PLOT_GROUPS (defined in config.R). All selection is
+#   Starts from the core set (the feature table's "Included in core plots"
+#   flag; see select_features_v2()). All selection is
 #   diagnostic/candidate. Do not automatically discard biologically central
 #   corrected structure features (rnafold_zscores, mfe_deltas) purely
 #   because their marginal correlation with half-life is weak.
@@ -44,7 +45,7 @@
 #
 # CHANGING THRESHOLDS:
 #   Pass new values to run_correlation_heatmap_workflow():
-#     top_n_target_features    <- c(30, 50, 100)   # sizes for Plot B
+#     max_features_target     <- c(30, 50, 100)   # sizes for Plot B
 #     cluster_abs_rho_cutoff   <- 0.85             # redundancy for Plot C
 #     top_k_per_group          <- 5                # features per group, Plot D
 #     label_threshold          <- 0.3              # suppress labels < |rho|
@@ -308,18 +309,18 @@ compute_feature_feature_correlations <- function(data,
 
 #' Select top-N features by absolute Spearman correlation with the target.
 #'
-#' If both top_n and abs_rho_threshold are supplied, the threshold is applied
-#' first, then the top-N cap is applied to the surviving features.
-#' To use threshold only, pass top_n = NULL.
+#' If both max_features and abs_rho_threshold are supplied, the threshold is
+#' applied first, then the cap is applied to the surviving features.
+#' To use threshold only, pass max_features = NULL.
 #' To use top-N only,   pass abs_rho_threshold = NULL.
 #'
 #' @param feature_target_tbl Tibble from compute_feature_target_correlations().
-#' @param top_n              Integer or NULL. Number of top features to select.
+#' @param max_features       Integer or NULL. Number of top features to select.
 #' @param abs_rho_threshold  Numeric or NULL. Minimum |rho| to retain.
 #' @return Character vector of selected feature names, sorted descending |rho|.
 #' @export
 select_top_target_features <- function(feature_target_tbl,
-                                       top_n             = 50L,
+                                       max_features      = 50L,
                                        abs_rho_threshold = NULL) {
   tbl <- feature_target_tbl |>
     dplyr::filter(!is.na(abs_spearman_rho)) |>
@@ -329,8 +330,8 @@ select_top_target_features <- function(feature_target_tbl,
     tbl <- dplyr::filter(tbl, abs_spearman_rho >= abs_rho_threshold)
   }
 
-  if (!is.null(top_n) && nrow(tbl) > as.integer(top_n)) {
-    tbl <- dplyr::slice_head(tbl, n = as.integer(top_n))
+  if (!is.null(max_features) && nrow(tbl) > as.integer(max_features)) {
+    tbl <- dplyr::slice_head(tbl, n = as.integer(max_features))
   }
 
   tbl$feature
@@ -880,12 +881,19 @@ write_correlation_outputs <- function(feature_target_tbl = NULL,
 #' @param species                      Character vector of species to process,
 #'                                     or NULL (default) to use all unique
 #'                                     values in df$species.
-#' @param groups                       Feature groups/bundles to include
-#'                                     (default DEFAULT_PLOT_GROUPS from config.R).
+#' @param include                      Selection tokens: "core" (default),
+#'                                     "exploratory", "model", or supergroup /
+#'                                     group / feature ids (select_features_v2()).
+#' @param exclude                      Tokens to subtract from `include`.
+#' @param top_n                        Named list trimming a family to its N
+#'                                     strongest stems against `target_col`,
+#'                                     e.g. list(codon_freqs = 2). NULL = whole
+#'                                     families. Not the size of a heatmap: see
+#'                                     `max_features_target`.
 #' @param target_col                   Response column name (default
 #'                                     "halflife").
 #' @param correlation_method           Correlation method (default "spearman").
-#' @param top_n_target_features        Integer vector of top-N sizes for Plot B
+#' @param max_features_target          Integer vector of feature counts for Plot B
 #'                                     (default c(30L, 50L, 100L)).
 #' @param target_abs_rho_threshold     Minimum |rho| for Plot B, or NULL
 #'                                     (default NULL; see select_top_target_features()).
@@ -917,10 +925,12 @@ write_correlation_outputs <- function(feature_target_tbl = NULL,
 #' @export
 run_correlation_heatmap_workflow <- function(df,
                                              species                        = NULL,
-                                             groups                         = DEFAULT_PLOT_GROUPS,
+                                             include                        = "core",
+                                             exclude                        = NULL,
+                                             top_n                          = NULL,
                                              target_col                     = "halflife",
                                              correlation_method             = "spearman",
-                                             top_n_target_features          = c(30L, 50L, 100L),
+                                             max_features_target            = c(30L, 50L, 100L),
                                              target_abs_rho_threshold       = NULL,
                                              cluster_abs_rho_cutoff         = 0.85,
                                              top_k_per_group                = 5L,
@@ -957,9 +967,11 @@ run_correlation_heatmap_workflow <- function(df,
     df_sp <- df_sp[!is.na(df_sp[[target_col]]), , drop = FALSE]
 
     # ---- 1. Feature selection (R3: use select_features / fg) -----------------
-    message("Selecting features from groups: ",
-            paste(groups, collapse = ", "))
-    candidate_features <- select_features(df_sp, groups = groups)
+    message("Selecting features: include = ", paste(include, collapse = ", "),
+            if (length(exclude)) paste0("; exclude = ", paste(exclude, collapse = ", ")))
+    candidate_features <- selected_columns(select_features_v2(
+      df_sp, include, exclude, top_n = top_n, response = target_col,
+      method = correlation_method))
 
     feature_cols <- get_numeric_feature_cols(
       df_sp,
@@ -1014,24 +1026,24 @@ run_correlation_heatmap_workflow <- function(df,
     # ---- 6. Plot B: target-filtered heatmaps --------------------------------
     message("\n--- Plot B: target-filtered heatmaps ---")
 
-    for (top_n in top_n_target_features) {
+    for (n_top in max_features_target) {
       sel_feats <- select_top_target_features(
         ft_tbl,
-        top_n             = top_n,
+        max_features      = n_top,
         abs_rho_threshold = target_abs_rho_threshold
       )
       n_sel <- length(sel_feats)
 
       if (n_sel < 2L) {
-        message("  top_n = ", top_n, ": fewer than 2 features selected — skipping")
+        message("  max_features = ", n_top, ": fewer than 2 features selected — skipping")
         next
       }
-      message("  top_n = ", top_n, ": ", n_sel, " features")
+      message("  max_features = ", n_top, ": ", n_sel, " features")
 
       sub_mat  <- ff_mat[sel_feats, sel_feats, drop = FALSE]
       sub_meta <- dplyr::filter(feat_meta, feature %in% sel_feats)
 
-      pfx   <- sprintf("%s_B_top%d_%s", file_prefix, top_n, sp)
+      pfx   <- sprintf("%s_B_top%d_%s", file_prefix, n_top, sp)
       fpath <- file.path(output_dir, paste0(pfx, ".pdf"))
 
       res <- plot_feature_correlation_heatmap(
@@ -1052,7 +1064,7 @@ run_correlation_heatmap_workflow <- function(df,
         output_path      = fpath
       )
 
-      key <- paste0("B_top", top_n, "_", sp)
+      key <- paste0("B_top", n_top, "_", sp)
       all_outputs[[key]] <- res
 
       if (!is.null(res)) {
@@ -1062,12 +1074,12 @@ run_correlation_heatmap_workflow <- function(df,
           plot_name        = basename(fpath),
           plot_type        = "B_target_filtered",
           n_features       = n_sel,
-          selection_method = sprintf("top_%d_by_abs_rho_with_%s", top_n, target_col),
+          selection_method = sprintf("top_%d_by_abs_rho_with_%s", n_top, target_col),
           output_path      = fpath,
           table_path       = tab_path,
           parameters       = sprintf(
-            "top_n=%d; threshold=%s; species=%s; cluster=%s",
-            top_n,
+            "max_features=%d; threshold=%s; species=%s; cluster=%s",
+            n_top,
             if (is.null(target_abs_rho_threshold)) "NULL"
             else as.character(target_abs_rho_threshold),
             sp, cluster_plots
@@ -1228,10 +1240,11 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   out <- run_correlation_heatmap_workflow(
     df,
-    groups                         = DEFAULT_PLOT_GROUPS,
+    include                        = "core",
+    top_n                          = list(codon_freqs = 2, aa_freqs = 2),
     target_col                     = "halflife",
     correlation_method             = "spearman",
-    top_n_target_features          = c(30L, 50L, 100L),
+    max_features_target            = c(30L, 50L, 100L),
     target_abs_rho_threshold       = NULL,
     cluster_abs_rho_cutoff         = 0.5,
     top_k_per_group                = 3L,

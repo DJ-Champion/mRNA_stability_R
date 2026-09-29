@@ -501,9 +501,48 @@ select_features <- function(df, groups = NULL,
 # Metric stem of a column: the name without its region token. Columns with no
 # region token are their own stem.
 .column_stem <- function(cols) {
+  # (no feature context here, so a region-less column is its own stem)
   last <- sub("^.*_", "", cols)
   has_region <- last %in% REGIONS & grepl("_", cols, fixed = TRUE)
   ifelse(has_region, sub("_[^_]+$", "", cols), cols)
+}
+
+
+#' Region token of each column, as the region-dodged plots place it
+#'
+#' A column ending in a real REGIONS token has that region. A column of a
+#' region-less feature (cai, translation efficiency) sits in the "mrna" slot.
+#' Any other column has no region (NA) and cannot be drawn on a region axis.
+#'
+#' @param cols       Character vector of column names.
+#' @param feature_id Feature id of each column (same length).
+#' @return Character vector of regions, NA where there is none.
+#' @export
+column_regions <- function(cols, feature_id) {
+  last <- sub("^.*_", "", cols)
+  has_region <- last %in% REGIONS & grepl("_", cols, fixed = TRUE)
+  regionless <- vapply(feature_id, is_regionless_feature, logical(1),
+                       USE.NAMES = FALSE)
+  ifelse(has_region, last, ifelse(regionless, "mrna", NA_character_))
+}
+
+
+#' Feature ids selected by include / exclude
+#'
+#' The id-level half of select_features_v2(): the same expansion, before any
+#' column is looked up. For consumers that show features with no columns in the
+#' data too (a coverage tile reading "no cols").
+#'
+#' @inheritParams select_features_v2
+#' @return Character vector of feature ids, in table order.
+#' @export
+selected_features <- function(include = "core", exclude = NULL) {
+  if (length(include) == 0) stop("select_features: `include` is empty", call. = FALSE)
+  ids <- .expand_tokens(include, eligible_only = TRUE, arg = "include")
+  if (length(exclude)) {
+    ids <- setdiff(ids, .expand_tokens(exclude, eligible_only = FALSE, arg = "exclude"))
+  }
+  ids
 }
 
 
@@ -518,13 +557,20 @@ select_features <- function(df, groups = NULL,
 #'   regions. Ranking is over what `include` minus `exclude` left, so a
 #'   feature trimmed here is ranked on the whole family unless you exclude
 #'   part of it. Needs `response`.
+#' @param regions  Character vector of region tokens to keep ("5utr", "cds", ...),
+#'   or NULL for all. Applied before `top_n`, so a family is ranked only on the
+#'   regions asked for. Region-less features count as "mrna"; columns with no
+#'   region at all are dropped whenever `regions` is given.
 #' @param response Column to rank against for `top_n`.
 #' @param method   Correlation for `top_n`; default "spearman".
 #' @param min_n    Minimum complete pairs for a column to be ranked; columns
 #'   below it rank last. Default 30, as in the correlation figures.
 #' @return A data.frame with columns `column` and `feature_id`, in table order
 #'   then `df` column order. Columns absent from `df` are skipped silently.
-#'   Use selected_columns() for the plain character vector.
+#'   Use selected_columns() for the plain character vector. When `top_n` is
+#'   given, attribute "top_n" is a list, one entry per trimmed feature, with
+#'   `requested`, `available` (stems before trimming) and `bound` (did the
+#'   trim remove anything).
 #' @examples
 #' select_features_v2(df)                                    # the core set
 #' select_features_v2(df, exclude = "sequence")              # core minus Sequence
@@ -532,13 +578,9 @@ select_features <- function(df, groups = NULL,
 #' select_features_v2(df, top_n = list(codon_freqs = 2), response = "halflife")
 #' @export
 select_features_v2 <- function(df, include = "core", exclude = NULL,
-                               top_n = NULL, response = NULL,
+                               top_n = NULL, response = NULL, regions = NULL,
                                method = "spearman", min_n = 30) {
-  if (length(include) == 0) stop("select_features: `include` is empty", call. = FALSE)
-  ids <- .expand_tokens(include, eligible_only = TRUE, arg = "include")
-  if (length(exclude)) {
-    ids <- setdiff(ids, .expand_tokens(exclude, eligible_only = FALSE, arg = "exclude"))
-  }
+  ids <- selected_features(include, exclude)
 
   out <- do.call(rbind, lapply(ids, function(g) {
     cols <- fg_columns(df, g)
@@ -547,6 +589,14 @@ select_features_v2 <- function(df, include = "core", exclude = NULL,
   if (is.null(out)) out <- data.frame(column = character(), feature_id = character(),
                                       stringsAsFactors = FALSE)
 
+  if (!is.null(regions) && nrow(out)) {
+    bad <- setdiff(regions, REGIONS)
+    if (length(bad)) stop("select_features: unknown region(s): ",
+                          paste(bad, collapse = ", "), call. = FALSE)
+    out <- out[column_regions(out$column, out$feature_id) %in% regions, , drop = FALSE]
+  }
+
+  trimmed <- list()
   if (length(top_n)) {
     if (is.null(response) || !response %in% names(df))
       stop("select_features: `top_n` ranks against `response`, which must be a ",
@@ -574,10 +624,13 @@ select_features_v2 <- function(df, include = "core", exclude = NULL,
       by_stem <- by_stem[order(-by_stem, names(by_stem))]   # ties: name order
       keep_stems <- names(by_stem)[seq_len(min(top_n[[g]], length(by_stem)))]
       keep[rows] <- stem %in% keep_stems
+      trimmed[[g]] <- list(requested = top_n[[g]], available = length(by_stem),
+                           bound = length(by_stem) > top_n[[g]])
     }
     out <- out[keep, , drop = FALSE]
   }
   rownames(out) <- NULL
+  if (length(top_n)) attr(out, "top_n") <- trimmed
   out
 }
 

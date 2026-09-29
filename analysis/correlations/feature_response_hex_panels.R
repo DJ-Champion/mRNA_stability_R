@@ -4,7 +4,7 @@
 # A middle ground between scatter_plot.R (one x vs one y, per-point colour) and
 # group_panel_sweep.R (one group, one facet per column). This script:
 #
-#   * takes a SELECTION (groups / supergroups / bundles / individual columns),
+#   * takes a SELECTION (include / exclude tokens, and/or individual columns),
 #     not a single FEATURE_PATTERNS key, via the selection layer;
 #   * draws one hex-density panel per selected feature — feature on x, the
 #     response (default `halflife`) on y — with NO third colour dimension
@@ -14,16 +14,16 @@
 #
 # Unlike feature_group_panel(), this accepts the full selection vocabulary, so
 # you can hex-panel an ad-hoc set:
-#   feature_response_hex_panels(df, columns = c("length_cds", "gc_content_cds"))
-#   feature_response_hex_panels(df, groups  = "nmd_core")              # a bundle
-#   feature_response_hex_panels(df, groups  = "structure",
-#                               drop = list(probing = "gini_nucleoplasm_cds"))
+#   feature_response_hex_panels(df, include = NULL,
+#                               columns = c("length_cds", "gc_content_cds"))
+#   feature_response_hex_panels(df, include = "core")
+#   feature_response_hex_panels(df, include = "structure", exclude = "probing")
 #
 # Usage:
 #   source("R/load_all.R")
 #   source("analysis/correlations/feature_response_hex_panels.R")
 #   df  <- build_dataset("human")
-#   out <- feature_response_hex_panels(df, groups = "sequence")
+#   out <- feature_response_hex_panels(df, include = "sequence")
 #   print(out$plot); head(out$table)
 # =============================================================================
 
@@ -42,28 +42,30 @@ suppressPackageStartupMessages({
 
 #' Hex-density panels of each selected feature vs a response.
 #'
-#' Selection is resolved through the project selection layer, so `groups`
-#' accepts FEATURE_PATTERNS keys, SUPERGROUPS names, and GROUP_BUNDLES names;
-#' `columns` accepts literal column names. The plotted feature set is the union
-#' of both, after pick/drop refinement, with the response and any derived
-#' predictions excluded (R10).
+#' Selection is resolved through select_features_v2(), so `include` /
+#' `exclude` accept "core", "exploratory", "model" and feature / group /
+#' supergroup ids; `columns` accepts literal column names. The plotted feature
+#' set is the union of both, with the response and any derived predictions
+#' excluded (R10). Defaults to every exploratory feature.
 #'
 #' @param df         Dataframe from build_dataset() or build_all().
 #' @param response   Character. Response column on the y-axis (default
 #'                   "halflife"). Any numeric column is permitted.
-#' @param groups     Character vector of group / supergroup / bundle names, or
-#'                   NULL. NULL with `columns = NULL` selects every group.
+#' @param include    Selection tokens (see select_features_v2()); default
+#'                   "exploratory". NULL selects nothing from the table, so
+#'                   `columns` alone decides.
+#' @param exclude    Tokens to subtract from `include`. NULL = none.
+#' @param top_n      Named list trimming a family to its N strongest stems
+#'                   against `response`, e.g. list(codon_freqs = 2).
 #' @param columns    Character vector of literal column names to include
-#'                   alongside whatever `groups` resolves to. Union semantics.
-#' @param pick       Named list: group key -> columns to keep (allow-list).
-#' @param drop       Named list: group key -> columns to remove.
+#'                   alongside whatever `include` resolves to. Union semantics.
 #' @param method     Correlation method for the strip annotation (default
 #'                   "spearman").
 #' @param max_facets Integer. If the selection resolves to more features than
 #'                   this, only the top-N by |correlation| are plotted; the
 #'                   table keeps all. Default 25.
 #' @param hex_bins   Integer bins per axis for geom_hex (default 50).
-#' @param exclude    Regex patterns to drop from the feature set (R10). The
+#' @param exclude_columns Regex patterns to drop from the feature set (R10). The
 #'                   response is always excluded regardless.
 #' @param formatter  Display formatter (default format_col_name).
 #' @return list(plot, table). Table: variable, n, correlation, p_value,
@@ -71,16 +73,16 @@ suppressPackageStartupMessages({
 #' @export
 feature_response_hex_panels <- function(df,
                                         response   = "halflife",
-                                        groups     = NULL,
+                                        include    = "exploratory",
+                                        exclude    = NULL,
+                                        top_n      = NULL,
                                         columns    = NULL,
-                                        pick       = list(),
-                                        drop       = list(),
                                         method     = c("spearman", "pearson",
                                                        "kendall"),
                                         max_facets = 25,
                                         hex_bins   = 50,
-                                        exclude    = c("^saluki_prediction$",
-                                                       "^prediction_difference$"),
+                                        exclude_columns = c("^saluki_prediction$",
+                                                            "^prediction_difference$"),
                                         formatter  = format_col_name) {
   
   method <- match.arg(method)
@@ -94,12 +96,11 @@ feature_response_hex_panels <- function(df,
   }
   
   # --- Resolve the feature set (selection layer ∪ literal columns) --------
-  # When the caller names nothing at all, default groups to every group; but if
-  # they passed only `columns`, respect that and don't drag in all groups.
-  sel_cols <- if (is.null(groups) && !is.null(columns)) {
+  sel_cols <- if (is.null(include)) {
     character()
   } else {
-    select_features(df, groups = groups, pick = pick, drop = drop)
+    selected_columns(select_features_v2(df, include, exclude, top_n = top_n,
+                                        response = response, method = method))
   }
   
   lit_cols <- character()
@@ -115,7 +116,7 @@ feature_response_hex_panels <- function(df,
   candidates <- union(sel_cols, lit_cols)
   
   # R10 + response: drop derived predictions and the response itself.
-  for (rgx in exclude) {
+  for (rgx in exclude_columns) {
     candidates <- candidates[!grepl(rgx, candidates)]
   }
   candidates <- setdiff(candidates, response)
@@ -127,7 +128,7 @@ feature_response_hex_panels <- function(df,
   
   if (length(candidates) == 0) {
     stop("No numeric feature columns after selection/exclusion — check ",
-         "`groups`, `columns`, and `exclude`")
+         "`include`, `columns`, and `exclude_columns`")
   }
   
   # --- Long-form ----------------------------------------------------------
@@ -302,15 +303,15 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   n_species <- if ("species" %in% names(df)) dplyr::n_distinct(df$species) else 1L
   
   jobs <- list(
-    list(suffix = "sequence", groups = "sequence", columns = NULL),
-    list(suffix = "structure", groups = "structure", columns = NULL)
+    list(suffix = "sequence", include = "sequence", columns = NULL),
+    list(suffix = "structure", include = "structure", columns = NULL)
   )
   
   for (job in jobs) {
     message("\nHex panels for selection: ", job$suffix)
     out <- feature_response_hex_panels(
       df,
-      groups  = job$groups,
+      include = job$include,
       columns = job$columns
     )
     print(out$plot)

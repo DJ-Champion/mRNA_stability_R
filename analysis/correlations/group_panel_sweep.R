@@ -10,7 +10,8 @@
 #
 #   feature_group_panel(df, group, ...)        — per §7.1 of PIPELINE_GUIDE,
 #                                                  works on a single group.
-#   feature_group_panel_sweep(df, groups, ...) — iterates groups, returns a
+#   feature_group_panel_sweep(df, include, exclude, ...) — one panel per
+#                                                  selected feature; returns a
 #                                                  named list of results.
 #
 # If you already have feature_group_panel deployed from §7.1, delete the copy
@@ -20,7 +21,7 @@
 #   source("R/load_all.R")
 #   source("analysis/correlations/group_panel_sweep.R")
 #   df  <- build_all()                                # all species, faceted
-#   res <- feature_group_panel_sweep(df)             # all groups
+#   res <- feature_group_panel_sweep(df)             # all exploratory features
 #   res$rnafold_zscores$plot                          # inspect one
 #
 #   # single species (no species facet row):
@@ -42,19 +43,6 @@ suppressPackageStartupMessages({
   library(forcats)
   library(hexbin)   # required by ggplot2::geom_hex()
 })
-
-
-# -----------------------------------------------------------------------------
-# Default-view ergonomics (analysis-layer config, not schema)
-# -----------------------------------------------------------------------------
-# Groups excluded from the default sweep (groups = NULL). These are real,
-# distinct FEATURE_PATTERNS families — not aliases or subsets — but their high
-# cardinality makes them unsuitable for an at-a-glance one-panel-per-group
-# sweep (a 64-facet codon panel would be truncated by max_facets and silently
-# hide members). Request them explicitly with e.g.
-#   feature_group_panel_sweep(df, groups = "codon_freqs", max_facets = 64)
-# This is specific to this tool's default view, so it lives here, not config.R.
-DEFAULT_SWEEP_SKIP <- c("codon_freqs", "aa_freqs")
 
 
 # -----------------------------------------------------------------------------
@@ -244,17 +232,25 @@ feature_group_panel <- function(df,
 #' Run feature_group_panel over every group in FEATURE_PATTERNS.
 #'
 #' One panel per group. Groups must be FEATURE_PATTERNS keys — this tool shows
-#' each schema family on its own, so it does not accept supergroups or bundles
-#' (those are intent-layer objects for multi-group / refined selections; use
-#' feature_correlation_dotplot() or feature_response_scatter() for those).
+#' each schema feature on its own. `include` / `exclude` are expanded with
+#' select_features_v2() and each resulting feature id gets a panel (use
+#' feature_correlation_dotplot() or feature_response_scatter() for figures that
+#' combine features).
 #'
-#' Default (groups = NULL): every family minus DEFAULT_SWEEP_SKIP (high-
-#' cardinality groups like codon_freqs/aa_freqs). Groups that resolve to zero
-#' columns are skipped with a message rather than erroring.
+#' Default: every exploratory feature except codon_freqs and aa_freqs. Their
+#' high cardinality makes them unsuitable for an at-a-glance sweep (a 64-facet
+#' codon panel would be truncated by max_facets and hide members), so the
+#' default `exclude` names them; request them with e.g.
+#'   feature_group_panel_sweep(df, include = "codon_freqs", exclude = NULL,
+#'                             max_facets = 64)
+#' Features that resolve to zero columns are skipped with a message rather
+#' than erroring.
 #'
 #' @param df         Dataframe from build_dataset() or build_all().
-#' @param groups     Character vector of FEATURE_PATTERNS keys. Default: all
-#'                   real families minus DEFAULT_SWEEP_SKIP.
+#' @param include    Selection tokens (see select_features_v2()); default
+#'                   "exploratory".
+#' @param exclude    Tokens to subtract from `include`. Default: codon_freqs
+#'                   and aa_freqs.
 #' @param response   Character. Response column (default "halflife").
 #' @param method     Correlation method (default "spearman").
 #' @param max_facets Integer cap on facets per panel (default 25).
@@ -263,7 +259,8 @@ feature_group_panel <- function(df,
 #' @return Named list keyed by group; each element is list(plot, table).
 #' @export
 feature_group_panel_sweep <- function(df,
-                                      groups     = NULL,
+                                      include    = "exploratory",
+                                      exclude    = c("codon_freqs", "aa_freqs"),
                                       response   = "halflife",
                                       method     = "spearman",
                                       max_facets = 25,
@@ -272,13 +269,8 @@ feature_group_panel_sweep <- function(df,
   
   if (!response %in% names(df)) stop("response '", response, "' not in df")
   
-  if (is.null(groups)) {
-    # Every real FEATURE_PATTERNS family, minus high-cardinality groups that
-    # don't suit an at-a-glance sweep (see DEFAULT_SWEEP_SKIP). Aliases/subsets
-    # no longer exist in the schema, so cardinality is the only skip reason.
-    groups <- setdiff(expand_groups(NULL), DEFAULT_SWEEP_SKIP)
-  }
-  
+  groups <- selected_features(include, exclude)
+
   results <- list()
   
   for (g in groups) {

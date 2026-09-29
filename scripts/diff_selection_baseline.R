@@ -1,15 +1,21 @@
 # =============================================================================
-# Compare the migrated correlation scripts to the step-1 baseline
+# Compare the migrated scripts to the step-1 baseline
 # =============================================================================
-# Runs the ranked, bands, dotplot and scatter functions with their new
+# Part 1 (step 4): runs the ranked, bands, dotplot and scatter functions with their new
 # include / exclude / top_n arguments, exactly as their runners call them, and
 # diffs the (stem, region) sets they plot against scripts/selection_baseline.csv.
+#
+# Part 2 (step 5): compares the columns the other migrated scripts select
+# (region heatmap, correlation workflow, hex panels, sweep, feature-feature
+# table, QC overview, xgb blocks) with the baseline "selected" rows.
 #
 # Expected differences (SELECTION_PLAN.md):
 #   * probing (the four icSHAPE Gini columns) is gone from every "core" job;
 #   * dotplot and scatter "core" jobs used to pin two hand-named codons and two
 #     amino acids (bundle sequence_select); they now show the true top two, as
 #     ranked and bands always did.
+#   * the QC overview covers exploratory features only (owner's decision), so
+#     it loses exactly the columns of features the table excludes.
 # Anything else is a regression.
 #
 # Usage (project root):  Rscript scripts/diff_selection_baseline.R
@@ -97,5 +103,98 @@ for (k in names(now)) {
   for (u in unexpected) cat("    ", u, "\n")
   n_unexpected <- n_unexpected + length(unexpected)
 }
+# =============================================================================
+# Part 2: selected columns of the step-5 scripts
+# =============================================================================
+cat("\n--- step 5: selected columns ---\n")
+bs <- base[base$stage == "selected", ]
+was_cols <- split(bs$column, paste(bs$script, bs$job, sep = " | "))
+was_feat <- split(bs$feature_id, paste(bs$script, bs$job, sep = " | "))
+cols_of <- function(x) selected_columns(x)
+now_cols <- list()
+
+hm  <- load_fns("analysis/correlations/region_feature_heatmap.R")
+wf  <- load_fns("analysis/correlations/correlation_heatmap_workflow.R")
+hx  <- load_fns("analysis/correlations/feature_response_hex_panels.R")
+ff  <- load_fns("analysis/correlations/feature_feature_correlation_table.R")
+qc  <- load_fns("analysis/qc/dataset_overview.R")
+xg  <- load_fns("analysis/models/xgb_structure_features.R")
+
+# region heatmap: every feature that appears in any region's matrix
+hm_core <- c("5utr", "cds", "3utr")   # the runner's regions for each job
+hm_all  <- c("5utr", "cds", "3utr", "mrna", "start", "stop", "last100")
+for (j in list(list("structure", "structure", NULL, hm_core),
+               list("included", "core", top2, hm_all))) {
+  out <- quiet(hm$region_feature_heatmap(
+    df_full, response = "halflife", include = j[[2]], top_n = j[[3]],
+    regions = j[[4]],
+    output_dir = NULL))
+  feats <- unique(unlist(lapply(out, function(o) c(o$table$feature_x, o$table$feature_y))))
+  now_cols[[paste("region_feature_heatmap.R", j[[1]], sep = " | ")]] <- setdiff(feats, "halflife")
+}
+
+# workflow: the candidate set it builds (same call it makes)
+now_cols[["correlation_heatmap_workflow.R | workflow"]] <-
+  cols_of(select_features_v2(df_full, "core", top_n = top2, response = "halflife"))
+
+# hex panels: the table keeps every selected feature
+for (g in c("sequence", "structure")) {
+  out <- quiet(hx$feature_response_hex_panels(df_full, include = g))
+  now_cols[[paste("feature_response_hex_panels.R", g, sep = " | ")]] <- out$table$variable
+}
+
+# sweep: features -> columns
+now_cols[["group_panel_sweep.R | sweep"]] <-
+  unlist(lapply(selected_features("exploratory", c("codon_freqs", "aa_freqs")),
+                fg_columns, df = df_full))
+
+# feature-feature table
+out <- quiet(ff$compute_feature_correlation_table(df_full))
+now_cols[["feature_feature_correlation_table.R | default"]] <-
+  unique(c(out$table$feature_a, out$table$feature_b))
+
+# QC overview: n_columns per feature from the returned table
+out <- quiet(qc$missingness_by_group_plot(df_full))
+now_cols[["dataset_overview.R | overview"]] <-
+  unlist(lapply(unique(as.character(out$table$group)), fg_columns, df = df_full))
+
+# xgb blocks
+now_cols[["xgb_structure_features.R | baseline_columns"]]  <- xg$baseline_columns(df_full)
+now_cols[["xgb_structure_features.R | structure_columns"]] <- xg$structure_columns(df_full)
+
+# The ff table drops non-numeric / response / id columns and the heatmaps drop
+# columns without a region, so those compare against the baseline restricted
+# to what they can show.
+non_expl <- unlist(lapply(setdiff(names(FEATURE_PATTERNS), EXPLORATORY_FEATURES),
+                          fg_columns, df = df_full))
+for (k in names(now_cols)) {
+  w <- unique(was_cols[[k]]); n <- unique(now_cols[[k]])
+  if (grepl("^region_feature_heatmap", k)) {
+    # the heatmaps draw only columns ending in one of the runner's regions
+    hm_regions <- if (grepl("structure$", k)) hm_core else hm_all
+    w <- w[sub("^.*_", "", w) %in% hm_regions]
+  }
+  gone <- setdiff(w, n); added <- setdiff(n, w)
+  is_probing <- gone %in% fg_columns(df_full, "probing")
+  is_pin     <- c(gone, added) %in% unlist(lapply(c("codon_freqs", "aa_freqs"),
+                                                   fg_columns, df = df_full))
+  # allowed: probing leaving core (region heatmap "included" only), pinned
+  # codons/aa becoming the top two (heatmap "included", workflow), and the QC
+  # overview shedding non-exploratory columns
+  allow_probing <- k == "region_feature_heatmap.R | included" ||
+                   k == "correlation_heatmap_workflow.R | workflow"
+  allow_pin     <- allow_probing
+  allow_qc      <- k == "dataset_overview.R | overview"
+  bad_gone <- gone[!(allow_probing & is_probing) &
+                   !(allow_pin & gone %in% unlist(lapply(c("codon_freqs", "aa_freqs"), fg_columns, df = df_full))) &
+                   !(allow_qc & gone %in% non_expl)]
+  bad_add  <- added[!(allow_pin & added %in% unlist(lapply(c("codon_freqs", "aa_freqs"), fg_columns, df = df_full)))]
+  cat(sprintf("%-58s was %3d, now %3d | gone %3d, added %3d | UNEXPECTED %d\n",
+              k, length(w), length(n), length(gone), length(added),
+              length(bad_gone) + length(bad_add)))
+  for (u in c(bad_gone, bad_add)) cat("    ", u, "\n")
+  n_unexpected <- n_unexpected + length(bad_gone) + length(bad_add)
+}
+
 if (n_unexpected) { cat("\n", n_unexpected, " unexpected difference(s)\n", sep = ""); quit(status = 1) }
 cat("\nOnly the expected differences.\n")
