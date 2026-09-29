@@ -24,7 +24,7 @@ cat("Human:", nrow(human), "transcripts,", ncol(human), "features\n")
 # --- 2. Cross-species -------------------------------------------------------
 # bind_rows stacks them on a shared `species` column. Columns absent from
 # one species are NA for those rows.
-combined <- build_all()
+combined <- build_all(names(SPECIES_CONFIG))   # bare build_all() is human-only
 
 # Compare half-life distributions across species
 combined |>

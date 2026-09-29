@@ -40,7 +40,7 @@ suppressPackageStartupMessages({
 # whose within-group correlations are a mathematical artefact (sum to ~1).
 # Defined at load time so it reflects whatever FEATURE_PATTERNS looks like
 # after source("R/load_all.R").
-.FF_DEFAULT_GROUPS <- setdiff(names(FEATURE_PATTERNS), c("codon_freqs", "aa_freqs"))
+.FF_DEFAULT_GROUPS <- setdiff(EXPLORATORY_FEATURES, c("codon_freqs", "aa_freqs"))
 
 # Columns excluded regardless of group membership.
 # Mirrors R10: drop the response and any derived predictions.

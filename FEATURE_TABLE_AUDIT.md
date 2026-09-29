@@ -4,6 +4,25 @@ Reconciliation of `mRNA_stability_supplementary_table - All Features.csv` (54 fe
 rows) against the code and the built data. **Report only — no code, config, CSV or
 analysis script was modified in producing this.**
 
+## Resolution status (updated 2026-09-28)
+
+**The table is now checked in as `R/feature_table.csv` and is the single source of truth** (Part 4). `R/config.R` derives every pattern, group, supergroup and flag from it. `scripts/check_feature_table.R` enforces it against the built cache, so this audit should not need repeating by hand.
+
+| Item | Decision / outcome |
+|---|---|
+| S1 | In progress (the exon/junction encodings). `exon_count_mrna` (the renamed `n_exons`) is excluded again. Exon density moved to the Transcript architecture supergroup, because a group may sit in one supergroup only. |
+| S2 | **Fixed.** Saluki predictions reach the cache (v11) and are a benchmark column, never a predictor. `prediction_difference` is still undefined. |
+| S3, S4 | **Human only**: `ANALYSIS_SPECIES <- "human"`. The table has no species column. |
+| S5 | **Dropped.** RNAplfold row removed. |
+| S6 | **Fixed.** `exon_length_last_mrna` is excluded from both flags. It never reached the structure model. |
+| S7 | **Kept.** The codon row says 64 and explains the three stop-codon columns. |
+| C1–C3, C7 | **Resolved by construction.** Group and supergroup names, regions and display labels come from the table. The checker verifies regions and labels. |
+| C4 | **Fixed.** Every excluded column has a row (Vienna local median, window lengths, `utr5_length`, CDS codon denominators, `stop_dist_last_downstream`). |
+| C5 | Rows for uORF length, first exon length and non-coding fraction dropped. The expression row is kept as "not yet built". |
+| C6 | `noncoding` and the dead naming rules are gone. |
+| C8 | **Fixed.** |
+| Model flag | Follows the code for now: composition-predicted MFE, nucleotide fractions, purine/amino ratios, TE, junction density and Saluki are out of the model. The three NMD transition/transversion features are in. The model's 147 predictors are unchanged. |
+
 ## Sources compared
 
 | Source | What was taken from it |

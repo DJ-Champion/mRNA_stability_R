@@ -3,10 +3,9 @@
 # =============================================================================
 # Three layers, kept deliberately separate:
 #
-#   1. SCHEMA      FEATURE_PATTERNS (regex per real column family) and
-#                  SUPERGROUPS (coarse categorisation). Defined in config.R.
-#                  One entry per real family; each family in exactly one
-#                  supergroup. Stable; changing it is a schema change.
+#   1. SCHEMA      R/feature_table.csv, read by config.R into FEATURE_PATTERNS
+#                  (regex per feature), FEATURE_GROUPS and SUPERGROUPS (the two
+#                  coarser levels), and the exploratory / model flags.
 #
 #   2. INTENT      Reusable named selections live in GROUP_BUNDLES (config.R).
 #                  A bundle is the reusable form of plotting/modelling intent —
@@ -35,25 +34,29 @@
 # Resolution order is always pick-then-drop, so a caller drop trims whatever
 # a bundle pick produced.
 #
+# Selection keys are feature ids, group ids, supergroup ids and bundle names.
+# Expanding a group or supergroup yields only its EXPLORATORY features (the
+# table's "Included in exploratory analysis" flag); naming a feature id
+# directly always yields it. pick/drop are keyed by feature id.
+#
 # Usage:
 #   df %>% select(fg("rnafold_zscores"))
 #   df %>% select(all_of(select_features(df, groups = "structure")))
-#   select_features(df, groups = "lengths")               # a group
+#   select_features(df, groups = "global_folding")        # a group
 #   select_features(df, groups = "lengths_core")          # a bundle
-#   select_features(df, groups = "nmd",
-#                   pick = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
-#                                       "nmd_alt_stop_codon_density_mrna")))
+#   select_features(df, groups = "nmd_susceptibility",
+#                   pick = list(nmd_snv_fragile = "nmd_snv_fragile_codon_density_mrna"))
 # =============================================================================
 
 
 #' Return a tidyselect spec for a named feature group
 #'
-#' @param group Character, a key of FEATURE_PATTERNS.
+#' @param group Character, a feature id (a key of FEATURE_PATTERNS).
 #' @return A tidyselect spec usable inside dplyr::select().
 #' @export
 fg <- function(group) {
   if (!group %in% names(FEATURE_PATTERNS)) {
-    stop("Unknown feature group '", group, "'. Known groups: ",
+    stop("Unknown feature '", group, "'. Known features: ",
          paste(names(FEATURE_PATTERNS), collapse = ", "))
   }
   tidyselect::matches(FEATURE_PATTERNS[[group]])
@@ -63,12 +66,12 @@ fg <- function(group) {
 #' List the columns that match a named feature group in a given dataframe
 #'
 #' @param df A dataframe.
-#' @param group Character, a key of FEATURE_PATTERNS.
+#' @param group Character, a feature id (a key of FEATURE_PATTERNS).
 #' @return Character vector of column names, in `df` column order.
 #' @export
 fg_columns <- function(df, group) {
   if (!group %in% names(FEATURE_PATTERNS)) {
-    stop("Unknown feature group '", group, "'.")
+    stop("Unknown feature '", group, "'.")
   }
   grep(FEATURE_PATTERNS[[group]], names(df), value = TRUE)
 }
@@ -98,18 +101,19 @@ fg_columns <- function(df, group) {
 #' selection means; expand_groups() and select_features() are thin views over
 #' it.
 #'
-#' @param groups Character vector of group / supergroup / bundle names, or NULL
-#'   for every FEATURE_PATTERNS key.
-#' @param pick   Named list: caller's per-group keep-lists.
-#' @param drop   Named list: caller's per-group drop-lists.
-#' @return list(groups = <FEATURE_PATTERNS keys>, pick = <named list>,
-#'   drop = <named list>).
+#' @param groups Character vector of feature / group / supergroup / bundle
+#'   ids, or NULL for every exploratory feature.
+#' @param pick   Named list: caller's per-feature keep-lists.
+#' @param drop   Named list: caller's per-feature drop-lists.
+#' @return list(groups = <feature ids>, pick = <named list>,
+#'   drop = <named list>). The element keeps the name `groups` so existing
+#'   consumers read it unchanged.
 #' @export
 resolve_selection <- function(groups = NULL, pick = list(), drop = list()) {
   bundles <- .group_bundles()
 
   if (is.null(groups)) {
-    return(list(groups = names(FEATURE_PATTERNS), pick = pick, drop = drop))
+    return(list(groups = EXPLORATORY_FEATURES, pick = pick, drop = drop))
   }
 
   out_groups <- character()
@@ -120,7 +124,9 @@ resolve_selection <- function(groups = NULL, pick = list(), drop = list()) {
   walk <- function(tokens, seen) {
     for (g in tokens) {
       if (g %in% names(SUPERGROUPS)) {
-        out_groups <<- c(out_groups, SUPERGROUPS[[g]])
+        out_groups <<- c(out_groups, intersect(SUPERGROUPS[[g]], EXPLORATORY_FEATURES))
+      } else if (g %in% names(FEATURE_GROUPS)) {
+        out_groups <<- c(out_groups, intersect(FEATURE_GROUPS[[g]], EXPLORATORY_FEATURES))
       } else if (g %in% names(bundles)) {
         if (g %in% seen) {
           warning("Bundle '", g, "' is self-referential — cycle broken")
@@ -135,7 +141,7 @@ resolve_selection <- function(groups = NULL, pick = list(), drop = list()) {
       } else if (g %in% names(FEATURE_PATTERNS)) {
         out_groups <<- c(out_groups, g)
       } else {
-        warning("Unknown group, supergroup or bundle: '", g, "' — skipped")
+        warning("Unknown feature, group, supergroup or bundle: '", g, "' — skipped")
       }
     }
   }
@@ -149,18 +155,18 @@ resolve_selection <- function(groups = NULL, pick = list(), drop = list()) {
 }
 
 
-#' Expand group / supergroup / bundle names into FEATURE_PATTERNS keys
+#' Expand selection keys into feature ids
 #'
 #' The group-key-only view of resolve_selection(); pick/drop carried by any
 #' named bundles are resolved but not returned (use resolve_selection() or
 #' select_features() if you need them).
 #'
-#' @param groups Character vector, or NULL for every FEATURE_PATTERNS key.
-#' @return Character vector of FEATURE_PATTERNS keys.
+#' @param groups Character vector, or NULL for every exploratory feature.
+#' @return Character vector of feature ids.
 #' @examples
-#' expand_groups()                              # every group
-#' expand_groups("structure")                   # all structure groups
-#' expand_groups(c("structure", "junctions"))   # mixed
+#' expand_groups()                                      # every exploratory feature
+#' expand_groups("structure")                           # exploratory structure features
+#' expand_groups(c("structure", "junction_abundance"))  # mixed
 #' @export
 expand_groups <- function(groups = NULL) {
   resolve_selection(groups)$groups
@@ -189,15 +195,16 @@ refine_group_columns <- function(members, pick_g = NULL, drop_g = NULL) {
 
 #' Identify which namespace a selection key belongs to.
 #'
-#' Returns "supergroup", "bundle", "group", or "unknown". Useful interactively
-#' when you have a string and aren't sure which function to reach for.
+#' Returns "supergroup", "group", "bundle", "feature", or "unknown". Useful
+#' interactively when you have a string and aren't sure which it is.
 #'
 #' @param key Character scalar — a token you want to use as a selection key.
-#' @return Character scalar: one of "supergroup", "bundle", "group", "unknown".
+#' @return Character scalar.
 #' @examples
 #' lookup_key("structure")       # "supergroup"
+#' lookup_key("global_folding")  # "group"
 #' lookup_key("nmd_core")        # "bundle"
-#' lookup_key("rnafold_zscores") # "group"
+#' lookup_key("rnafold_zscores") # "feature"
 #' lookup_key("typo")            # "unknown"
 #' @export
 lookup_key <- function(key) {
@@ -206,28 +213,29 @@ lookup_key <- function(key) {
   if (exists("SUPERGROUPS", inherits = TRUE) && key %in% names(SUPERGROUPS)) {
     return("supergroup")
   }
-  if (key %in% names(bundles)) return("bundle")
-  if (key %in% names(FEATURE_PATTERNS))  return("group")
+  if (key %in% names(FEATURE_GROUPS))   return("group")
+  if (key %in% names(bundles))          return("bundle")
+  if (key %in% names(FEATURE_PATTERNS)) return("feature")
   "unknown"
 }
 
 
 #' List every known selection key with its namespace and display name.
 #'
-#' Prints (and invisibly returns) a data.frame of all supergroups, bundles,
-#' and groups. Call this interactively to browse what you can pass to
-#' `select_features()`, `fg()`, or any plot's `groups =` argument.
+#' Prints (and invisibly returns) a data.frame of all supergroups, groups,
+#' bundles and features. Call this interactively to browse what you can pass
+#' to `select_features()`, `fg()`, or any plot's `groups =` argument.
 #'
 #' @param kind Character vector. Which namespace(s) to show. Any combination
-#'   of "supergroup", "bundle", "group". Default shows all three.
+#'   of "supergroup", "group", "bundle", "feature". Default shows all four.
 #' @param verbose Logical. If TRUE (default) print a formatted table.
 #' @return Invisibly, a data.frame with columns `key`, `kind`, `display`.
 #' @examples
 #' list_selection_keys()                       # everything
-#' list_selection_keys(kind = "group")         # only FEATURE_PATTERNS keys
+#' list_selection_keys(kind = "feature")       # only feature ids
 #' list_selection_keys(kind = c("supergroup", "bundle"))
 #' @export
-list_selection_keys <- function(kind = c("supergroup", "bundle", "group"),
+list_selection_keys <- function(kind = c("supergroup", "group", "bundle", "feature"),
                                 verbose = TRUE) {
   kind <- match.arg(kind, several.ok = TRUE)
   rows <- list()
@@ -260,13 +268,23 @@ list_selection_keys <- function(kind = c("supergroup", "bundle", "group"),
   }
 
   if ("group" %in% kind) {
-    for (k in names(FEATURE_PATTERNS)) {
-      display <- format_group_name(k, "group")
-      sg      <- supergroup_of(k)
-      sg_str  <- if (is.na(sg)) "(no supergroup)" else sg
+    for (k in names(FEATURE_GROUPS)) {
       rows[[length(rows) + 1]] <- data.frame(
-        key = k, kind = "group", display = display,
-        members = sg_str, stringsAsFactors = FALSE
+        key = k, kind = "group", display = format_group_name(k, "group"),
+        members = paste(FEATURE_GROUPS[[k]], collapse = ", "),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if ("feature" %in% kind) {
+    for (k in names(FEATURE_PATTERNS)) {
+      rows[[length(rows) + 1]] <- data.frame(
+        key = k, kind = "feature", display = format_group_name(k, "feature"),
+        members = paste0(group_of(k),
+                         if (k %in% EXPLORATORY_FEATURES) "" else " [not exploratory]",
+                         if (k %in% MODEL_FEATURES) " [model]" else ""),
+        stringsAsFactors = FALSE
       )
     }
   }
@@ -276,11 +294,11 @@ list_selection_keys <- function(kind = c("supergroup", "bundle", "group"),
 
   if (verbose && nrow(out) > 0) {
     # Print grouped by kind, with aligned columns.
-    for (k in intersect(c("supergroup", "bundle", "group"), unique(out$kind))) {
+    for (k in intersect(c("supergroup", "group", "bundle", "feature"), unique(out$kind))) {
       sub <- out[out$kind == k, , drop = FALSE]
       cat(sprintf("\n--- %ss ---\n", k))
       fmt <- paste0("  %-25s  %-28s  %s\n")
-      cat(sprintf(fmt, "key", "display", if (k == "group") "supergroup" else "members"))
+      cat(sprintf(fmt, "key", "display", if (k == "feature") "group" else "members"))
       cat(sprintf(fmt,
                   strrep("-", 25), strrep("-", 28), strrep("-", 20)))
       for (i in seq_len(nrow(sub))) {
@@ -294,44 +312,85 @@ list_selection_keys <- function(kind = c("supergroup", "bundle", "group"),
 }
 
 
-#' Remove the model-pipeline exclusions from a built dataset
+#' Columns of a dataset that the feature table marks as used nowhere
 #'
-#' The boundary between "the table we built" and "the covariate pool we screen".
+#' The columns matching a row Excluded from both the exploratory analysis and
+#' the model (NEVER_USED_PATTERNS, derived from R/feature_table.csv): Vienna
+#' auxiliary statistics, engineering scaffolding, duplicates and superseded
+#' encodings. The table's Notes column says why for each row.
+#'
+#' @param df A dataframe.
+#' @return Character vector of column names, in `df` column order.
+#' @export
+excluded_columns <- function(df) {
+  hit <- Reduce(`|`, lapply(NEVER_USED_PATTERNS, grepl, x = names(df)),
+                logical(ncol(df)))
+  names(df)[hit]
+}
+
+
+#' Remove the never-used columns from a built dataset
+#'
 #' Call it once, immediately after build_dataset() / build_all(), before
-#' redundancy screening, pool reduction or confounding QC. Everything upstream
-#' of that call — the raw files, the cache, the QC scripts — still sees the
-#' full table; see the EXCLUDED_FEATURES block in config.R for why the drop
-#' cannot move into build_dataset().
-#'
-#' Uses any_of(), so columns absent from a given species are not an error
-#' (mouse legitimately lacks the human-only Vienna median/pval families).
+#' screening or modelling. Never inside build_dataset(): several of these
+#' columns are engineering scaffolding (mfe_expected_* feeds mfe_delta_*,
+#' eej_dist_{up,down}stream_* feed eej_dist_closest_*), and the QC scripts
+#' legitimately read them. The cache stays complete, so changing the table's
+#' flags never needs a CACHE_VERSION bump.
 #'
 #' @param df      Dataframe from build_dataset() / build_all().
 #' @param exclude Character vector of column names. Defaults to
-#'   EXCLUDED_FEATURES; pass your own to screen a different pool.
+#'   excluded_columns(df); pass your own to screen a different pool.
 #' @param verbose Logical. If TRUE (default) report how many columns went.
 #' @return `df` without the excluded columns.
 #' @examples
 #' df <- build_dataset("human") |> drop_excluded()
 #' # keep the Vienna auxiliary stats for one investigation:
-#' df <- build_dataset("human") |>
-#'   drop_excluded(exclude = setdiff(EXCLUDED_FEATURES,
-#'                                   grep("_(median|pval)_", EXCLUDED_FEATURES,
-#'                                        value = TRUE)))
+#' df <- build_dataset("human")
+#' df <- drop_excluded(df, exclude = grep("_(median|pval)_", excluded_columns(df),
+#'                                        value = TRUE, invert = TRUE))
 #' @export
-drop_excluded <- function(df, exclude = EXCLUDED_FEATURES, verbose = TRUE) {
-  hit <- intersect(exclude, names(df))
-
+drop_excluded <- function(df, exclude = excluded_columns(df), verbose = TRUE) {
   if (verbose) {
-    message("drop_excluded: removed ", length(hit), " of ", length(exclude),
-            " excluded columns; ", ncol(df) - length(hit), " remain",
-            if (length(hit) < length(exclude)) {
-              paste0(" (", length(exclude) - length(hit),
-                     " not present in this species)")
-            } else "")
+    message("drop_excluded: removed ", length(intersect(exclude, names(df))),
+            " never-used columns; ",
+            ncol(df) - length(intersect(exclude, names(df))), " remain")
   }
-
   dplyr::select(df, -dplyr::any_of(exclude))
+}
+
+
+#' The model's predictor columns, from the table's "Included in model" flag
+#'
+#' @param df       A dataframe.
+#' @param features Feature ids to draw from; default every model feature.
+#'   Intersected with MODEL_FEATURES, so passing a supergroup's members yields
+#'   that supergroup's model block.
+#' @return Character vector of column names, ordered by table row then `df`.
+#' @examples
+#' model_columns(df)                                           # every predictor
+#' model_columns(df, SUPERGROUPS$structure)                    # structure block
+#' @export
+model_columns <- function(df, features = MODEL_FEATURES) {
+  ids <- intersect(MODEL_FEATURES, features)
+  unique(unlist(lapply(ids, function(g) fg_columns(df, g)), use.names = FALSE))
+}
+
+
+#' Is a feature a single region-less column (e.g. cai, translation efficiency)?
+#'
+#' Region-aware plots place such columns in the `mrna` slot. True when the
+#' feature's regex is one literal column name whose last token is not a region.
+#' @param feature Character vector of feature ids.
+#' @return Logical vector.
+#' @export
+is_regionless_feature <- function(feature) {
+  vapply(feature, function(g) {
+    p <- FEATURE_PATTERNS[[g]]
+    if (is.null(p) || !grepl("^\\^[a-z0-9_]+\\$$", p)) return(FALSE)
+    toks <- strsplit(gsub("[$^]", "", p), "_", fixed = TRUE)[[1]]
+    !toks[length(toks)] %in% REGIONS
+  }, logical(1), USE.NAMES = FALSE)
 }
 
 

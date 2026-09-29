@@ -92,13 +92,15 @@ feature_group_panel <- function(df,
   if (!group %in% names(FEATURE_PATTERNS)) {
     extra <- ""
     if (group %in% names(SUPERGROUPS)) {
-      extra <- " (it is a supergroup; this tool is single-group only)"
+      extra <- " (it is a supergroup; this tool is single-feature only)"
+    } else if (group %in% names(FEATURE_GROUPS)) {
+      extra <- " (it is a group; this tool is single-feature only)"
     } else if (exists("GROUP_BUNDLES", inherits = TRUE) &&
                group %in% names(GROUP_BUNDLES)) {
-      extra <- " (it is a bundle; this tool is single-group only)"
+      extra <- " (it is a bundle; this tool is single-feature only)"
     }
-    stop("group '", group, "' not in FEATURE_PATTERNS", extra,
-         " — see R/config.R")
+    stop("'", group, "' is not a feature id", extra,
+         " — see R/feature_table.csv")
   }
   
   # --- R3: use fg_columns to enumerate ------------------------------------

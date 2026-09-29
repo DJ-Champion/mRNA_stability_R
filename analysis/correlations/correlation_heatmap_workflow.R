@@ -32,7 +32,7 @@
 #      are represented.
 #
 # FEATURE SELECTION:
-#   Starts from INCLUDED_GROUPS (defined in config.R). All selection is
+#   Starts from DEFAULT_PLOT_GROUPS (defined in config.R). All selection is
 #   diagnostic/candidate. Do not automatically discard biologically central
 #   corrected structure features (rnafold_zscores, mfe_deltas) purely
 #   because their marginal correlation with half-life is weak.
@@ -93,23 +93,27 @@ suppressPackageStartupMessages({
   rnalfold_scores  = 5L,   # RNAlfold local structure
   rnalfold_zscores = 6L,   # RNAlfold z-score
   probing          = 7L,   # icSHAPE Gini
-  nmd              = 8L,   # NMD fragility
-  junctions        = 9L,   # junctions
-  eej_dist         = 10L,  # EEJ distances
+  nmd_snv_fragile  = 8L,   # NMD fragility
+  nmd_alt_stop     = 8L,
+  nmd_transition   = 8L,
+  nmd_transversion = 8L,
+  nmd_transition_fraction = 8L,
+  junction_density = 9L,   # junctions
+  eej_dist_closest = 10L,  # EEJ distances
   stopfree         = 11L,  # stop-free length
   gc               = 12L,  # GC content
   nuc_ratios       = 13L,  # nucleotide ratios (frac_*)
-  compositional    = 14L,  # purine / amino ratios
-  skews            = 15L,  # AT/GC skew
+  purine_ratio     = 14L,  # purine / amino ratios
+  amino_ratio      = 14L,
+  at_skew          = 15L,  # AT/GC skew
+  gc_skew          = 15L,
   lengths          = 16L,  # length
-  introns          = 17L,
-  exons            = 18L,
-  noncoding        = 19L,
   exon_density     = 20L,
-  uorfs            = 21L,
+  uorf_present     = 21L,
   codon_freqs      = 22L,
   aa_freqs         = 23L,
-  standalone       = 24L
+  cai              = 24L,  # single region-less columns
+  te               = 24L
 )
 
 
@@ -877,7 +881,7 @@ write_correlation_outputs <- function(feature_target_tbl = NULL,
 #'                                     or NULL (default) to use all unique
 #'                                     values in df$species.
 #' @param groups                       Feature groups/bundles to include
-#'                                     (default INCLUDED_GROUPS from config.R).
+#'                                     (default DEFAULT_PLOT_GROUPS from config.R).
 #' @param target_col                   Response column name (default
 #'                                     "halflife").
 #' @param correlation_method           Correlation method (default "spearman").
@@ -913,7 +917,7 @@ write_correlation_outputs <- function(feature_target_tbl = NULL,
 #' @export
 run_correlation_heatmap_workflow <- function(df,
                                              species                        = NULL,
-                                             groups                         = INCLUDED_GROUPS,
+                                             groups                         = DEFAULT_PLOT_GROUPS,
                                              target_col                     = "halflife",
                                              correlation_method             = "spearman",
                                              top_n_target_features          = c(30L, 50L, 100L),
@@ -1224,7 +1228,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   out <- run_correlation_heatmap_workflow(
     df,
-    groups                         = INCLUDED_GROUPS,
+    groups                         = DEFAULT_PLOT_GROUPS,
     target_col                     = "halflife",
     correlation_method             = "spearman",
     top_n_target_features          = c(30L, 50L, 100L),

@@ -95,138 +95,93 @@ These are the only legal region suffixes. Defined in `REGIONS` in `R/config.R`:
 
 DO NOT invent new suffixes. If a feature genuinely needs a new region, add it to `REGIONS` first and document it in this table.
 
-### 2.2 Column-name patterns (canonical → display)
+### 2.2 The feature table — the single source of truth
 
-Every `FEATURE_PATTERNS` key, its regex, its supergroup, and a real example. Column counts are for the current human build; regenerate with `list_selection_keys()` / `fg_columns()` rather than trusting this table if something looks off.
+**`R/feature_table.csv` defines every feature.** One row per feature. Each row gives:
 
-| Group key          | Regex                          | Supergroup    | Example column            | Display string          |
-|--------------------|--------------------------------|---------------|---------------------------|-------------------------|
-| `lengths`          | `^length_`                     | `intrinsic`   | `length_cds`              | `Length CDS`            |
-| `gc`               | `^gc_content_`                 | `intrinsic`   | `gc_content_5utr`         | `G+C% 5' UTR`           |
-| `stopfree`         | `^stopfree_`                   | `intrinsic`   | `stopfree_length_3utr`    | `Stop-free 3' UTR`      |
-| `skews`            | `^(gc\|at)_skew_`              | `intrinsic`   | `gc_skew_cds`             | `GC-skew CDS`           |
-| `codon_freqs`      | `^codon_`                      | `intrinsic`   | `codon_aaa_cds`           | `Codon.AAA%`            |
-| `aa_freqs`         | `^aa_`                         | `intrinsic`   | `aa_l_cds`                | `aa.L%`                 |
-| `nuc_ratios`       | `^frac_`                       | `intrinsic`   | `frac_a_cds`              | `nt.A% CDS`             |
-| `compositional`    | `^(purine_\|amino_)`           | `intrinsic`   | `purine_ratio_cds`        | `A+G% CDS`              |
-| `rnafold_scores`   | `^rnafold_score_`              | `structure`   | `rnafold_score_mrna`      | `MFE mRNA`              |
-| `rnafold_zscores`  | `^rnafold_zscore_`             | `structure`   | `rnafold_zscore_5utr`     | `MFE.z 5' UTR`          |
-| `rnafold_per_nt`   | `^rnafold_per_nt_`             | `structure`   | `rnafold_per_nt_cds`      | `MFE/nt CDS`            |
-| `mfe_expected`     | `^mfe_expected_`               | `structure`   | `mfe_expected_cds`        | `MFE.exp. CDS`          |
-| `mfe_deltas`       | `^mfe_delta_`                  | `structure`   | `mfe_delta_3utr`          | `MFE.delta 3' UTR`      |
-| `rnalfold_scores`  | `^rnalfold_score_`             | `structure`   | `rnalfold_score_5utr`     | `min.local.MFE 5' UTR`  |
-| `rnalfold_zscores` | `^rnalfold_zscore_`            | `structure`   | `rnalfold_zscore_cds`     | `min.local.MFE.z CDS`   |
-| `probing`          | `^gini_`                       | `structure`   | `gini_cytoplasm_cds`      | `icSHAPE.cyto CDS`      |
-| `junctions`        | `^junctions_`                  | `splicing`    | `junctions_count_cds`     | `Junction count CDS`    |
-| `eej_dist`         | `^eej_dist_`                   | `splicing`    | `eej_dist_closest_start`  | `EEJ.closest start codon` |
-| `introns`          | `^intron_`                     | `splicing`    | `intron_length_mean_mrna` | `Mean intron length mRNA` |
-| `exons`            | `^exon_(count\|length)_`       | `splicing`    | `exon_count_internal_mrna`| `Number of internal exons mRNA` |
-| `noncoding`        | `^noncoding_`                  | `splicing`    | *(none in current build)* | —                       |
-| `uorfs`            | `^(uorf_\|dist_cap_)`          | `translation` | `uorf_count_mrna`         | `uORF count mRNA`       |
-| `exon_density`     | `^exon_density_`               | `translation` | `exon_density_cds`        | `Exon density CDS`      |
-| `nmd`              | `^nmd_`                        | `decay`       | `nmd_snv_fragile_codon_density_mrna` | `NMD frag. mRNA` |
-| `standalone`       | `^(cai\|translation_efficiency\|orfexondensity)$` | `other` | `cai` | `CAI`         |
+- `feature_id` and `columns`, the regex that claims that feature's columns;
+- its place in the **Supergroup > Group > Feature** hierarchy;
+- the two flags, **Included in exploratory analysis** and **Included in model**;
+- its display names and colour;
+- its Regions, Description and Notes (why it is in or out).
 
-Reserved single-token columns, matched by no group: `halflife`, `gene_id`, `gene_name`, `transcript_id`, `species`, `saluki_prediction`, `prediction_difference`.
+`R/config.R` reads the table and derives `FEATURE_PATTERNS`, `FEATURE_GROUPS`, `SUPERGROUPS`, `EXPLORATORY_FEATURES`, `MODEL_FEATURES` and `NEVER_USED_PATTERNS`. `R/utils/palettes.R` takes colours and display names from it, and `R/utils/naming.R` takes labels from it. **Edit the table, never those objects.** Then run:
 
-**Two schema invariants.** Both are load-bearing; violating either produces silent misbehaviour rather than an error.
+```bash
+Rscript scripts/check_feature_table.R
+```
 
-1. **The patterns are mutually exclusive.** No column may match two groups. Any plot that builds a column → group map (the dotplot, the response scatter, the heatmap workflow) will otherwise double-assign the column and draw it twice. This is why `gc` is anchored at `^gc_content_` rather than `^gc_` (which would swallow the `skews` columns) and `exons` at `^exon_(count|length)_` (which would otherwise swallow `exon_density`).
-2. **Every group belongs to exactly one supergroup.** A group missing from `SUPERGROUPS` gets `supergroup_of() == NA` and is silently pooled into the `other` facet.
+It fails if any of these is broken:
 
-> **`standalone` is a group, not a set of loose columns.** `cai`, `translation_efficiency` and `orfexondensity` are genuinely region-less, so they are one group (in the `other` supergroup) rather than one group per column. They map to the `mrna` slot in region-aware plots. Their *labels* still come from `format_col_name()`, because each is a distinct column rather than a family — only the key `standalone` itself goes through `format_group_name()`.
+- a cache column is claimed by no row, or by two;
+- a row's regex matches nothing;
+- a row's Regions disagree with its columns;
+- a label differs from the table's short name;
+- an exploratory feature lacks a colour;
+- a bundle names an unknown key;
+- the model would see an identifier or benchmark column.
+
+**Three levels, one flat selection namespace.** A selection key is any of the following, and ids must not collide across levels (config.R refuses a table where they do):
+
+- a **feature id** (a table row);
+- a **group id**, the table's Group snake-cased: "Global folding" → `global_folding`;
+- a **supergroup id**: "Transcript architecture" → `transcript_architecture`;
+- a **bundle** name.
+
+Browse them with `list_selection_keys()`.
+
+**What the flags do.**
+
+| Flag | Effect |
+|---|---|
+| Included in exploratory analysis | Expanding a group or supergroup yields only its exploratory features. Naming a feature id directly always yields it, so a plot can reach an excluded feature deliberately. |
+| Included in model | `model_columns(df)`: the model's predictor list. The structure model's blocks are its Structure and non-Structure parts. |
+| Excluded from both | Used nowhere. `drop_excluded()` removes these columns (`excluded_columns(df)` lists them). |
+
+Rows in the "Response / evaluation" supergroup (`halflife`, `saluki`) and rows with no `columns` (a feature not yet built) are documented but are not features: they cannot be selected.
+
+**Two schema invariants,** both enforced:
+
+1. **The patterns are mutually exclusive.** No column may match two rows. Plots that build a column → feature map (the dotplot, the response scatter, the heatmap workflow) would otherwise draw a column twice. The checker enforces this.
+2. **Every group sits in exactly one supergroup.** Enforced when config.R reads the table.
+
+> **Region-less features.** `cai` and `translation_efficiency` are single columns with no region suffix. `is_regionless_feature()` recognises them from their literal regex, and region-aware plots place them in the `mrna` slot.
 
 > **Whole-transcript scalars carry the real `mrna` suffix.** Architecture (`intron_length_mean_mrna`, …), uORF (`uorf_count_mrna`, …) and NMD fragility (`nmd_snv_fragile_codon_density_mrna`, …) all end in `mrna`. The old `transcript` pseudo-region and the `window`/`core`/`full` NMD pseudo-regions are gone; there is one NMD fragility model and "NMD" appears only as a metric-name prefix in the display string.
 
-### 2.3 Display-label round-trip rule
+### 2.3 Display labels
 
-Every column that will appear on a plot axis, legend, or title **MUST** have a `format_col_name()` result that is human-readable (no underscores leaking through, no raw regex tokens, no `NA`).
+Every column that appears on a plot **MUST** have a human-readable `format_col_name()` result.
 
-**Test:** for any new column `x` you add to the pipeline, run `format_col_name("x")` interactively. If the output still contains underscores or looks like a debug string, add a `REPLACEMENTS` entry in `R/utils/naming.R`.
+**Where labels come from.** Most rows are either one literal stem followed by a region token (`^mfe_delta_` + `cds`) or one literal column (`^cai$`). For these, the table's **Display Short name** is the label, plus the region's display string: `mfe_delta_cds` → `MFE.Δ CDS`. **To change a label, edit the table.**
 
-### 2.4 Quick lookup index — every `format_col_name()` rule
+**The exceptions.** A few rows cannot share one label across their columns. Their labels come from `format_single_name()` and a short `REPLACEMENTS` list in `R/utils/naming.R`:
 
-Reference for every active `REPLACEMENTS` rule in `R/utils/naming.R`, **in the order they are applied** (order matters — later rules operate on the output of earlier ones). **Notation:** `prefix_` = prefix-anchored regex (`^prefix_`); `[exact]` = exact-match regex (`^token$`). For columns built from a prefix + region (e.g. `length_cds`), the region token is then substituted by the region-suffix rules below.
+| Row | Why one label cannot cover it |
+|---|---|
+| codon and amino-acid frequencies | The codon or residue is uppercased into the label: `codon.AAA%`, `aa.L%` |
+| nucleotide fractions | One label per base: `nt.A%` |
+| icSHAPE | One label per compartment: `icSHAPE.nuc`, `icSHAPE.cyto` |
+| multi-column rows (uORF count, intron length, …) | The columns differ by more than their region |
 
-The house style is compact and dotted (`MFE.z`, `G+C%`, `nt.A%`, `icSHAPE.cyto`) rather than prose — these labels are sized for dense small-multiples panels, not standalone figure captions.
+The checker verifies these against the short name too. Placeholders such as `<codon>` match any token.
 
-> This table is hand-maintained and *will* drift. It is a convenience, not the source of truth. When it matters, run `format_col_name("<column>")`.
+The house style is compact and dotted (`MFE.z`, `C+G%`, `nt.A%`, `icSHAPE.cyto`) rather than prose. The labels are sized for dense small-multiples panels.
 
-#### Metric rules, in application order
-
-| Pattern                                   | Example column                              | Display result                    |
-|-------------------------------------------|---------------------------------------------|-----------------------------------|
-| `nmd_transversion_fragile_codon_density_` | `nmd_transversion_fragile_codon_density_mrna` | `NMD transversion fragile codon density mRNA` |
-| `nmd_snv_fragile_codon_density_`          | `nmd_snv_fragile_codon_density_mrna`        | `NMD frag. mRNA`                  |
-| `nmd_alt_stop_codon_density_`             | `nmd_alt_stop_codon_density_mrna`           | `NMD alt-stop mRNA`               |
-| `nmd_transition_fraction_of_snv_fragile_` | `nmd_transition_fraction_of_snv_fragile_mrna` | `NMD transition fragile codon fraction mRNA` |
-| `nmd_transition_fragile_codon_density_`   | `nmd_transition_fragile_codon_density_mrna` | `NMD transition fragile codon density mRNA` |
-| `intron_length_mean_`                     | `intron_length_mean_mrna`                   | `Mean intron length mRNA`         |
-| `exon_length_first_`                      | `exon_length_first_mrna`                    | `First exon length mRNA`          |
-| `exon_length_last_`                       | `exon_length_last_mrna`                     | `Last exon length mRNA`           |
-| `exon_count_internal_`                    | `exon_count_internal_mrna`                  | `Number of internal exons mRNA`   |
-| `noncoding_length_fraction_`              | `noncoding_length_fraction_mrna`            | `Non-coding length fraction mRNA` |
-| `frac_a` / `frac_c` / `frac_g` / `frac_u` | `frac_a_cds`                                | `nt.A% CDS`                       |
-| `at_skew_`                                | `at_skew_3utr`                              | `AT-skew 3' UTR`                  |
-| `gc_skew_`                                | `gc_skew_3utr`                              | `GC-skew 3' UTR`                  |
-| `purine_ratio_`                           | `purine_ratio_cds`                          | `A+G% CDS`                        |
-| `amino_ratio_`                            | `amino_ratio_cds`                           | `A+C% CDS`                        |
-| `gc_content_`                             | `gc_content_5utr`                           | `G+C% 5' UTR`                     |
-| `junctions_count_`                        | `junctions_count_cds`                       | `Junction count CDS`              |
-| `eej_dist_downstream`                     | `eej_dist_downstream_stop`                  | `EEJ dist. downstream stop codon` |
-| `eej_dist_upstream_`                      | `eej_dist_upstream_start`                   | `EEJ dist. upstream start codon`  |
-| `eej_dist_closest_`                       | `eej_dist_closest_start`                    | `EEJ.closest start codon`         |
-| `uorf_count_`                             | `uorf_count_mrna`                           | `uORF count mRNA`                 |
-| `uorf_present_`                           | `uorf_present_mrna`                         | `uORF mRNA`                       |
-| `dist_cap_to_first_uatg_`                 | `dist_cap_to_first_uatg_mrna`               | `Dist. cap to first uATG mRNA`    |
-| `halflife` [exact]                        | `halflife`                                  | `Half-life`                       |
-| `gene_name` [exact]                       | `gene_name`                                 | `Gene name`                       |
-| `gene_id` [exact]                         | `gene_id`                                   | `Ensembl gene ID`                 |
-| `transcript_id` [exact]                   | `transcript_id`                             | `Transcript ID`                   |
-| `translation_efficiency` [exact]          | `translation_efficiency`                    | `Translation efficiency`          |
-| `saluki_prediction` [exact]               | `saluki_prediction`                         | `Saluki prediction`               |
-| `prediction_difference` [exact]           | `prediction_difference`                     | `Prediction difference`           |
-| `species` [exact]                         | `species`                                   | `Species`                         |
-| `rnafold_zscore_`                         | `rnafold_zscore_5utr`                       | `MFE.z 5' UTR`                    |
-| `rnafold_score_`                          | `rnafold_score_mrna`                        | `MFE mRNA`                        |
-| `mfe_expected_`                           | `mfe_expected_cds`                          | `MFE.exp. CDS`                    |
-| `mfe_delta_`                              | `mfe_delta_3utr`                            | `MFE.delta 3' UTR`                |
-| `rnafold_median_`                         | `rnafold_median_5utr`                       | `MFE.median 5' UTR`               |
-| `rnafold_pval_`                           | `rnafold_pval_cds`                          | `MFE.p-value CDS`                 |
-| `rnafold_per_nt_`                         | `rnafold_per_nt_cds`                        | `MFE/nt CDS`                      |
-| `rnalfold_zscore_`                        | `rnalfold_zscore_cds`                       | `min.local.MFE.z CDS`             |
-| `rnalfold_score_`                         | `rnalfold_score_5utr`                       | `min.local.MFE 5' UTR`            |
-| `rnalfold_median_`                        | `rnalfold_median_cds`                       | `min.local.MFE.median CDS`        |
-| `rnalfold_pval_`                          | `rnalfold_pval_cds`                         | `min.local.MFE.p-value CDS`       |
-| `junctions_density_`                      | `junctions_density_cds`                     | `Junction density CDS`            |
-| `junctions_` (fallback)                   | `junctions_mrna`                            | `Junctions mRNA`                  |
-| `stopfree_length_`                        | `stopfree_length_3utr`                      | `Stop-free 3' UTR`                |
-| `length_`                                 | `length_cds`                                | `Length CDS`                      |
-| `exon_density_`                           | `exon_density_cds`                          | `Exon density CDS`                |
-| `cai` [exact]                             | `cai`                                       | `CAI`                             |
-| `orfexondensity` [exact]                  | `orfexondensity`                            | `ORF-exon dens.`                  |
-| `codon_`                                  | see special case below                      | `Codon.AAA%`                      |
-| `aa_`                                     | see special case below                      | `aa.L%`                           |
-| `gini_nucleoplasm_`                       | `gini_nucleoplasm_cds`                      | `icSHAPE.nuc CDS`                 |
-| `gini_cytoplasm_`                         | `gini_cytoplasm_cds`                        | `icSHAPE.cyto CDS`                |
-
-**Ordering constraints that matter.** `gc_content_` and `gc_skew_` must both precede any broader `gc_` rule. `junctions_count_` and `junctions_density_` must both precede the `junctions_` fallback. NMD metric-prefix rules render to `"NMD <metric> "` with a trailing space, so the region rule can apply cleanly afterwards.
-
-**Two special cases, handled in code rather than by a rule.** `format_single_name()` intercepts `^codon_([acgtu]{3})_cds$` → `Codon.AAA%` and `^aa_([a-z])_cds$` → `aa.L%` before the `REPLACEMENTS` loop runs. This uppercases the token and drops the region suffix, avoiding 84 exact-match rules and R's lack of PCRE2 case-folding in `sub()`.
+> **PDF output.** The base `pdf()` device cannot draw non-Latin-1 characters. That affects `Δ` in `MFE.Δ` and `→` in two never-used labels, as well as the `ρ` and em dashes already in some titles. Save figures that carry them with `device = cairo_pdf`, or as PNG/JPG.
 
 #### Region-suffix rules
 
-These fire **last**, after every prefix rule has consumed the leading portion
-of the column name. Each matches a single leading separator (space *or*
-underscore) plus a region token, end-anchored — `[ _]<region>$`. They combine
-with a prefix rule to produce the full display string (e.g. prefix
-`nmd_fragile_codon_density_` + region `mrna` → `NMD fragile codon density
-mRNA`). The region tokens and their display strings are in the table below.
+For fallback labels only, these fire **last**, after every prefix rule has
+consumed the leading portion of the column name. Each matches a single
+leading separator (space *or* underscore) plus a region token, end-anchored —
+`[ _]<region>$`. Table-driven labels append `REGION_DISPLAYS` directly.
 
 #### Region tokens
 
-Substituted into prefixed columns by the region-suffix rules above. The eight
-tokens are the complete `REGIONS` vocabulary (§2.1).
+The eight tokens are the complete `REGIONS` vocabulary (§2.1). The table's
+Regions column uses these display strings, and the checker compares it with
+each row's columns.
 
 | Token       | Display string         |
 |-------------|------------------------|
@@ -239,7 +194,7 @@ tokens are the complete `REGIONS` vocabulary (§2.1).
 | `start`     | `start codon`          |
 | `stop`      | `stop codon`           |
 
-**If a column you want to display isn't in this index:** it will fall through to the default behaviour — underscores replaced with spaces, no other transformation. Add a `REPLACEMENTS` entry in `R/utils/naming.R` rather than working around it in the plot.
+**If a column has no table row,** the checker fails. Add a row rather than working around it in the plot.
 
 ---
 
@@ -257,25 +212,30 @@ These are the functions every extender code should rely on. DO NOT reach into in
 | `validate_splits(assigned)`       | `R/pipeline/splits.R`                      | Assert the blocking guarantee before modelling   |
 | `META_COLS` / `ID_COLS` / `FAMILY_COLS` | constants in `R/config.R`            | Columns carried on every row but never predictors |
 | `BLOCK_LEVEL`                     | constant in `R/config.R`                   | Which clustering level blocks the splits (`medium`) |
-| `fg(group)`                       | `R/utils/feature_groups.R`                 | Tidyselect spec for a named group                |
-| `fg_columns(df, group)`           | `R/utils/feature_groups.R`                 | Inspect what a group resolves to in this df      |
-| `select_features(df, groups, pick, drop)` | `R/utils/feature_groups.R` | Resolve groups/supergroups/bundles + pick/drop → column names |
-| `resolve_selection(groups, pick, drop)`   | `R/utils/feature_groups.R` | Normalise a selection → `(groups, pick, drop)` triple         |
-| `expand_groups(groups)`                   | `R/utils/feature_groups.R` | Group/supergroup/bundle names → `FEATURE_PATTERNS` keys        |
-| `refine_group_columns(members, pick, drop)` | `R/utils/feature_groups.R` | Apply one group's pick/drop — the shared semantics plots must reuse |
-| `lookup_key(key)`                         | `R/utils/feature_groups.R` | Tell which namespace a string belongs to: "supergroup" / "bundle" / "group" / "unknown" |
-| `list_selection_keys(kind)`               | `R/utils/feature_groups.R` | Browse all groups, supergroups, and bundles with display names |
-| `supergroup_of(group)`                    | `R/config.R`               | Reverse lookup: group key → its supergroup (`NA` if unregistered) |
-| `SUPERGROUPS`                             | constant in `R/config.R`   | Coarse group → member-group categorisation                     |
+| `R/feature_table.csv`             | —                                          | **The feature definitions.** Everything below that describes features is derived from it |
+| `scripts/check_feature_table.R`   | —                                          | Verify the table against a built cache; non-zero exit on any mismatch |
+| `fg(feature)`                     | `R/utils/feature_groups.R`                 | Tidyselect spec for one feature                  |
+| `fg_columns(df, feature)`         | `R/utils/feature_groups.R`                 | Inspect what a feature resolves to in this df    |
+| `select_features(df, groups, pick, drop)` | `R/utils/feature_groups.R` | Resolve feature/group/supergroup/bundle ids + pick/drop → column names |
+| `resolve_selection(groups, pick, drop)`   | `R/utils/feature_groups.R` | Normalise a selection → `(feature ids, pick, drop)` triple     |
+| `expand_groups(groups)`                   | `R/utils/feature_groups.R` | Selection keys → feature ids                                   |
+| `refine_group_columns(members, pick, drop)` | `R/utils/feature_groups.R` | Apply one feature's pick/drop — the shared semantics plots must reuse |
+| `model_columns(df, features)`             | `R/utils/feature_groups.R` | The model's predictor columns (table flag)                     |
+| `excluded_columns(df)` / `drop_excluded(df)` | `R/utils/feature_groups.R` | List / remove the never-used columns                        |
+| `lookup_key(key)`                         | `R/utils/feature_groups.R` | "supergroup" / "group" / "bundle" / "feature" / "unknown"      |
+| `list_selection_keys(kind)`               | `R/utils/feature_groups.R` | Browse every selection key with display names                  |
+| `supergroup_of(f)` / `group_of(f)`        | `R/config.R`               | Reverse lookup: feature id → its supergroup / group            |
+| `FEATURE_GROUPS` / `SUPERGROUPS`          | constants in `R/config.R`  | Group / supergroup id → feature ids (from the table)           |
+| `EXPLORATORY_FEATURES` / `MODEL_FEATURES` | constants in `R/config.R`  | Feature ids carrying each flag (from the table)                |
 | `GROUP_BUNDLES`                           | constant in `R/config.R`   | Reusable named selections (intent, not schema)                 |
-| `INCLUDED_GROUPS`                         | constant in `R/config.R`   | The project's default selection; the default `groups =` for the dotplot, response scatter, region heatmap and heatmap workflow |
+| `DEFAULT_PLOT_GROUPS`                     | constant in `R/config.R`   | The default `groups =` for the dotplot, response scatter, region heatmap and heatmap workflow. A plotting default only |
 | `format_col_name(x)`              | `R/utils/naming.R`                         | Canonical column name → display string (vectorised) |
-| `format_group_name(x, kind)`      | `R/utils/palettes.R`                       | Group / supergroup / bundle key → display string (vectorised) |
+| `format_group_name(x, kind)`      | `R/utils/palettes.R`                       | Feature / group / supergroup / bundle key → display string (vectorised) |
 | `format_metric_name(x)`           | `R/utils/palettes.R`                       | Column → display string with the region suffix stripped |
 | `feature_colour(group)` / `region_colour(r)` / `region_shape(r)` | `R/utils/palettes.R` | Palette accessors with a documented fallback |
 | `clear_snapshot(species)`         | `R/io/cache.R`                             | Force next build to rebuild                      |
 | `REGIONS`                         | constant in `R/config.R`                   | The legal region suffix vocabulary               |
-| `FEATURE_PATTERNS`                | constant in `R/config.R`                   | Group → regex registry                           |
+| `FEATURE_PATTERNS`                | constant in `R/config.R`                   | Feature id → regex (from the table)              |
 | `REGION_COLOURS` / `REGION_SHAPES` / `REGION_DISPLAYS` | constants in `R/utils/palettes.R` | Per-region visual vocabulary        |
 | `SPECIES_CONFIG`                  | constant in `R/config.R`                   | Species registry                                 |
 | `OUTPUT_DIR`                      | constant in `R/config.R`                   | `data/outputs` — base path for all outputs       |
@@ -305,7 +265,7 @@ DO NOT `source()` individual pipeline files. DO NOT redefine pipeline functions 
 
 DO NOT read `.rds` cache files directly. DO NOT call loaders. DO NOT bypass the engineering step. The only legal entry points are `build_dataset(species)` and `build_all()`.
 
-### R3 — Select column groups with `fg()`, never hand-rolled regex
+### R3 — Select features with `fg()` / `select_features()`, never hand-rolled regex
 
 **DO:**
 ```r
@@ -317,31 +277,29 @@ df |> select(halflife, fg("rnafold_zscores"), fg("rnalfold_zscores"))
 df |> select(halflife, matches("^rnafold_zscore_"), starts_with("rnal"))
 ```
 
-If the group you need does not exist in `FEATURE_PATTERNS`, **add it** (see §6.4). DO NOT inline a regex.
+If the feature you need has no row in `R/feature_table.csv`, **add one** (see §6.4). DO NOT inline a regex.
 
 ### R3a — Select *subsets* through the selection layer, never new schema groups
  
-`fg()` (R3) selects a whole group. When you need **less than a whole group** —
-the top few members, one or two named columns, or everything-but-one — that is
-*selection intent*, and it MUST be expressed through the selection layer, not by
-adding a narrower entry to `FEATURE_PATTERNS`.
+`fg()` (R3) selects a whole feature. When you need **less than a whole
+feature** — the top few members, one or two named columns, or everything-but-one
+— that is *selection intent*, and it MUST be expressed through the selection
+layer, not by adding a narrower row to the feature table.
  
-`FEATURE_PATTERNS` and `SUPERGROUPS` are **schema**: one entry per real column
-family, each family in exactly one supergroup. DO NOT add subset or alias
-entries to them (the deleted `*_some`, `mfe_scores`, `mfe_zscores` keys were
-exactly this mistake — a subset masquerading as a family). A subset group
-pollutes `expand_groups()`, double-assigns columns in any plot that builds a
-column→group map, and forces ad-hoc exclusion lists.
+The feature table is **schema**: one row per real column family, each in
+exactly one group and supergroup. DO NOT add subset or alias rows (the deleted
+`*_some`, `mfe_scores`, `mfe_zscores` keys were exactly this mistake — a subset
+masquerading as a family). A subset row double-claims columns, which the
+checker rejects.
  
 Three tools express subset intent:
  
 ```r
 # select_features(): the one entry point for "which columns does this use".
-# Accepts groups / supergroups / bundles + per-group pick/drop.
+# Accepts feature / group / supergroup / bundle ids + per-feature pick/drop.
 select_features(df, groups = "structure")
-select_features(df, groups = "nmd",
-                pick = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
-                                    "nmd_alt_stop_codon_density_mrna")))
+select_features(df, groups = "nmd_susceptibility")      # a group: its exploratory features
+select_features(df, groups = c("nmd_snv_fragile", "nmd_alt_stop"))
 select_features(df, groups = "probing",
                 drop = list(probing = "gini_nucleoplasm_cds"))
 ```
@@ -360,36 +318,23 @@ resolve all three through `resolve_selection()` + `refine_group_columns()` (see
 §6.1, step 3). This keeps selection semantics identical across every plot and is
 the only sanctioned way to refine a group inside a plot.
 
-**Labelling a group / supergroup / bundle key.** `format_col_name()` is for
-*column* names and produces wrong output on selection keys (`aa_freqs` →
-"AA freq. freqs", `gc` → "gc"). When a plot renders a group, supergroup, or
-bundle **key** as visible text — a facet strip, a legend, an axis tick keyed by
-group — pass it through `format_group_name(key, kind)` instead, where `kind` is
-one of `"group"`, `"supergroup"`, `"bundle"`, or `"auto"` (resolve the namespace
-with the same supergroup → bundle → group precedence as `resolve_selection()`).
-Pass an explicit `kind` when the caller knows it (a plot that always resolves to
-group keys passes `kind = "group"`); reserve `"auto"` for mixed-token input.
-Display strings live in three maps in `R/utils/palettes.R` —
-`FEATURE_GROUP_DISPLAY_NAMES`, `SUPERGROUP_DISPLAY_NAMES`, `BUNDLE_DISPLAY_NAMES`
-— seeded where the `tools::toTitleCase` fallback would be wrong. Add a map entry
-rather than hardcoding a label in the plot.
+**Labelling a selection key.** `format_col_name()` is for *column* names and
+produces wrong output on selection keys. When a plot renders a feature, group,
+supergroup or bundle **key** as visible text — a facet strip, a legend — pass it
+through `format_group_name(key, kind)`, where `kind` is one of `"feature"`,
+`"group"`, `"supergroup"`, `"bundle"`, or `"auto"` (supergroup → group → bundle
+→ feature precedence, as in `resolve_selection()`). Feature, group and
+supergroup display strings come from the table's Feature, Group and Supergroup
+columns; bundle labels from `BUNDLE_DISPLAY_NAMES` in `R/utils/palettes.R`.
+Edit those rather than hardcoding a label in the plot.
 
-**Standalones are a group.** `cai`, `translation_efficiency` and
-`orfexondensity` are selectable via the `standalone` FEATURE_PATTERNS group
-(the sole member of the `other` supergroup). Use
-`select_features(df, "standalone")` or `select_features(df, "other")` to reach
-them. They have no region suffix and are
-always mapped to the `mrna` slot in region-aware plots. Their labels still come
-from `format_col_name()` rather than `format_group_name()`, because each is a
-distinct column, not a family. A plot whose group column contains standalone
-column names dispatches per element: group/supergroup/bundle keys via
-`format_group_name()`, everything else via `format_col_name()`.
-`group_panel_sweep.R` is the single-group exception and labels columns only —
-it does NOT use `format_group_name()`.
+**Region-less features.** `cai` and `te` (translation efficiency) are single
+columns with no region suffix; `is_regionless_feature()` identifies them and
+region-aware plots map them to the `mrna` slot.
  
-**Exception — single-group tools.** A tool whose entire premise is "one panel
-per schema family" (e.g. `feature_group_panel_sweep()`) operates on raw
-`FEATURE_PATTERNS` keys only. It MUST NOT accept supergroups or bundles — those
+**Exception — single-feature tools.** A tool whose entire premise is "one panel
+per schema family" (e.g. `feature_group_panel_sweep()`) operates on feature
+ids only. It MUST NOT accept supergroups or bundles — those
 are multi-group / refined objects that contradict the one-family-per-panel
 contract. Such tools may keep a local, documented skip set for high-cardinality
 groups (e.g. `DEFAULT_SWEEP_SKIP <- c("codon_freqs", "aa_freqs")`) as
@@ -400,7 +345,7 @@ default-view ergonomics; that constant lives in the analysis file, not
 
 Axis labels, legend titles, plot titles, facet strip labels, summary table column headers, and CSV column labels intended for human eyes **MUST** be passed through `format_col_name()` (or use a scale labeller that calls it: `scale_y_discrete(labels = format_col_name)`).
 
-DO NOT hardcode display strings inside plot functions. If a column needs a better label, edit `REPLACEMENTS` in `R/utils/naming.R`, do not work around it in the plot.
+DO NOT hardcode display strings inside plot functions. If a column needs a better label, edit its Display Short name in `R/feature_table.csv` (or, for the few rows §2.3 lists, `R/utils/naming.R`); do not work around it in the plot.
 
 ### R5 — Guard every column access
 
@@ -493,7 +438,7 @@ Things that look reasonable and will silently break the pipeline or downstream a
 | Calling `engineer_features()` from an analysis script           | Skips cache, may double-engineer                    | `build_dataset()` does this for you            |
 | Mutating column names with `rename_with(toupper)` for display   | Breaks `format_col_name()` round-trip               | Format only at the moment of display          |
 | Renaming a column produced by a loader inside `engineer.R`      | Downstream `fg()` patterns break                    | Either rename in the loader, or add new col   |
-| Adding `nmd_core = "^nmd_(snv\|alt)"` to `FEATURE_PATTERNS` | Subset masquerading as a schema family; pollutes `expand_groups`, double-assigns columns | Define it in `GROUP_BUNDLES`, or use per-call `pick`/`drop` |
+| Adding a `nmd_core` row with regex `^nmd_(snv\|alt)` to the feature table | Subset masquerading as a schema family; double-claims columns, which the checker rejects | Define it in `GROUP_BUNDLES`, or use per-call `pick`/`drop` |
 | `assign_holdout(fam)` inside a modelling script                 | Split silently reshuffles on any upstream change; results stop being reproducible | `attach_splits(df)` — read the artefact (R14) |
 | `group_vfold_cv(df, group = gene_id)`                           | Blocks on the gene, not the family; paralogues still split across folds | `group = family_id_medium`, or block on `split`  |
 | Judging a split by its gene counts alone                        | An 80/10/10 split can be exact while a held-out split holds only genes with no relatives | Check `pct_multi` is similar across splits in the `build_splits()` summary |
@@ -552,7 +497,7 @@ Most legacy scripts will have one or more of these problems. Walk this checklist
 | Symptom                                       | Fix                                                  |
 |-----------------------------------------------|------------------------------------------------------|
 | Hard-coded column names like `human_halflife` | Strip species prefix → `halflife`. Use `species` column for filtering / faceting. |
-| Local `format_col_name_v2()` definition       | Delete it. Use the pipeline's `format_col_name()`. Add missing rules to `REPLACEMENTS`. |
+| Local `format_col_name_v2()` definition       | Delete it. Use the pipeline's `format_col_name()`. Fix labels in `R/feature_table.csv`. |
 | Reads CSV/RDS from disk directly              | Replace with `build_dataset("<species>")`.           |
 | Long hand-rolled `select(matches(...))`       | Replace with `fg()` calls.                           |
 | Imputes data inline                           | Move the imputation into `R/features/engineer.R` and bump `CACHE_VERSION`. Plots consume the engineered column. |
@@ -568,32 +513,29 @@ A "derived" feature is one computed from columns already in the assembled datafr
 1. Open `R/features/engineer.R`.
 2. Add a function `add_<feature_name>(df) -> df`. The function MUST guard on the presence of every input column it reads (R5). It MUST add columns, not mutate existing ones.
 3. Add the call to the pipe inside `engineer_features()`. Order matters: place it after any dependencies and before `drop_all_na_columns()`.
-4. If the new column(s) should be selectable as a group, add a regex to `FEATURE_PATTERNS` in `R/config.R`.
-5. If the new column(s) have a non-obvious display string, add a rule to `REPLACEMENTS` in `R/utils/naming.R`.
-6. **Bump `CACHE_VERSION`** in `R/config.R`.
-7. Verify: `build_dataset("human", rebuild = TRUE)` and inspect the new columns. Run `format_col_name("<new_col>")` to confirm the display label.
+4. Add a row for the new column(s) to `R/feature_table.csv` (§6.4). Every built column needs one; the checker fails otherwise.
+5. **Bump `CACHE_VERSION`** in `R/config.R`.
+6. Verify: `build_dataset("human", rebuild = TRUE)`, then `Rscript scripts/check_feature_table.R`.
 
-### 6.4 Adding a new feature group
+### 6.4 Adding a new feature
 
-Four registries, all of them required. Missing any of the last three fails **silently**.
+One row in `R/feature_table.csv`. Nothing else needs editing: patterns, groups, supergroups, flags, labels and colours are all derived from it.
 
-1. **`FEATURE_PATTERNS`** in `R/config.R` — the regex:
-   ```r
-   my_new_group = "^my_metric_",
-   ```
-   It MUST be mutually exclusive with every existing pattern (§2.2). If your prefix is a prefix of another group's, or vice versa, anchor one of them more tightly.
-2. **`SUPERGROUPS`** in `R/config.R` — add the key to exactly one supergroup. Omitted → `supergroup_of()` returns `NA` and the group is silently pooled into the `other` facet.
-3. **`FEATURE_GROUP_COLOURS`** in `R/utils/palettes.R` — omitted → `feature_colour()` falls back to the `other` grey, which reads as a palette bug.
-4. **`FEATURE_GROUP_DISPLAY_NAMES`** in `R/utils/palettes.R` — omitted → `format_group_name()` title-cases the raw key (`translation_e` → "Translation e").
+| Column | What to put |
+|---|---|
+| `feature_id` | Short snake_case id; unique, and not equal to any group or supergroup id |
+| `columns` | Regex claiming exactly this feature's columns, mutually exclusive with every other row. Prefer a literal stem ending in `_` (`^my_metric_`): then the label is the short name plus the region. Leave empty for a feature not yet built. |
+| `Included in exploratory analysis` / `Included in model` | `Included` or `Excluded` |
+| `Supergroup`, `Group` | An existing pair, or a new one; a group sits in exactly one supergroup |
+| `Feature`, `Display Short name`, `Display Long name` | The Feature name labels the feature in legends and must be unique; the short name is the plot label |
+| `Regions` | The region display strings its columns carry (`5' UTR, CDS, …`) |
+| `Colour` | `#RRGGBB`, required if exploratory, unique among exploratory features |
+| `Description`, `Notes` | What it is; why it is in or out |
 
-No cache bump needed (it's a query helper, not data).
+No cache bump needed (the table is a query layer, not data). **Verify:**
 
-**Verify all four:**
-
-```r
-fg_columns(build_dataset("human"), "my_new_group")   # non-empty?
-supergroup_of("my_new_group")                        # not NA?
-list_selection_keys(kind = "group")                  # sensible display name?
+```bash
+Rscript scripts/check_feature_table.R
 ```
 
 ### 6.4a Adding a reusable column selection (a bundle)
@@ -606,25 +548,21 @@ A `GROUP_BUNDLES` entry (in `R/config.R`) is a list with any of:
  
 | Field    | Meaning                                                        |
 |----------|----------------------------------------------------------------|
-| `groups` | character vector of group / supergroup / **other bundle** names |
-| `pick`   | named list: group key → columns to KEEP from that group        |
-| `drop`   | named list: group key → columns to REMOVE from that group      |
+| `groups` | character vector of feature / group / supergroup / **other bundle** ids |
+| `pick`   | named list: feature id → columns to KEEP from that feature     |
+| `drop`   | named list: feature id → columns to REMOVE from that feature   |
  
 A bare character vector is shorthand for `list(groups = <vec>)`.
  
 ```r
 GROUP_BUNDLES <- list(
-  # "the two reported NMD columns" — a fixed allow-list against an open group
-  nmd_core = list(
-    groups = "nmd",
-    pick   = list(nmd = c("nmd_snv_fragile_codon_density_mrna",
-                          "nmd_alt_stop_codon_density_mrna"))
-  ),
-  # "the four canonical length columns"
-  lengths_core = list(
-    groups = "lengths",
-    pick   = list(lengths = c("length_5utr", "length_cds",
-                              "length_3utr", "length_mrna"))
+  # "the two reported NMD features"
+  nmd_core = c("nmd_snv_fragile", "nmd_alt_stop"),
+  # "structure, with icSHAPE cut to the cytoplasmic compartment"
+  structure_core = list(
+    groups = "structure",
+    pick   = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
+                              "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
   )
 )
 ```
@@ -649,8 +587,8 @@ case). Prefer `drop` when you want the whole family minus a few members,
 including anything added later.
  
 **Resolution precedence** inside `expand_groups()` / `resolve_selection()` is
-**supergroup → bundle → plain group**, first match wins. DO NOT give a bundle
-the same name as an existing group or supergroup.
+**supergroup → group → bundle → feature**, first match wins. DO NOT give a
+bundle the same name as a table id; the checker rejects it.
 
 ### 6.5 Adding a new raw input source
 
@@ -665,9 +603,8 @@ the same name as an existing group or supergroup.
    - Long-form → add to the `regional` list.
    - Transcript-level wide-form → add to the `transcript_level` list.
    - Gene-level → add a `load_*` call and an explicit `left_join` block with the right key.
-3. If columns form a meaningful group, add a regex to `FEATURE_PATTERNS` (§6.4).
-4. Add display rules to `REPLACEMENTS` for any non-obvious column names.
-5. Bump `CACHE_VERSION`.
+3. Add a row per feature to `R/feature_table.csv` (§6.4).
+4. Bump `CACHE_VERSION`, rebuild, and run `Rscript scripts/check_feature_table.R`.
 
 ### 6.6 Adding a new species
 
@@ -752,7 +689,7 @@ suppressPackageStartupMessages({
 #' Faceted scatter panel of every column in a feature group vs halflife
 #'
 #' @param df      A dataframe from build_dataset().
-#' @param group   Character. A key of FEATURE_PATTERNS.
+#' @param group   Character. A feature id (a key of FEATURE_PATTERNS).
 #' @param response Character. Response column (default "halflife").
 #' @param formatter Function. Display formatter (default format_col_name).
 #' @return list(plot, table). `table` has columns variable, n, spearman, p_value.
@@ -1088,12 +1025,10 @@ Before considering any extension complete, run through this list. Each item maps
 - [ ] Long-form loaders use `(transcript_id, region)` (R11)
 - [ ] Wide-form loaders drop `gene_id` (R12)
 - [ ] Any new column has a working `format_col_name()` result (no leftover underscores)
-- [ ] Any new feature group has a `FEATURE_PATTERNS` entry
-- [ ] Column *subsets* use `pick`/`drop` or a `GROUP_BUNDLES` bundle — never a new `FEATURE_PATTERNS` subset entry (R3a)
+- [ ] Any new column has a row in `R/feature_table.csv`, and `Rscript scripts/check_feature_table.R` passes (§6.4)
+- [ ] Column *subsets* use `pick`/`drop` or a `GROUP_BUNDLES` bundle — never a subset row in the feature table (R3a)
 - [ ] Plot functions accepting `groups` also accept `pick`/`drop` and resolve via `resolve_selection()` (R3a)
-- [ ] Any new bundle name does not collide with a group or supergroup name (§6.4a)
-- [ ] Any new group is registered in all four places: `FEATURE_PATTERNS`, `SUPERGROUPS`, `FEATURE_GROUP_COLOURS`, `FEATURE_GROUP_DISPLAY_NAMES` (§6.4)
-- [ ] Any new group's regex is mutually exclusive with every existing one (§2.2)
+- [ ] Any new bundle name does not collide with a table id (§6.4a)
 - [ ] Any new bundle has a `BUNDLE_DISPLAY_NAMES` entry (§6.4a)
 - [ ] No backup / scratch / `*_old.R` file left anywhere under `R/` (R1)
 - [ ] Script runs cleanly from a fresh R session via `Rscript <file>`
@@ -1106,12 +1041,13 @@ Before considering any extension complete, run through this list. Each item maps
 
 ```
 R/                                  pipeline core (DO NOT scatter analysis here)
-├── config.R                        paths, REGIONS, FEATURE_PATTERNS, SUPERGROUPS,
-│                                   GROUP_BUNDLES, INCLUDED_GROUPS, CACHE_VERSION
+├── feature_table.csv               THE feature definitions (source of truth)
+├── config.R                        paths, REGIONS, reads feature_table.csv,
+│                                   GROUP_BUNDLES, DEFAULT_PLOT_GROUPS, CACHE_VERSION
 ├── load_all.R                      sources everything in dependency order
 ├── utils/                          pure helpers, no pipeline state
 │   ├── normalise.R                 z_score_normalize, min_max_normalize
-│   ├── naming.R                    format_col_name, REPLACEMENTS
+│   ├── naming.R                    format_col_name (labels from the table)
 │   ├── palettes.R                  FEATURE_GROUP_COLOURS, REGION_COLOURS/SHAPES,
 │   │                               format_group_name, format_metric_name
 │   └── feature_groups.R            fg, fg_columns, select_features,
@@ -1152,14 +1088,9 @@ data/
 - **`engineer_features()` drops all-NA columns at the end.** A column whose loader produced only `NA` for this species will simply not appear in the output. This is by design but easy to forget when debugging "where did my column go".
 - **The `species` column is added before `engineer_features()` is called.** Any engineering step that operates row-wise has access to `species` if it needs species-specific behaviour. Use this sparingly — most logic should be species-agnostic.
 - **The pseudo-region tokens are long gone.** Whole-transcript scalars (architecture, uORF, NMD) end in the real `mrna` suffix; the `transcript` token and the `window`/`core`/`full` NMD tokens no longer exist. There is one NMD fragility model. Any analysis script written against the old names (`*_transcript`, `nmd_*_window`, …) will silently select nothing — `fg()` returns an empty set rather than erroring.
-- **Subset feature groups do not belong in `FEATURE_PATTERNS`.** The deleted `*_some` / `mfe_scores` / `mfe_zscores` keys were subsets and aliases living in the schema layer; they double-assigned columns and forced ad-hoc exclusion lists. Reusable subsets are `GROUP_BUNDLES` bundles; one-off subsets are per-call `pick`/`drop`. Neither needs a `CACHE_VERSION` bump.
-- **`junctions` and `eej_dist` are now two groups, not one.** `junctions` is `^junctions_` (counts and densities); `eej_dist` is `^eej_dist_` (the six exon-exon-junction distances). The old combined `^(junctions_|eej_dist_)` regex and the `distances` group that overlapped it are both gone. A `groups` argument naming `"distances"` warns and is skipped.
-- **`standalone` is a group; `expression` is not in it.** `cai`, `translation_efficiency` and `orfexondensity` are reachable via `select_features(df, "standalone")` or the `other` supergroup. `expression` was dropped from the pipeline entirely — `load_agarwal_features()` no longer returns it. The `standalones=` parameter on the dotplot and response-scatter still exists but defaults to empty; it is a fallback for columns genuinely outside `FEATURE_PATTERNS`, not the route to these three.
-- **Registering a group takes four edits, not one.** A regex in `FEATURE_PATTERNS`, membership in `SUPERGROUPS`, a colour in `FEATURE_GROUP_COLOURS`, and a label in `FEATURE_GROUP_DISPLAY_NAMES`. Miss the colour and the group renders in the `other` grey; miss the label and `format_group_name()` title-cases the key (`translation_e` → "Translation e"). Neither errors. Likewise, a new bundle needs a `BUNDLE_DISPLAY_NAMES` entry.
-- **Some loader columns are still non-canonical, and are therefore invisible.** ~43 columns in the current human build match no `FEATURE_PATTERNS` group. Two causes: (a) families nobody has grouped — `rnafold_median_*`, `rnafold_pval_*`, `rnalfold_median_*`, `rnalfold_pval_*` (these do have display rules, so they label correctly if you name them explicitly); (b) loader names that break the region-suffix-last invariant of §1.2 — `utr5_length` (a duplicate of `length_5utr`), `internal_exon_mean` / `_median` / `_sd`, `n_exons`, `stop_dist_last_downstream`, `n_overlapping_uorfs`, `total_classical_uorf_codons`, `max_classical_uorf_codons`, `dist_last_uorf_stop_to_main_atg`, `cds_length_codons_cds`, `n_codons_scored_cds`, `n_stops_cds`. Group (b) is silently dropped by every region-aware plot (the dotplot reports them in its `dropped` message). Fixing this means renaming at the loader and bumping `CACHE_VERSION`. Note also that `intron_median` and `intron_sd` *are* caught by `introns` alongside `intron_length_mean_mrna`, so that one group mixes two naming conventions.
-- **The `noncoding` group currently matches nothing.** `load_architecture()` maps `noncoding_length_fraction_mrna`, but the column is absent from current builds. The group and its display rule are kept so it is picked up if the input returns.
 - **The schema is RNA-canonical: `u`, never `t`.** Nucleotide columns are `frac_u_*` and codons are `codon_aau_cds`, in every species. Upstream disagrees — the human counts file spells codons with U, the mouse one with T — so `normalise_codon_alphabet()` folds them at load time, the same way `normalise_region()` applies `REGION_ALIASES`. The consequence for anyone writing a regex over composition columns: the triplet class is `[acgtu]`, not `[acgt]`. A DNA-only class matches nothing rather than erroring, which is exactly how the v7 fraction bug survived — `add_codon_aa_fractions()` normalised only the 27 codons spelled without a U, leaving the other 38 as raw counts that correlated with `length_cds` at |rho| up to 0.82 while the normalised 27 summed to 1 among themselves and looked fine.
-- **Not sure which namespace a string belongs to?** Call `lookup_key("mytoken")` — it returns `"supergroup"`, `"bundle"`, `"group"`, or `"unknown"`. Call `list_selection_keys()` to print all of them in one table.
+- **Every built column has a table row now, including the never-used ones** (Vienna median/p-value, analysis-window lengths, `utr5_length`, the CDS codon denominators, `stop_dist_last_downstream`). A few of these names still break the region-suffix-last invariant of §1.2 (`internal_exon_mean`, `n_overlapping_uorfs`, …); they are never-used, so no plot meets them, but renaming them means changing the loader and bumping `CACHE_VERSION`.
+- **Not sure which namespace a string belongs to?** Call `lookup_key("mytoken")` — it returns `"supergroup"`, `"group"`, `"bundle"`, `"feature"`, or `"unknown"`. Call `list_selection_keys()` to print all of them in one table.
 
 ---
 

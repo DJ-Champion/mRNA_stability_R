@@ -50,14 +50,15 @@ MODELS <- c(REFERENCE_MODEL, STRUCTURE_MODEL)
 PROBING_GROUP <- "probing"
 
 
-#' The FEATURE_PATTERNS keys that make up the structure block.
+#' The feature ids that make up the structure block.
 #'
-#' Derived from SUPERGROUPS rather than hand-listed, so a folding family added
-#' to the schema joins the structure block automatically instead of silently
-#' sitting in neither model. A function, not a constant, so it resolves
-#' SUPERGROUPS at call time and this file can be sourced in any order.
+#' The model features (R/feature_table.csv, "Included in model") that sit in
+#' the Structure supergroup. Nothing is hand-listed: a folding feature flagged
+#' into the model joins this block, and one flagged out leaves it. probing and
+#' mfe_expected are Structure rows the table keeps out of the model. A
+#' function, not a constant, so this file can be sourced in any order.
 #' @export
-structure_groups <- function() setdiff(SUPERGROUPS$structure, PROBING_GROUP)
+structure_groups <- function() intersect(MODEL_FEATURES, SUPERGROUPS$structure)
 
 
 #' Where this analysis's artefacts live.
@@ -74,7 +75,9 @@ run_dir <- function(what = c("root", "tables", "plots")) {
 
 #' Build the baseline (non-structure) column list for a dataset
 #'
-#' Deliberately EXCLUDED, and why:
+#' Every model feature outside the Structure supergroup. The table's model flag
+#' decides; its Notes column records each reason. For the record, the
+#' non-structure features deliberately left out, and why:
 #'
 #'   aa_freqs      (aa_*, 20 cols)  an EXACT deterministic function of the
 #'                                  codon columns that are kept. Verified on
@@ -87,7 +90,7 @@ run_dir <- function(what = c("root", "tables", "plots")) {
 #'                                  column subsample the structure block can
 #'                                  occupy. Dropped from the MODEL baseline
 #'                                  only — they stay in the cache, because the
-#'                                  correlation plots and the intrinsic_select
+#'                                  correlation plots and the sequence_select
 #'                                  bundle legitimately use them.
 #'
 #'   nuc_ratios    (frac_*, 28)     likewise exact. GC content and the two
@@ -120,29 +123,16 @@ run_dir <- function(what = c("root", "tables", "plots")) {
 #' @return Character vector of column names present in `df`.
 #' @export
 baseline_columns <- function(df) {
-  c(
-    fg_columns(df, "lengths"),       # 4   regional sequence length
-    fg_columns(df, "gc"),            # 7   regional GC content
-    fg_columns(df, "skews"),         # 14  AT-skew and GC-skew
-    fg_columns(df, "codon_freqs"),   # 64  coding composition
-    intersect("cai", names(df)),     # 1   CAI (standalone; TE deliberately not)
-    fg_columns(df, "stopfree"),      # 4   stop-free length
-    fg_columns(df, "uorfs"),         # 1   uorf_present_mrna (numeric 0/1)
-    fg_columns(df, "exon_density"),  # 4   CDS-exon density
-    fg_columns(df, "eej_dist"),      # 2   junction distance
-    fg_columns(df, "nmd")            # 5   fragile-codon / alternative-stop
-    # `exons` (exon_length_last_mrna) deliberately omitted — 3'UTR-length
-    # proxy, see the exclusion list above.
-  ) |> unique()
+  model_columns(df, setdiff(MODEL_FEATURES, SUPERGROUPS$structure))
 }
 
 
 #' Build the structure column list
 #'
 #' Every computed folding feature: RNAfold and RNALfold MFE and z-scores, the
-#' per-nucleotide normalisation, and MFE delta. `mfe_expected` is a member of
-#' the supergroup but contributes nothing here — drop_excluded() removes it as
-#' engineering scaffolding for mfe_delta_*, so fg_columns() finds none of it.
+#' per-nucleotide normalisation, and MFE delta — the model features of the
+#' Structure supergroup (structure_groups()). `mfe_expected` is flagged out of
+#' the model as scaffolding for mfe_delta_*, so it is not among them.
 #'
 #' CONFOUNDING, TO REPORT WITH ANY RESULT. This block is NOT length- and
 #' GC-neutral. Raw MFE scales almost linearly with sequence length and shifts
@@ -159,9 +149,7 @@ baseline_columns <- function(df) {
 #' @param df A dataset from build_dataset() after drop_excluded().
 #' @return Character vector of column names present in `df`.
 #' @export
-structure_columns <- function(df) {
-  unique(unlist(lapply(structure_groups(), function(g) fg_columns(df, g))))
-}
+structure_columns <- function(df) model_columns(df, structure_groups())
 
 
 #' The icSHAPE structural-Gini block — excluded from both models
@@ -294,22 +282,15 @@ report_feature_sets <- function(el) {
     cc <- intersect(fg_columns(d, g), el$baseline)
     if (length(cc)) cat(sprintf("  %-16s %3d\n", g, length(cc)))
   }
-  if ("cai" %in% el$baseline) {
-    cat("  (standalone: cai; translation_efficiency excluded)\n")
-  }
-  cat("  (aa_freqs, frac_*, purine_/amino_* excluded as exact functions of\n")
-  cat("   retained columns; exon_length_last_mrna excluded as a 3'UTR-length\n")
-  cat("   proxy at rho 0.949 — see baseline_columns())\n")
+  cat("  (non-model features and why: the Notes column of R/feature_table.csv)\n")
 
   cat("\n--- Structure block by family ---\n")
   for (g in structure_groups()) {
     cc <- intersect(fg_columns(d, g), el$structure)
-    # A registered folding family that contributes nothing is expected for
-    # mfe_expected — drop_excluded() removes it as scaffolding for mfe_delta_*
-    # — but is worth flagging rather than showing as a bare 0, so a family that
-    # empties for any OTHER reason is visible on the run that first does it.
+    # A model feature that contributes nothing has lost its columns upstream;
+    # flag it rather than show a bare 0, so it is visible on the first run.
     cat(sprintf("  %-16s %3d%s\n", g, length(cc),
-                if (length(cc) == 0) "   (empty — removed by drop_excluded)" else ""))
+                if (length(cc) == 0) "   (empty — no columns in this build)" else ""))
   }
   cat(sprintf("  (%s excluded from both models: %d columns, measured rather\n",
               PROBING_GROUP, length(el$probing)))
