@@ -1,5 +1,7 @@
 # Plan: one way to choose features
 
+> **Status: implemented** (steps 1-7, branch `claude/selection-plan-review-788b75`). Kept as the record of what was audited and decided. What the code does now is described in README.md ("Choosing which columns to plot") and PIPELINE_GUIDE.md (R3a). The plan below describes the state before the work; `scripts/selection_baseline.csv` and `scripts/diff_selection_baseline.R` are the before/after evidence.
+
 Handoff document. Written 2026-09-29 after an audit of every script; the
 decisions in "Decisions already made" are the owner's and are not open.
 Start this work on a **new branch from `main`**, not on the banded-plot branch.

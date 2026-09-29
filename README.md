@@ -39,8 +39,7 @@ RNAstab/
 ├── R/
 │   ├── feature_table.csv       # THE feature definitions (source of truth)
 │   ├── config.R                # paths, species registry, REGIONS,
-│   │                           # reads feature_table.csv, GROUP_BUNDLES,
-│   │                           # DEFAULT_PLOT_GROUPS, CACHE_VERSION
+│   │                           # reads feature_table.csv, CACHE_VERSION
 │   ├── load_all.R              # sources every R/ file in dependency order
 │   ├── utils/
 │   │   ├── normalise.R         # z_score_normalize, min_max_normalize,
@@ -49,9 +48,8 @@ RNAstab/
 │   │   ├── palettes.R          # FEATURE_GROUP_COLOURS, REGION_COLOURS/SHAPES,
 │   │   │                       # format_group_name(), format_metric_name()
 │   │   └── feature_groups.R    # fg(), fg_columns(), select_features(),
-│   │                           # resolve_selection(), expand_groups(),
-│   │                           # refine_group_columns(), lookup_key(),
-│   │                           # list_selection_keys()
+│   │                           # selected_features(), selected_columns(),
+│   │                           # lookup_key(), list_selection_keys()
 │   ├── io/
 │   │   ├── load_raw.R          # one loader per source file
 │   │   └── cache.R             # save_snapshot, load_snapshot, clear_snapshot
@@ -136,8 +134,8 @@ canonical column names into display strings (`"rnafold_zscore_5utr"` →
 `"MFE.z 5' UTR"`, `"gc_content_cds"` → `"C+G% CDS"`), taking each label from
 the feature table's short name. Its sibling `format_group_name()` (in
 `R/utils/palettes.R`) does the same for *selection keys* — feature, group,
-supergroup and bundle ids (`"rnafold_zscores"` → `"MFE z-score"`,
-`"nmd_core"` → `"NMD (core)"`) — for plots that label a facet strip or legend. A third, `format_metric_name()`, strips the region
+and supergroup ids (`"rnafold_zscores"` → `"MFE z-score"`,
+`"structure"` → `"Structure"`) — for plots that label a facet strip or legend. A third, `format_metric_name()`, strips the region
 suffix for plots where region is already encoded as colour or shape
 (`"length_cds"` → `"Length"`).
 
@@ -156,7 +154,7 @@ regions (5' UTR + 3' UTR)
 
 - its columns (a regex);
 - its place in the **Supergroup > Group > Feature** hierarchy;
-- whether it is **Included in exploratory analysis** and **Included in model**;
+- whether it is **Included in exploratory analysis**, **Included in model** and **Included in core plots**;
 - its display names, colour, regions, and the reason it is in or out.
 
 The code derives everything from it, so to change a feature, edit the table. Then check it against the built cache:
@@ -165,9 +163,10 @@ The code derives everything from it, so to change a feature, edit the table. The
 Rscript scripts/check_feature_table.R
 ```
 
-The two flags do different jobs:
+The three flags do different jobs:
 
 - **Exploratory analysis:** selecting a group or supergroup returns only its exploratory features. Naming a feature id directly always works, so a plot can still show an excluded feature on purpose.
+- **Core plots:** the default set for the correlation figures (`"core"`). A subset of the exploratory features; experimental probing (icSHAPE) is deliberately outside it, and reachable by naming `"probing"`.
 - **Model:** `model_columns(df)` gives the model's predictors, and nothing else reads this flag.
 - **Excluded from both:** the column is used nowhere, and `drop_excluded()` removes it.
 
@@ -183,78 +182,64 @@ fg_columns(df, "rnafold_zscores")
 # [7] "rnafold_zscore_stop"    "rnafold_zscore_utrpair"
 ```
 
-`list_selection_keys()` prints every supergroup, group, bundle and feature with its display name. `lookup_key("foo")` tells you which kind a single token is.
+`list_selection_keys()` prints every flag, supergroup, group and feature with its display name. `lookup_key("foo")` tells you which kind a single token is.
 
 ### Choosing which columns to plot
- 
-Feature groups answer "what are all the codon columns?" Often you want less
-than a whole group — the top few, one named metric, or everything-but-one. That
-is *selection intent*, and it lives in a separate layer from the schema so that
-narrowing a plot never means editing the feature table.
- 
-Four things can name a set of columns:
- 
-- **A feature** — a table row, e.g. `"codon_freqs"`. The schema.
+
+Every analysis chooses its columns the same way, with two arguments:
+`include` and `exclude`. The feature table says what a feature *is* and what it
+is eligible for; the call says what this analysis wants. Narrowing a plot never
+means editing the table.
+
+Both arguments take **tokens**:
+
+- **A flag** — `"core"` (the default), `"exploratory"` or `"model"`: the
+  features the table flags for that purpose.
+- **A supergroup** — e.g. `"structure"`. Expands to its exploratory features in
+  `include`, and to all of its features in `exclude`.
 - **A group** — the table's Group column snake-cased, e.g. `"global_folding"`.
-  Expands to its exploratory features.
-- **A supergroup** — e.g. `"structure"`. Expands to its exploratory features.
-- **A bundle** — a *reusable named selection* you define, e.g. `"nmd_core"`.
-  Intent, not schema (see `GROUP_BUNDLES` in `R/config.R`).
+  Same rule as a supergroup.
+- **A feature** — a table row, e.g. `"codon_freqs"`. Always works, whatever its
+  flags.
 
-`select_features()` turns any mix of these — plus optional one-off refinements —
-into the actual columns present in your dataframe:
- 
-```r
-# A whole supergroup
-select_features(df, groups = "structure")
- 
-# A reusable named subset (defined once in GROUP_BUNDLES)
-select_features(df, groups = "nmd_core")
- 
-# A group: every exploratory feature in it
-select_features(df, groups = "nmd_susceptibility")
- 
-# One-off: the whole probing group minus one noisy column
-select_features(df, groups = "probing",
-                drop = list(probing = "gini_nucleoplasm_cds"))
-```
- 
-`pick` is an allow-list (columns added to the feature later stay out until you
-name them); `drop` removes from the otherwise-whole feature (later additions are
-included). Use `pick` for a small fixed subset of an open-ended family, `drop`
-for "the family minus a couple of members."
- 
-A **bundle** is just the reusable form of the same idea. Define it once:
- 
-```r
-# in R/config.R
-GROUP_BUNDLES <- list(
-  nmd_core = c("nmd_snv_fragile", "nmd_alt_stop")
-)
-```
- 
-…then pass `groups = "nmd_core"` anywhere a plot accepts `groups`. The
-correlation dotplot and the feature/response scatter both understand groups,
-supergroups, bundles, and per-call `pick`/`drop`. If you pass both a bundle and
-a caller `pick`/`drop` for the same feature, the caller wins.
-
-Currently defined bundles: `nmd_core`, `lengths_core`, `junction_core`,
-`structure_core`, `sequence_core`, `sequence_select`, `translation_core`.
-
-### The default plot selection: `DEFAULT_PLOT_GROUPS`
-
-`DEFAULT_PLOT_GROUPS` (in `R/config.R`) is the set of bundles the project has
-settled on for routine plots — currently `nmd_core`, `junction_core`,
-`structure_core`, `sequence_select`, `translation_core`, 137 columns in the
-human dataset. It is the default `groups =` value for the correlation dotplot,
-the feature/response scatter, the region heatmap, and the correlation-heatmap
-workflow. It is a plotting default only: the model's predictors come from the
-table's model flag.
+The result is `include` expanded, minus `exclude` expanded. Nothing else applies
+silently. `select_features()` returns the columns present in your dataframe,
+each with the feature it came from; `selected_columns()` gives the plain
+vector:
 
 ```r
-select_features(df, DEFAULT_PLOT_GROUPS)   # what the default plots operate on
+select_features(df)                                   # the core set
+select_features(df, "structure")                      # a whole supergroup
+select_features(df, "core", exclude = "sequence")     # core minus a supergroup
+select_features(df, "exploratory",
+                exclude = c("codon_freqs", "aa_freqs"))
+df |> select(all_of(selected_columns(select_features(df, "global_folding"))))
 ```
- 
+
+Big families are trimmed with `top_n`, the only family trimmer. It keeps the N
+metric stems with the largest |r| against a `response` (the maximum over
+regions), with all their regions, so every figure using the same response
+agrees on which codons are "top":
+
+```r
+select_features(df, top_n = list(codon_freqs = 2, aa_freqs = 2),
+                response = "halflife")
+```
+
+Half-life and translation efficiency may then show different codons; that is
+intended. `regions = c("5utr", "cds")` restricts columns to those regions
+before `top_n` ranks them.
+
+The plotting functions (`feature_correlation_ranked()`, `_bands()`,
+`_dotplot()`, `feature_response_scatter()`, `region_feature_heatmap()`,
+`run_correlation_heatmap_workflow()`, `feature_response_hex_panels()`, the
+sweep, the feature-feature table, the QC overview) all take `include`,
+`exclude` and, where it makes sense, `top_n` and `regions`, with these meanings.
+Arguments that limit *how many things are drawn* are called `max_features`;
+`top_n` always means "trim a family". The default is `"core"` for the
+correlation figures and `"exploratory"` for the hex panels, sweep,
+feature-feature table and QC overview.
+
 No `CACHE_VERSION` bump is ever needed for any of this — it is selection logic,
 not feature engineering.
 
@@ -411,7 +396,7 @@ mouse  14,197 → 13,215 built rows  (6.9% removed)
 The filter applies to the frame `build_dataset()` **returns**, not to what it
 writes — so `data/cache/*.rds` stays complete, changing the threshold never
 invalidates a cache, and no `CACHE_VERSION` bump is involved. It is selection
-intent, like `DEFAULT_PLOT_GROUPS` and the feature table's flags.
+intent, like the feature table's flags.
 
 ```r
 df  <- build_dataset("human")                   # filtered — the default

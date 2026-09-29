@@ -101,11 +101,11 @@ DO NOT invent new suffixes. If a feature genuinely needs a new region, add it to
 
 - `feature_id` and `columns`, the regex that claims that feature's columns;
 - its place in the **Supergroup > Group > Feature** hierarchy;
-- the two flags, **Included in exploratory analysis** and **Included in model**;
+- the three flags, **Included in exploratory analysis**, **Included in model** and **Included in core plots**;
 - its display names and colour;
 - its Regions, Description and Notes (why it is in or out).
 
-`R/config.R` reads the table and derives `FEATURE_PATTERNS`, `FEATURE_GROUPS`, `SUPERGROUPS`, `EXPLORATORY_FEATURES`, `MODEL_FEATURES` and `NEVER_USED_PATTERNS`. `R/utils/palettes.R` takes colours and display names from it, and `R/utils/naming.R` takes labels from it. **Edit the table, never those objects.** Then run:
+`R/config.R` reads the table and derives `FEATURE_PATTERNS`, `FEATURE_GROUPS`, `SUPERGROUPS`, `EXPLORATORY_FEATURES`, `CORE_FEATURES`, `MODEL_FEATURES` and `NEVER_USED_PATTERNS`. `R/utils/palettes.R` takes colours and display names from it, and `R/utils/naming.R` takes labels from it. **Edit the table, never those objects.** Then run:
 
 ```bash
 Rscript scripts/check_feature_table.R
@@ -118,7 +118,8 @@ It fails if any of these is broken:
 - a row's Regions disagree with its columns;
 - a label differs from the table's short name;
 - an exploratory feature lacks a colour;
-- a bundle names an unknown key;
+- a core feature is not an exploratory one, or a flag name collides with a table id;
+- a retired selection name (`GROUP_BUNDLES`, `DEFAULT_PLOT_GROUPS`, `resolve_selection`, `pick`/`drop` machinery, …) reappears in `R/`, `analysis/` or `scripts/`;
 - the model would see an identifier or benchmark column.
 
 **Three levels, one flat selection namespace.** A selection key is any of the following, and ids must not collide across levels (config.R refuses a table where they do):
@@ -126,7 +127,7 @@ It fails if any of these is broken:
 - a **feature id** (a table row);
 - a **group id**, the table's Group snake-cased: "Global folding" → `global_folding`;
 - a **supergroup id**: "Transcript architecture" → `transcript_architecture`;
-- a **bundle** name.
+- a **flag** name: `core`, `exploratory` or `model`.
 
 Browse them with `list_selection_keys()`.
 
@@ -135,6 +136,7 @@ Browse them with `list_selection_keys()`.
 | Flag | Effect |
 |---|---|
 | Included in exploratory analysis | Expanding a group or supergroup yields only its exploratory features. Naming a feature id directly always yields it, so a plot can reach an excluded feature deliberately. |
+| Included in core plots | `"core"`: the default `include` for the correlation figures. A subset of the exploratory features; probing is deliberately outside it. |
 | Included in model | `model_columns(df)`: the model's predictor list. The structure model's blocks are its Structure and non-Structure parts. |
 | Excluded from both | Used nowhere. `drop_excluded()` removes these columns (`excluded_columns(df)` lists them). |
 
@@ -216,21 +218,17 @@ These are the functions every extender code should rely on. DO NOT reach into in
 | `scripts/check_feature_table.R`   | —                                          | Verify the table against a built cache; non-zero exit on any mismatch |
 | `fg(feature)`                     | `R/utils/feature_groups.R`                 | Tidyselect spec for one feature                  |
 | `fg_columns(df, feature)`         | `R/utils/feature_groups.R`                 | Inspect what a feature resolves to in this df    |
-| `select_features(df, groups, pick, drop)` | `R/utils/feature_groups.R` | Resolve feature/group/supergroup/bundle ids + pick/drop → column names |
-| `resolve_selection(groups, pick, drop)`   | `R/utils/feature_groups.R` | Normalise a selection → `(feature ids, pick, drop)` triple     |
-| `expand_groups(groups)`                   | `R/utils/feature_groups.R` | Selection keys → feature ids                                   |
-| `refine_group_columns(members, pick, drop)` | `R/utils/feature_groups.R` | Apply one feature's pick/drop — the shared semantics plots must reuse |
+| `select_features(df, include, exclude, top_n, response, regions)` | `R/utils/feature_groups.R` | **The** column selector: `include` minus `exclude` (flags / supergroups / groups / features), families trimmed by `top_n`. Returns `column` + `feature_id` |
+| `selected_columns(sel)` / `selected_features(include, exclude)` | `R/utils/feature_groups.R` | The plain column vector of a result / the feature ids before any column lookup |
 | `model_columns(df, features)`             | `R/utils/feature_groups.R` | The model's predictor columns (table flag)                     |
 | `excluded_columns(df)` / `drop_excluded(df)` | `R/utils/feature_groups.R` | List / remove the never-used columns                        |
-| `lookup_key(key)`                         | `R/utils/feature_groups.R` | "supergroup" / "group" / "bundle" / "feature" / "unknown"      |
+| `lookup_key(key)`                         | `R/utils/feature_groups.R` | "flag" / "supergroup" / "group" / "feature" / "unknown"        |
 | `list_selection_keys(kind)`               | `R/utils/feature_groups.R` | Browse every selection key with display names                  |
 | `supergroup_of(f)` / `group_of(f)`        | `R/config.R`               | Reverse lookup: feature id → its supergroup / group            |
 | `FEATURE_GROUPS` / `SUPERGROUPS`          | constants in `R/config.R`  | Group / supergroup id → feature ids (from the table)           |
-| `EXPLORATORY_FEATURES` / `MODEL_FEATURES` | constants in `R/config.R`  | Feature ids carrying each flag (from the table)                |
-| `GROUP_BUNDLES`                           | constant in `R/config.R`   | Reusable named selections (intent, not schema)                 |
-| `DEFAULT_PLOT_GROUPS`                     | constant in `R/config.R`   | The default `groups =` for the dotplot, response scatter, region heatmap and heatmap workflow. A plotting default only |
+| `EXPLORATORY_FEATURES` / `CORE_FEATURES` / `MODEL_FEATURES` | constants in `R/config.R`  | Feature ids carrying each flag (from the table)                |
 | `format_col_name(x)`              | `R/utils/naming.R`                         | Canonical column name → display string (vectorised) |
-| `format_group_name(x, kind)`      | `R/utils/palettes.R`                       | Feature / group / supergroup / bundle key → display string (vectorised) |
+| `format_group_name(x, kind)`      | `R/utils/palettes.R`                       | Feature / group / supergroup key → display string (vectorised) |
 | `format_metric_name(x)`           | `R/utils/palettes.R`                       | Column → display string with the region suffix stripped |
 | `feature_colour(group)` / `region_colour(r)` / `region_shape(r)` | `R/utils/palettes.R` | Palette accessors with a documented fallback |
 | `clear_snapshot(species)`         | `R/io/cache.R`                             | Force next build to rebuild                      |
@@ -280,66 +278,67 @@ df |> select(halflife, matches("^rnafold_zscore_"), starts_with("rnal"))
 If the feature you need has no row in `R/feature_table.csv`, **add one** (see §6.4). DO NOT inline a regex.
 
 ### R3a — Select *subsets* through the selection layer, never new schema groups
- 
+
 `fg()` (R3) selects a whole feature. When you need **less than a whole
-feature** — the top few members, one or two named columns, or everything-but-one
-— that is *selection intent*, and it MUST be expressed through the selection
-layer, not by adding a narrower row to the feature table.
- 
+feature** — a supergroup minus one family, the top few codons, everything but
+probing — that is *selection intent*, and it MUST be expressed through
+`select_features()`, not by adding a narrower row to the feature table.
+
 The feature table is **schema**: one row per real column family, each in
 exactly one group and supergroup. DO NOT add subset or alias rows (the deleted
 `*_some`, `mfe_scores`, `mfe_zscores` keys were exactly this mistake — a subset
 masquerading as a family). A subset row double-claims columns, which the
 checker rejects.
- 
-Three tools express subset intent:
- 
+
+There is exactly one selection mechanism, with one vocabulary:
+
 ```r
-# select_features(): the one entry point for "which columns does this use".
-# Accepts feature / group / supergroup / bundle ids + per-feature pick/drop.
-select_features(df, groups = "structure")
-select_features(df, groups = "nmd_susceptibility")      # a group: its exploratory features
-select_features(df, groups = c("nmd_snv_fragile", "nmd_alt_stop"))
-select_features(df, groups = "probing",
-                drop = list(probing = "gini_nucleoplasm_cds"))
+# select_features(df, include = "core", exclude = NULL, top_n = NULL, response = NULL, regions = NULL)
+select_features(df)                                        # the core set
+select_features(df, "structure")                           # a supergroup
+select_features(df, "core", exclude = "sequence")          # core minus a supergroup
+select_features(df, "exploratory", exclude = c("codon_freqs", "aa_freqs"))
+select_features(df, top_n = list(codon_freqs = 2, aa_freqs = 2),
+                response = "halflife")                     # trim families to their top stems
+selected_columns(select_features(df, "global_folding"))    # plain character vector
 ```
- 
-- **`pick`** = allow-list. Columns added to the group later stay OUT until
-  named. Use for a small fixed subset of an open-ended family.
-- **`drop`** = remove from the otherwise-whole group. Later additions are
-  INCLUDED. Use for "the family minus a couple of noisy members."
-If the subset is **reusable** (you reach for it in more than one place, or it
-has a name worth remembering), promote it to a **bundle** (see §6.4a) rather
-than retyping `pick`/`drop`. Bundles are intent, defined in `GROUP_BUNDLES`
-(`R/config.R`); they are NOT schema and never require a `CACHE_VERSION` bump.
- 
-**Plot functions that accept `groups` SHOULD also accept `pick` and `drop`** and
-resolve all three through `resolve_selection()` + `refine_group_columns()` (see
-§6.1, step 3). This keeps selection semantics identical across every plot and is
-the only sanctioned way to refine a group inside a plot.
+
+- **`include`** / **`exclude`** take flags (`"core"`, `"exploratory"`, `"model"`),
+  supergroup ids, group ids and feature ids. Result = expand(`include`) minus
+  expand(`exclude`); nothing else applies silently. In `include`, a group or
+  supergroup expands to its *exploratory* members; a feature id always works.
+- **`top_n`** is the only family trimmer: a named list, feature id → N, keeping
+  the N metric stems with the largest |r| against `response` (max over regions
+  and species). Two figures with the same response can therefore never disagree
+  about which codons are "top". `top_n` never means anything else; an argument
+  limiting how many things are *drawn* is called `max_features`.
+- **`regions`** restricts to region tokens before `top_n` ranks.
+- Do **not** hand-name columns to keep or drop, and do not add default skip
+  lists inside an analysis: if a default excludes something (the sweep and the
+  feature-feature table skip `codon_freqs` and `aa_freqs`), it is a visible
+  `exclude = ` default in the function signature.
+
+**Plot functions that choose features SHOULD take `include`, `exclude` and,
+where ranking makes sense, `top_n` (and `regions`)** with exactly these
+meanings, and pass them to `select_features()` (see §6.1, step 3). That keeps
+selection identical across every plot.
 
 **Labelling a selection key.** `format_col_name()` is for *column* names and
-produces wrong output on selection keys. When a plot renders a feature, group,
-supergroup or bundle **key** as visible text — a facet strip, a legend — pass it
+produces wrong output on selection keys. When a plot renders a feature, group
+or supergroup **key** as visible text — a facet strip, a legend — pass it
 through `format_group_name(key, kind)`, where `kind` is one of `"feature"`,
-`"group"`, `"supergroup"`, `"bundle"`, or `"auto"` (supergroup → group → bundle
-→ feature precedence, as in `resolve_selection()`). Feature, group and
-supergroup display strings come from the table's Feature, Group and Supergroup
-columns; bundle labels from `BUNDLE_DISPLAY_NAMES` in `R/utils/palettes.R`.
-Edit those rather than hardcoding a label in the plot.
+`"group"`, `"supergroup"`, or `"auto"` (supergroup → group → feature
+precedence). Display strings come from the table's Feature, Group and
+Supergroup columns. Edit those rather than hardcoding a label in the plot.
 
 **Region-less features.** `cai` and `te` (translation efficiency) are single
 columns with no region suffix; `is_regionless_feature()` identifies them and
-region-aware plots map them to the `mrna` slot.
- 
+`column_regions()` maps them to the `mrna` slot for region-aware plots.
+
 **Exception — single-feature tools.** A tool whose entire premise is "one panel
-per schema family" (e.g. `feature_group_panel_sweep()`) operates on feature
-ids only. It MUST NOT accept supergroups or bundles — those
-are multi-group / refined objects that contradict the one-family-per-panel
-contract. Such tools may keep a local, documented skip set for high-cardinality
-groups (e.g. `DEFAULT_SWEEP_SKIP <- c("codon_freqs", "aa_freqs")`) as
-default-view ergonomics; that constant lives in the analysis file, not
-`config.R`.
+per schema family" (e.g. `feature_group_panel_sweep()`) makes one panel per
+*feature id* that `include`/`exclude` resolve to. Its default excludes the
+high-cardinality families `codon_freqs` and `aa_freqs` in the signature.
 
 ### R4 — Format every plot label through `format_col_name()`
 
@@ -438,7 +437,7 @@ Things that look reasonable and will silently break the pipeline or downstream a
 | Calling `engineer_features()` from an analysis script           | Skips cache, may double-engineer                    | `build_dataset()` does this for you            |
 | Mutating column names with `rename_with(toupper)` for display   | Breaks `format_col_name()` round-trip               | Format only at the moment of display          |
 | Renaming a column produced by a loader inside `engineer.R`      | Downstream `fg()` patterns break                    | Either rename in the loader, or add new col   |
-| Adding a `nmd_core` row with regex `^nmd_(snv\|alt)` to the feature table | Subset masquerading as a schema family; double-claims columns, which the checker rejects | Define it in `GROUP_BUNDLES`, or use per-call `pick`/`drop` |
+| Adding a `nmd_core` row with regex `^nmd_(snv\|alt)` to the feature table | Subset masquerading as a schema family; double-claims columns, which the checker rejects | Express it in the call: `select_features(df, include = ..., exclude = ..., top_n = ...)` |
 | `assign_holdout(fam)` inside a modelling script                 | Split silently reshuffles on any upstream change; results stop being reproducible | `attach_splits(df)` — read the artefact (R14) |
 | `group_vfold_cv(df, group = gene_id)`                           | Blocks on the gene, not the family; paralogues still split across folds | `group = family_id_medium`, or block on `split`  |
 | Judging a split by its gene counts alone                        | An 80/10/10 split can be exact while a held-out split holds only genes with no relatives | Check `pct_multi` is similar across splits in the `build_splits()` summary |
@@ -466,11 +465,10 @@ Pick the recipe that matches your task. Follow every numbered step.
    ```
    The first argument MUST be the dataframe; the formatter MUST default to `format_col_name`.
 3. Inside the function:
-   - Use `fg()` for whole-group selection, or `select_features(df, groups,
-     pick, drop)` when the plot exposes group selection to its caller.
-   - If the function takes a `groups` argument, also take `pick = list()` and
-     `drop = list()`, and resolve all three with `resolve_selection()` +
-     `refine_group_columns()` so behaviour matches every other plot (R3a).
+   - Use `fg()` for whole-feature selection, or `select_features(df, include,
+     exclude, top_n, response)` when the plot exposes feature selection to its
+     caller. Take `include = "core"` and `exclude = NULL` (and `top_n = NULL`
+     where you rank) so behaviour matches every other plot (R3a).
    - Filter NA rows on the variables you actually plot.
    - Compute the summary table.
    - Build the ggplot using `format_col_name()` (or `formatter`) for every label.
@@ -525,7 +523,7 @@ One row in `R/feature_table.csv`. Nothing else needs editing: patterns, groups, 
 |---|---|
 | `feature_id` | Short snake_case id; unique, and not equal to any group or supergroup id |
 | `columns` | Regex claiming exactly this feature's columns, mutually exclusive with every other row. Prefer a literal stem ending in `_` (`^my_metric_`): then the label is the short name plus the region. Leave empty for a feature not yet built. |
-| `Included in exploratory analysis` / `Included in model` | `Included` or `Excluded` |
+| `Included in exploratory analysis` / `Included in model` / `Included in core plots` | `Included` or `Excluded`. Core is the default plotting set and must be a subset of exploratory |
 | `Supergroup`, `Group` | An existing pair, or a new one; a group sits in exactly one supergroup |
 | `Feature`, `Display Short name`, `Display Long name` | The Feature name labels the feature in legends and must be unique; the short name is the plot label |
 | `Regions` | The region display strings its columns carry (`5' UTR, CDS, …`) |
@@ -538,57 +536,13 @@ No cache bump needed (the table is a query layer, not data). **Verify:**
 Rscript scripts/check_feature_table.R
 ```
 
-### 6.4a Adding a reusable column selection (a bundle)
- 
-A **bundle** is a named, reusable selection — the right home for what the old
-`*_some` groups were trying to be. Use one when a particular subset of a group
-(or combination of groups) recurs across plots or modelling.
- 
-A `GROUP_BUNDLES` entry (in `R/config.R`) is a list with any of:
- 
-| Field    | Meaning                                                        |
-|----------|----------------------------------------------------------------|
-| `groups` | character vector of feature / group / supergroup / **other bundle** ids |
-| `pick`   | named list: feature id → columns to KEEP from that feature     |
-| `drop`   | named list: feature id → columns to REMOVE from that feature   |
- 
-A bare character vector is shorthand for `list(groups = <vec>)`.
- 
-```r
-GROUP_BUNDLES <- list(
-  # "the two reported NMD features"
-  nmd_core = c("nmd_snv_fragile", "nmd_alt_stop"),
-  # "structure, with icSHAPE cut to the cytoplasmic compartment"
-  structure_core = list(
-    groups = "structure",
-    pick   = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
-                              "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
-  )
-)
-```
- 
-**Steps:**
- 
-1. Add the entry to `GROUP_BUNDLES` in `R/config.R`.
-2. Use it anywhere `groups` is accepted: `select_features(df, "nmd_core")`,
-   or a plot call `groups = c("structure", "nmd_core")`.
-3. **DO NOT bump `CACHE_VERSION`.** A bundle is a query helper, not data.
-4. Verify: `select_features(build_dataset("human"), "nmd_core")` returns the
-   expected columns.
-**Merge rule (know this).** If a caller passes `pick`/`drop` AND names a bundle
-carrying `pick`/`drop` for the *same group key*, the **caller wins** for that
-key; the bundle's entry applies only where the caller is silent. Resolution is
-always pick-then-drop, so a caller `drop` trims whatever a bundle `pick`
-produced.
- 
-**`pick` vs `drop`, restated for bundles:** prefer `pick` when the keep-set is
-small and fixed and you do NOT want future group additions to appear (the NMD
-case). Prefer `drop` when you want the whole family minus a few members,
-including anything added later.
- 
-**Resolution precedence** inside `expand_groups()` / `resolve_selection()` is
-**supergroup → group → bundle → feature**, first match wins. DO NOT give a
-bundle the same name as a table id; the checker rejects it.
+### 6.4a Choosing a different set of columns for one analysis
+
+There is no registry to edit. Say what the analysis wants in the call:
+`include = ` / `exclude = ` (and `top_n = ` to trim a family). If the set should
+be the *default* for routine plots, change the feature's **Included in core
+plots** flag in the table and run `Rscript scripts/check_feature_table.R`. No
+`CACHE_VERSION` bump is needed either way: selection is a query, not data.
 
 ### 6.5 Adding a new raw input source
 
@@ -1026,10 +980,8 @@ Before considering any extension complete, run through this list. Each item maps
 - [ ] Wide-form loaders drop `gene_id` (R12)
 - [ ] Any new column has a working `format_col_name()` result (no leftover underscores)
 - [ ] Any new column has a row in `R/feature_table.csv`, and `Rscript scripts/check_feature_table.R` passes (§6.4)
-- [ ] Column *subsets* use `pick`/`drop` or a `GROUP_BUNDLES` bundle — never a subset row in the feature table (R3a)
-- [ ] Plot functions accepting `groups` also accept `pick`/`drop` and resolve via `resolve_selection()` (R3a)
-- [ ] Any new bundle name does not collide with a table id (§6.4a)
-- [ ] Any new bundle has a `BUNDLE_DISPLAY_NAMES` entry (§6.4a)
+- [ ] Column *subsets* use `include` / `exclude` / `top_n` through `select_features()` — never a subset row in the feature table (R3a)
+- [ ] Plot functions that choose features take `include`, `exclude` (and `top_n`) and call `select_features()` (R3a)
 - [ ] No backup / scratch / `*_old.R` file left anywhere under `R/` (R1)
 - [ ] Script runs cleanly from a fresh R session via `Rscript <file>`
 - [ ] Outputs are written to the correct subdirectory under `data/outputs/`
@@ -1043,7 +995,7 @@ Before considering any extension complete, run through this list. Each item maps
 R/                                  pipeline core (DO NOT scatter analysis here)
 ├── feature_table.csv               THE feature definitions (source of truth)
 ├── config.R                        paths, REGIONS, reads feature_table.csv,
-│                                   GROUP_BUNDLES, DEFAULT_PLOT_GROUPS, CACHE_VERSION
+│                                   CACHE_VERSION
 ├── load_all.R                      sources everything in dependency order
 ├── utils/                          pure helpers, no pipeline state
 │   ├── normalise.R                 z_score_normalize, min_max_normalize
@@ -1051,7 +1003,7 @@ R/                                  pipeline core (DO NOT scatter analysis here)
 │   ├── palettes.R                  FEATURE_GROUP_COLOURS, REGION_COLOURS/SHAPES,
 │   │                               format_group_name, format_metric_name
 │   └── feature_groups.R            fg, fg_columns, select_features,
-│                                   resolve_selection, lookup_key
+│                                   selected_columns, lookup_key
 ├── io/
 │   ├── load_raw.R                  one function per raw source file
 │   └── cache.R                     save/load/clear snapshot
@@ -1090,7 +1042,7 @@ data/
 - **The pseudo-region tokens are long gone.** Whole-transcript scalars (architecture, uORF, NMD) end in the real `mrna` suffix; the `transcript` token and the `window`/`core`/`full` NMD tokens no longer exist. There is one NMD fragility model. Any analysis script written against the old names (`*_transcript`, `nmd_*_window`, …) will silently select nothing — `fg()` returns an empty set rather than erroring.
 - **The schema is RNA-canonical: `u`, never `t`.** Nucleotide columns are `frac_u_*` and codons are `codon_aau_cds`, in every species. Upstream disagrees — the human counts file spells codons with U, the mouse one with T — so `normalise_codon_alphabet()` folds them at load time, the same way `normalise_region()` applies `REGION_ALIASES`. The consequence for anyone writing a regex over composition columns: the triplet class is `[acgtu]`, not `[acgt]`. A DNA-only class matches nothing rather than erroring, which is exactly how the v7 fraction bug survived — `add_codon_aa_fractions()` normalised only the 27 codons spelled without a U, leaving the other 38 as raw counts that correlated with `length_cds` at |rho| up to 0.82 while the normalised 27 summed to 1 among themselves and looked fine.
 - **Every built column has a table row now, including the never-used ones** (Vienna median/p-value, analysis-window lengths, `utr5_length`, the CDS codon denominators, `stop_dist_last_downstream`). A few of these names still break the region-suffix-last invariant of §1.2 (`internal_exon_mean`, `n_overlapping_uorfs`, …); they are never-used, so no plot meets them, but renaming them means changing the loader and bumping `CACHE_VERSION`.
-- **Not sure which namespace a string belongs to?** Call `lookup_key("mytoken")` — it returns `"supergroup"`, `"group"`, `"bundle"`, `"feature"`, or `"unknown"`. Call `list_selection_keys()` to print all of them in one table.
+- **Not sure which namespace a string belongs to?** Call `lookup_key("mytoken")` — it returns `"flag"`, `"supergroup"`, `"group"`, `"feature"`, or `"unknown"`. Call `list_selection_keys()` to print all of them in one table.
 
 ---
 
