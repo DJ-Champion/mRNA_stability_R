@@ -68,6 +68,18 @@ for (b in names(GROUP_BUNDLES)) {
 bad <- DEFAULT_PLOT_GROUPS[vapply(DEFAULT_PLOT_GROUPS, lookup_key, character(1)) == "unknown"]
 if (length(bad)) fail("DEFAULT_PLOT_GROUPS names unknown key(s): ", paste(bad, collapse = ", "))
 
+# "Included in core plots" must reproduce the old DEFAULT_PLOT_GROUPS resolution
+# (SELECTION_PLAN.md, step 2), except that probing is out. Transitional: this
+# check goes with DEFAULT_PLOT_GROUPS when the old machinery is deleted.
+not_expl_core <- setdiff(CORE_FEATURES, EXPLORATORY_FEATURES)
+if (length(not_expl_core)) fail("core plot feature(s) not in the exploratory analysis: ",
+                                paste(not_expl_core, collapse = ", "))
+old_core <- setdiff(resolve_selection(DEFAULT_PLOT_GROUPS)$groups, "probing")
+if (!setequal(CORE_FEATURES, old_core))
+  fail("core plots differ from DEFAULT_PLOT_GROUPS minus probing: only in table {",
+       paste(setdiff(CORE_FEATURES, old_core), collapse = ", "), "}, only in old {",
+       paste(setdiff(old_core, CORE_FEATURES), collapse = ", "), "}")
+
 unbuilt <- tbl$feature_id[!nzchar(tbl$columns)]
 if (length(unbuilt)) note("not yet built (no columns): ", paste(unbuilt, collapse = ", "))
 
@@ -133,7 +145,21 @@ for (sp in species) {
       "; exploratory features select ", length(select_features(df, EXPLORATORY_FEATURES)),
       "; never used: ", length(excluded_columns(df)), "\n", sep = "")
 
-  # 6. Fallback label rules that no longer fire (dead code in naming.R).
+  # 6. Core plots select the old default's columns, less probing. The old
+  #    default pins two codons and two amino acids; the plan's top_n replaces
+  #    that pin, so compare with the families released, as the ranked and bands
+  #    figures do.
+  old_cols <- setdiff(select_features(df, DEFAULT_PLOT_GROUPS,
+                                      pick = list(codon_freqs = NULL, aa_freqs = NULL)),
+                      fg_columns(df, "probing"))
+  new_cols <- unique(unlist(lapply(CORE_FEATURES, fg_columns, df = df), use.names = FALSE))
+  if (!setequal(old_cols, new_cols))
+    fail(sp, ": core plot columns differ from the old default: ",
+         length(setdiff(new_cols, old_cols)), " only in core, ",
+         length(setdiff(old_cols, new_cols)), " only in old")
+  cat("  core plots select ", length(new_cols), " columns\n", sep = "")
+
+  # 7. Fallback label rules that no longer fire (dead code in naming.R).
   fallback <- Filter(function(r) !grepl("^\\[ _\\]", r[[1]]), REPLACEMENTS)
   dead <- vapply(fallback, function(r) !any(grepl(r[[1]], names(df))), logical(1))
   if (any(dead)) note("naming.R rule(s) matching no column: ",

@@ -104,12 +104,14 @@ ANALYSIS_SPECIES <- c("human")
 #               global_folding). Every group sits in exactly one supergroup.
 #   supergroup  the table's Supergroup column, snake-cased.
 #
-# The two flags:
+# The three flags:
 #   Included in exploratory analysis   Selecting a group or supergroup returns
 #       only its exploratory features. Naming a feature id directly always
 #       works, so a plot can still reach an excluded feature on purpose.
 #   Included in model                  The model's predictor list
 #       (model_columns()). Nothing else reads it.
+#   Included in core plots             The default set for the correlation
+#       figures (CORE_FEATURES). A subset of the exploratory features.
 # A row Excluded from both is never used anywhere; drop_excluded() removes it.
 #
 # Rows in the "Response / evaluation" supergroup (halflife, saluki) and rows
@@ -132,6 +134,7 @@ FEATURE_TABLE_PATH <- file.path(
   }
   t$exploratory   <- flag("Included in exploratory analysis")
   t$model         <- flag("Included in model")
+  t$core          <- flag("Included in core plots")
   t$group_id      <- .snake(t$Group)
   t$supergroup_id <- .snake(t$Supergroup)
   t$is_feature    <- nzchar(t$columns) & t$supergroup_id != "response_evaluation"
@@ -170,6 +173,7 @@ SUPERGROUPS    <- split(.feature_rows$feature_id,
 
 EXPLORATORY_FEATURES <- .feature_rows$feature_id[.feature_rows$exploratory]
 MODEL_FEATURES       <- .feature_rows$feature_id[.feature_rows$model]
+CORE_FEATURES        <- .feature_rows$feature_id[.feature_rows$core]
 
 #' Built columns that are used nowhere: rows Excluded from both flags. Regexes,
 #' because the table is data-independent; drop_excluded() resolves them.
