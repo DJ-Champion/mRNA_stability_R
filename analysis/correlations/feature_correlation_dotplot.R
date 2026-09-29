@@ -151,7 +151,7 @@ correlation_with_ci <- function(x, y,
 #' @param method             Correlation method (default "spearman").
 #' @param include            Selection tokens: "core" (default), "exploratory",
 #'                           "model", or supergroup / group / feature ids. See
-#'                           select_features_v2().
+#'                           select_features().
 #' @param exclude            Tokens to subtract from `include`. NULL = none.
 #' @param regions            Region tokens to draw ("5utr", "cds", ...). NULL
 #'                           (default) = all. Applied before `top_n`.
@@ -214,7 +214,7 @@ feature_correlation_dotplot <- function(df,
   # for junction counts), so they are picked up here automatically. Only
   # genuinely malformed columns (no region token at all) fall through to
   # `dropped`.
-  sel <- select_features_v2(df, include, exclude, top_n = top_n,
+  sel <- select_features(df, include, exclude, top_n = top_n,
                             response = response, regions = regions,
                             method = method, min_n = min_n)
   sel <- sel[sel$column != response, , drop = FALSE]

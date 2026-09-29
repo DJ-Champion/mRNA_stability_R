@@ -107,40 +107,24 @@ SUPERGROUP_DISPLAY_NAMES <- c(
   stats::setNames(FEATURE_TABLE$Supergroup, FEATURE_TABLE$supergroup_id)[!duplicated(FEATURE_TABLE$supergroup_id)],
   other = "Other")
 
-#' Bundle name -> display label. MUST cover every GROUP_BUNDLES key, or the
-#' toTitleCase fallback produces things like "Nmd Core".
-BUNDLE_DISPLAY_NAMES <- c(
-  nmd_core         = "NMD (core)",
-  lengths_core     = "Core lengths",
-  junction_core    = "Core junction proximity",
-  structure_core   = "Core structure",
-  sequence_core    = "Core sequence",
-  sequence_select  = "Sequence (selected)",
-  translation_core = "Core translation"
-)
-
-
-#' Display name for a selection key (feature / group / supergroup / bundle).
+#' Display name for a selection key (feature / group / supergroup).
 #'
 #' Looks the key up in the table for its `kind`; on a miss, falls back to
 #' title-cased underscore replacement. Vectorised.
 #'
 #' @param g    Character vector of selection keys.
-#' @param kind One of "feature", "group", "supergroup", "bundle", or "auto".
-#'   "auto" resolves each token with the same precedence as
-#'   resolve_selection(): supergroup -> group -> bundle -> feature.
+#' @param kind One of "feature", "group", "supergroup", or "auto". "auto"
+#'   resolves each token supergroup -> group -> feature.
 #' @return Character vector of display strings, same length as `g`.
 #' @export
 format_group_name <- function(g, kind = c("auto", "feature", "group",
-                                          "supergroup", "bundle")) {
+                                          "supergroup")) {
   kind <- match.arg(kind)
-  bundles <- if (exists("GROUP_BUNDLES", inherits = TRUE)) names(GROUP_BUNDLES) else character()
 
   pick_table <- function(k) switch(k,
     feature    = FEATURE_GROUP_DISPLAY_NAMES,
     group      = GROUP_DISPLAY_NAMES,
-    supergroup = SUPERGROUP_DISPLAY_NAMES,
-    bundle     = BUNDLE_DISPLAY_NAMES
+    supergroup = SUPERGROUP_DISPLAY_NAMES
   )
 
   vapply(g, function(key) {
@@ -149,7 +133,6 @@ format_group_name <- function(g, kind = c("auto", "feature", "group",
       this_kind <-
         if      (key %in% names(SUPERGROUPS))    "supergroup"
         else if (key %in% names(FEATURE_GROUPS)) "group"
-        else if (key %in% bundles)               "bundle"
         else                                     "feature"
     }
     tbl <- pick_table(this_kind)

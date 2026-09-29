@@ -83,9 +83,6 @@ feature_group_panel <- function(df,
       extra <- " (it is a supergroup; this tool is single-feature only)"
     } else if (group %in% names(FEATURE_GROUPS)) {
       extra <- " (it is a group; this tool is single-feature only)"
-    } else if (exists("GROUP_BUNDLES", inherits = TRUE) &&
-               group %in% names(GROUP_BUNDLES)) {
-      extra <- " (it is a bundle; this tool is single-feature only)"
     }
     stop("'", group, "' is not a feature id", extra,
          " — see R/feature_table.csv")
@@ -233,7 +230,7 @@ feature_group_panel <- function(df,
 #'
 #' One panel per group. Groups must be FEATURE_PATTERNS keys — this tool shows
 #' each schema feature on its own. `include` / `exclude` are expanded with
-#' select_features_v2() and each resulting feature id gets a panel (use
+#' select_features() and each resulting feature id gets a panel (use
 #' feature_correlation_dotplot() or feature_response_scatter() for figures that
 #' combine features).
 #'
@@ -247,7 +244,7 @@ feature_group_panel <- function(df,
 #' than erroring.
 #'
 #' @param df         Dataframe from build_dataset() or build_all().
-#' @param include    Selection tokens (see select_features_v2()); default
+#' @param include    Selection tokens (see select_features()); default
 #'                   "exploratory".
 #' @param exclude    Tokens to subtract from `include`. Default: codon_freqs
 #'                   and aa_freqs.

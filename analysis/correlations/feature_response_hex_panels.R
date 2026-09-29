@@ -42,7 +42,7 @@ suppressPackageStartupMessages({
 
 #' Hex-density panels of each selected feature vs a response.
 #'
-#' Selection is resolved through select_features_v2(), so `include` /
+#' Selection is resolved through select_features(), so `include` /
 #' `exclude` accept "core", "exploratory", "model" and feature / group /
 #' supergroup ids; `columns` accepts literal column names. The plotted feature
 #' set is the union of both, with the response and any derived predictions
@@ -51,7 +51,7 @@ suppressPackageStartupMessages({
 #' @param df         Dataframe from build_dataset() or build_all().
 #' @param response   Character. Response column on the y-axis (default
 #'                   "halflife"). Any numeric column is permitted.
-#' @param include    Selection tokens (see select_features_v2()); default
+#' @param include    Selection tokens (see select_features()); default
 #'                   "exploratory". NULL selects nothing from the table, so
 #'                   `columns` alone decides.
 #' @param exclude    Tokens to subtract from `include`. NULL = none.
@@ -99,7 +99,7 @@ feature_response_hex_panels <- function(df,
   sel_cols <- if (is.null(include)) {
     character()
   } else {
-    selected_columns(select_features_v2(df, include, exclude, top_n = top_n,
+    selected_columns(select_features(df, include, exclude, top_n = top_n,
                                         response = response, method = method))
   }
   

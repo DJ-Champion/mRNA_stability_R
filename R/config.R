@@ -183,41 +183,6 @@ NEVER_USED_PATTERNS <- FEATURE_TABLE$columns[nzchar(FEATURE_TABLE$columns) &
 rm(.feature_rows)
 
 
-# --- Bundles and plot defaults -------------------------------------------------
-# Selection INTENT, not schema: reusable named selections over the ids above.
-# A bundle is a list with any of:
-#   groups : feature / group / supergroup / other bundle ids
-#   pick   : named list  feature_id -> columns to KEEP from that feature
-#   drop   : named list  feature_id -> columns to REMOVE from that feature
-# A bare character vector is shorthand for list(groups = <vec>). Editing a
-# bundle never needs a CACHE_VERSION bump.
-
-GROUP_BUNDLES <- list(
-  nmd_core       = c("nmd_snv_fragile", "nmd_alt_stop"),
-  lengths_core   = "lengths",
-  junction_core  = "eej_dist_closest",
-  structure_core = list(
-    groups = "structure",
-    pick = list(probing = c("gini_cytoplasm_mrna", "gini_cytoplasm_5utr",
-                            "gini_cytoplasm_cds", "gini_cytoplasm_3utr"))
-  ),
-  sequence_core  = c("sequence", "cai"),
-  sequence_select = list(
-    groups = c("sequence", "cai"),
-    pick = list(codon_freqs = c("codon_agu_cds", "codon_uca_cds"),
-                aa_freqs    = c("aa_s_cds", "aa_v_cds"))
-  ),
-  translation_core = c("uorf_present", "exon_density")
-)
-
-# The main set we focus on for almost everything: the default `groups =` for
-# the correlation dotplot, the response scatter, the region heatmap and the
-# correlation-heatmap workflow. A PLOTTING default only — the model's
-# predictors come from the table's model flag (MODEL_FEATURES).
-DEFAULT_PLOT_GROUPS <- c("nmd_core", "junction_core", "structure_core",
-                         "sequence_select", "translation_core")
-
-
 # --- Cohort definition -------------------------------------------------------
 # The minimum length, in nucleotides, that BOTH UTRs must reach for a
 # transcript to enter the analysis. A transcript failing it is dropped
@@ -251,7 +216,7 @@ DEFAULT_PLOT_GROUPS <- c("nmd_core", "junction_core", "structure_core",
 # WHERE IT IS APPLIED. build_dataset() applies it to the frame it RETURNS,
 # after the cache is read or written — so the cache on disk stays complete and
 # this needs no CACHE_VERSION bump. It is selection intent, like
-# DEFAULT_PLOT_GROUPS and the feature table's flags, not a schema change. Pass
+# the feature table's flags, not a schema change. Pass
 # `min_utr = NULL` to build_dataset() / build_all() for the unfiltered table;
 # the QC scripts do exactly that, because a coverage and missingness diagnostic
 # should describe the whole built table including what this removes.

@@ -194,7 +194,7 @@ critical_correlation <- function(n,
 #' @param method             Correlation method (default "spearman").
 #' @param include            Selection tokens: "core" (default), "exploratory",
 #'                           "model", or supergroup / group / feature ids. See
-#'                           select_features_v2().
+#'                           select_features().
 #' @param exclude            Tokens to subtract from `include`. NULL = none.
 #' @param regions            Region tokens to draw ("5utr", "cds", ...). NULL
 #'                           (default) = all. Applied before `top_n`.
@@ -219,7 +219,7 @@ critical_correlation <- function(n,
 #' @param region_shapes      Named shape vector. Default REGION_SHAPES.
 #' @param top_n              Named list: feature id -> keep only the N metric
 #'                           stems with the largest max |r| against `response`.
-#'                           NULL = whole families. See select_features_v2().
+#'                           NULL = whole families. See select_features().
 #' @return list(plot, table, report). `report` is the diagnostic list consumed
 #'   by write_run_report(); nothing in it is drawn on the figure.
 #' @export
@@ -261,7 +261,7 @@ feature_correlation_ranked <- function(df,
   # the feature axis by ending in a real REGIONS token, or by being a
   # registered region-less scalar (mapped to `mrna`). Anything else cannot be
   # positioned against the region legend and is reported, not silently lost.
-  sel <- select_features_v2(df, include, exclude, top_n = top_n,
+  sel <- select_features(df, include, exclude, top_n = top_n,
                             response = response, regions = regions,
                             method = method, min_n = min_n)
   sel <- sel[sel$column != response, , drop = FALSE]
@@ -758,7 +758,7 @@ format_run_report <- function(report, title, species = "human") {
   }
 
   # Which high-cardinality families were trimmed to their top N. The stems come
-  # from the data (select_features_v2), so the same response gives the same
+  # from the data (select_features), so the same response gives the same
   # stems in every figure; a different response may give different ones.
   if (length(report$ranking_applied) > 0) {
     lines <- c(lines, "### Family selection", "")

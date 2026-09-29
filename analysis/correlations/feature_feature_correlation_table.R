@@ -50,7 +50,7 @@ suppressPackageStartupMessages({
 
 
 # Internal: build column → group and column → region lookup maps from a
-# select_features_v2() result. group = the feature id the column was selected
+# select_features() result. group = the feature id the column was selected
 # under. region = the last underscore-delimited token when it is a legal
 # REGIONS member; NA_character_ otherwise (e.g. standalone scalars like `cai`
 # carry no region suffix).
@@ -75,7 +75,7 @@ suppressPackageStartupMessages({
 #' @param df      A dataframe from build_dataset(). Must contain exactly one
 #'                species (pipeline invariant: pass build_dataset(sp), not
 #'                build_all(), to this function — the runner loops species).
-#' @param include Selection tokens (see select_features_v2()); default
+#' @param include Selection tokens (see select_features()); default
 #'                "exploratory".
 #' @param exclude Tokens to subtract from `include`. Default codon_freqs and
 #'                aa_freqs — their within-group correlations are a
@@ -122,7 +122,7 @@ compute_feature_correlation_table <- function(df,
   sp_label <- if (pool) "pooled" else unique(df$species)[1]
 
   # --- Select candidate columns (R3) ----------------------------------------
-  sel <- select_features_v2(df, include, exclude)
+  sel <- select_features(df, include, exclude)
   if (nrow(sel) == 0) {
     stop("`include` / `exclude` resolved to zero columns")
   }

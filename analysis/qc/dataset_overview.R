@@ -122,12 +122,12 @@ halflife_distribution_plot <- function(df, formatter = format_col_name) {
 #'
 #' For each selected feature, computes the average non-NA rate across all its
 #' columns, per species. Tile text shows percentage and the number of columns.
-#' Selection is resolved through select_features_v2(): supergroups and groups
+#' Selection is resolved through select_features(): supergroups and groups
 #' expand to one tile per member feature (R3a), and a feature with no columns
 #' in the data still gets a "no cols" tile.
 #'
 #' @param df         Dataframe from build_dataset() or build_all().
-#' @param include    Selection tokens (see select_features_v2()); default
+#' @param include    Selection tokens (see select_features()); default
 #'                   "exploratory" — the features the analysis uses. Use
 #'                   names(FEATURE_PATTERNS) to see every feature, including
 #'                   those the table excludes.

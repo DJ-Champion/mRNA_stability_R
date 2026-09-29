@@ -56,7 +56,7 @@ suppressPackageStartupMessages({
 #' @param method         Correlation method (default "spearman").
 #' @param include        Selection tokens: "core" (default), "exploratory",
 #'                       "model", or supergroup / group / feature ids. See
-#'                       select_features_v2().
+#'                       select_features().
 #' @param exclude        Tokens to subtract from `include`. NULL = none.
 #' @param regions        Region tokens to keep ("5utr", "cds", ...). NULL
 #'                       (default) = all.
@@ -145,8 +145,8 @@ feature_response_scatter <- function(df,
 
   # --- Enumerate candidate columns ----------------------------------------
   # Family trimming (`top_n`) is done below, on distance from origin, because
-  # this figure has two responses; select_features_v2() ranks against one.
-  sel <- select_features_v2(df, include, exclude, regions = regions)
+  # this figure has two responses; select_features() ranks against one.
+  sel <- select_features(df, include, exclude, regions = regions)
   col_to_group <- stats::setNames(as.list(sel$feature_id), sel$column)
 
   candidates <- names(col_to_group)

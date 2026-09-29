@@ -235,7 +235,7 @@ suppressPackageStartupMessages({
 #'                         (default "halflife").
 #' @param include          Selection tokens: "core" (default), "exploratory",
 #'                         "model", or supergroup / group / feature ids. See
-#'                         select_features_v2().
+#'                         select_features().
 #' @param exclude          Tokens to subtract from `include`. NULL = none.
 #' @param top_n            Named list: feature id → N. Trims a family to its N
 #'                         strongest stems against `response` (max over
@@ -315,7 +315,7 @@ region_feature_heatmap <- function(df,
   }
 
   # --- Feature selection ----------------------------------------------------
-  sel <- select_features_v2(df, include, exclude, top_n = top_n,
+  sel <- select_features(df, include, exclude, top_n = top_n,
                             response = response)
   sel <- sel[sel$column != response, , drop = FALSE]
   all_features <- sel$column

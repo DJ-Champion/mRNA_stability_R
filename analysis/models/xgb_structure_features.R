@@ -125,7 +125,7 @@ run_dir <- function(what = c("root", "tables", "plots")) {
 #' @return Character vector of column names present in `df`.
 #' @export
 baseline_columns <- function(df) {
-  selected_columns(select_features_v2(df, "model", exclude = "structure"))
+  selected_columns(select_features(df, "model", exclude = "structure"))
 }
 
 
@@ -152,7 +152,7 @@ baseline_columns <- function(df) {
 #' @return Character vector of column names present in `df`.
 #' @export
 structure_columns <- function(df) {
-  selected_columns(select_features_v2(
+  selected_columns(select_features(
     df, "model", exclude = setdiff(names(SUPERGROUPS), "structure")))
 }
 

@@ -135,7 +135,7 @@ for (j in list(list("structure", "structure", NULL, hm_core),
 
 # workflow: the candidate set it builds (same call it makes)
 now_cols[["correlation_heatmap_workflow.R | workflow"]] <-
-  cols_of(select_features_v2(df_full, "core", top_n = top2, response = "halflife"))
+  cols_of(select_features(df_full, "core", top_n = top2, response = "halflife"))
 
 # hex panels: the table keeps every selected feature
 for (g in c("sequence", "structure")) {

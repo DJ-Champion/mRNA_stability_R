@@ -33,7 +33,7 @@
 #
 # FEATURE SELECTION:
 #   Starts from the core set (the feature table's "Included in core plots"
-#   flag; see select_features_v2()). All selection is
+#   flag; see select_features()). All selection is
 #   diagnostic/candidate. Do not automatically discard biologically central
 #   corrected structure features (rnafold_zscores, mfe_deltas) purely
 #   because their marginal correlation with half-life is weak.
@@ -883,7 +883,7 @@ write_correlation_outputs <- function(feature_target_tbl = NULL,
 #'                                     values in df$species.
 #' @param include                      Selection tokens: "core" (default),
 #'                                     "exploratory", "model", or supergroup /
-#'                                     group / feature ids (select_features_v2()).
+#'                                     group / feature ids (select_features()).
 #' @param exclude                      Tokens to subtract from `include`.
 #' @param top_n                        Named list trimming a family to its N
 #'                                     strongest stems against `target_col`,
@@ -969,7 +969,7 @@ run_correlation_heatmap_workflow <- function(df,
     # ---- 1. Feature selection (R3: use select_features / fg) -----------------
     message("Selecting features: include = ", paste(include, collapse = ", "),
             if (length(exclude)) paste0("; exclude = ", paste(exclude, collapse = ", ")))
-    candidate_features <- selected_columns(select_features_v2(
+    candidate_features <- selected_columns(select_features(
       df_sp, include, exclude, top_n = top_n, response = target_col,
       method = correlation_method))
 
