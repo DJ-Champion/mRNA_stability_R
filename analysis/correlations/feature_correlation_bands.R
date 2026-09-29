@@ -245,9 +245,10 @@ feature_correlation_bands <- function(df,
     # Vertical dashed guides every 0.1, over the bands.
     ggplot2::geom_vline(xintercept = x_guides, linetype = "dashed",
                         colour = "grey45", linewidth = 0.3, alpha = 0.6) +
-    # One dashed guide per feature row, to carry the eye from the label to
-    # its points.
-    ggplot2::geom_hline(yintercept = rows$y, linetype = "dashed",
+    # Dashed separators between neighbouring feature rows, including across
+    # band edges (over the white seams). The panel's bottom edge is skipped.
+    ggplot2::geom_hline(yintercept = setdiff(rows$y - 0.5, min(bands$ymin)),
+                        linetype = "dashed",
                         colour = "grey45", linewidth = 0.3, alpha = 0.6) +
     ggplot2::geom_errorbar(
       ggplot2::aes(y = y_dodged, xmin = .lo, xmax = .hi, colour = region_f,
