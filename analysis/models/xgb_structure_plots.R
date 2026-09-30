@@ -225,10 +225,11 @@ p_obspred <- preds |>
   scale_colour_manual(values = MODEL_COLS) +
   coord_equal(xlim = lims, ylim = lims) +
   facet_wrap(~ model) +
-  labs(title = "Observed vs predicted half-life",
+  labs(title = paste("Observed vs predicted", response_info()$label),
        subtitle = sprintf("%s held-out genes",
                           format(N_TEST, big.mark = ",")),
-       x = "Observed (PC1 score)", y = "Predicted (PC1 score)") +
+       x = sprintf("Observed (%s)", response_info()$axis),
+       y = sprintf("Predicted (%s)", response_info()$axis)) +
   theme_xgb()
 
 save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 190, h = 115)
