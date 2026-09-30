@@ -201,26 +201,14 @@ save_plot(p_paired, "xgb_structure_paired_slices", w = 190, h = 110)
 
 # ----------------------------- 3. Observed vs predicted ---------------------
 
-# Three numbers, because they answer three different questions.
-#   Pearson r    how tight the cloud is about SOME straight line
-#   Spearman ρ   whether the RANKING is right, ignoring scale entirely
-#   R²           the coefficient of determination, 1 - SSres/SStot
-# R² is unqualified because it already means the coefficient of determination.
-# The term needing care is the other one: yardstick's `rsq` is squared Pearson
-# correlation, which many people also call R². They are identical for in-sample
-# OLS with an intercept and diverge out of sample by exactly a calibration
-# penalty, so reporting r beside R² is a free calibration check.
-obspred_stats <- preds |>
-  group_by(model) |>
-  summarise(
-    pearson   = cor(observed, predicted),
-    spearman  = cor(observed, predicted, method = "spearman"),
-    rsq_trad  = 1 - sum((observed - predicted)^2) /
-                    sum((observed - mean(observed))^2),
-    .groups   = "drop"
-  ) |>
-  mutate(label = sprintf("r = %.3f\n%s = %.3f\nR%s = %.3f",
-                         pearson, "ρ", spearman, "²", rsq_trad))
+# R² is the coefficient of determination, 1 - SSres/SStot, on the held-out
+# genes. Point estimate and 95% percentile bootstrap CI come from the same
+# table as the R² figure. The CI is reported as a bracketed interval, not
+# "±": percentile intervals are asymmetric about the estimate.
+obspred_stats <- model_ci |>
+  filter(metric == "rsq_trad") |>
+  mutate(label = sprintf("R%s = %.3f\n95%% CI %.3f\u2013%.3f",
+                         "²", value, ci_low, ci_high))
 
 lims <- range(c(preds$observed, preds$predicted))
 
@@ -238,7 +226,7 @@ p_obspred <- preds |>
   coord_equal(xlim = lims, ylim = lims) +
   facet_wrap(~ model) +
   labs(title = "Observed vs predicted half-life",
-       subtitle = sprintf("%s held-out genes, plotted in both panels",
+       subtitle = sprintf("%s held-out genes",
                           format(N_TEST, big.mark = ",")),
        x = "Observed (PC1 score)", y = "Predicted (PC1 score)") +
   theme_xgb()
