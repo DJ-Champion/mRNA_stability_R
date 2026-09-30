@@ -3,10 +3,10 @@
 # =============================================================================
 # Two models, fitted once, evaluated once:
 #
-#   Baseline    non-structure transcript features
-#   Structure   Baseline + every computed secondary-structure feature
+#   Without Structure   non-structure transcript features
+#   With Structure      those + every computed secondary-structure feature
 #
-# One pre-specified contrast: Structure vs Baseline, on held-out R-squared.
+# One pre-specified contrast: With Structure vs Without Structure, on held-out R-squared.
 #
 # The intended experimental difference between the two is the folding block.
 # Everything else — rows, gene ids, preprocessing, tuning resamples, tuning
@@ -406,16 +406,16 @@ names(used) <- MODELS
 chk("Same rows and identifiers for both models",
     TRUE, sprintf("%d train+val / %d test genes, one frame",
                   nrow(trainval), nrow(testing_)))
-chk("No structure variable appears in Baseline",
+chk("No structure variable appears in Without Structure",
     length(intersect(used[[REFERENCE_MODEL]], STRUCTURE)) == 0)
 chk("Both models carry the identical baseline block",
     all(vapply(MODELS, function(m)
       setequal(intersect(used[[m]], BASELINE), BASELINE), logical(1))),
     sprintf("%d baseline columns", length(BASELINE)))
-chk("Structure = Baseline + the whole folding block",
+chk("With Structure = Without Structure + the whole folding block",
     setequal(used[[STRUCTURE_MODEL]], c(BASELINE, STRUCTURE)),
     sprintf("%d structure columns", length(STRUCTURE)))
-chk("Baseline is nested inside Structure",
+chk("Without Structure is nested inside With Structure",
     all(used[[REFERENCE_MODEL]] %in% used[[STRUCTURE_MODEL]]),
     paste(MODELS, collapse = " < "))
 chk("No icSHAPE probing column is a predictor in either model",
@@ -534,6 +534,17 @@ print(as.data.frame(
 cat("\n")
 
 write_csv(delta_table, file.path(TABLE_DIR, "xgb_structure_delta_bootstrap.csv"))
+
+# Per-model held-out metrics with their own percentile CIs, from the same
+# bootstrap draws as the delta table (so the two are consistent).
+model_ci_table <- expand_grid(model = MODELS, metric = BOOT_METRICS) |>
+  mutate(
+    value   = map2_dbl(model, metric, ~ point[.y, .x]),
+    ci_low  = map2_dbl(model, metric, ~ unname(quantile(boot_arr[.y, .x, ], 0.025))),
+    ci_high = map2_dbl(model, metric, ~ unname(quantile(boot_arr[.y, .x, ], 0.975))),
+    model   = factor(model, levels = MODELS)
+  )
+write_csv(model_ci_table, file.path(TABLE_DIR, "xgb_structure_model_ci.csv"))
 
 
 # ----------------------------- 11. Paired sign-flip test --------------------
@@ -838,12 +849,12 @@ summary_txt <- c(
   "                             model, not part of this comparison.",
   "",
   strrep("-", 74),
-  "Held-out results — Structure vs Baseline",
+  "Held-out results — With Structure vs Without Structure",
   strrep("-", 74),
   vapply(seq_len(nrow(delta_table)),
          function(i) fmt_row(delta_table[i, ]), character(1)),
   "",
-  "Sign convention: delta = Structure - Baseline.",
+  "Sign convention: delta = With Structure - Without Structure.",
   "  R-squared  delta > 0 favours Structure",
   "  RMSE, MAE  delta < 0 favours Structure",
   sprintf("95%% CIs from %d paired bootstrap replicates over held-out genes.", N_BOOT),

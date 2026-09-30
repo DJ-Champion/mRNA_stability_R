@@ -3,8 +3,8 @@
 # =============================================================================
 # The one place the two models are defined:
 #
-#   Baseline    non-structure transcript features
-#   Structure   Baseline + every computed secondary-structure feature
+#   Without Structure   non-structure transcript features
+#   With Structure      those + every computed secondary-structure feature
 #
 # Structure is the ONLY difference between them. Rows, gene ids, preprocessing,
 # tuning resamples, tuning grid, budget, seeds and evaluation are shared by
@@ -35,8 +35,8 @@ TARGET_COL <- "halflife"
 
 # --- The two models ----------------------------------------------------------
 
-REFERENCE_MODEL <- "Baseline"
-STRUCTURE_MODEL <- "Structure"
+REFERENCE_MODEL <- "Without Structure"
+STRUCTURE_MODEL <- "With Structure"
 
 # Order matters: reference first. Every table, figure and factor level in the
 # downstream scripts reads this vector rather than restating the order.
@@ -266,10 +266,10 @@ report_feature_sets <- function(el) {
   print(table(d$split))
 
   cat("\n--- The two models ---\n")
-  cat(sprintf("  %-10s %-11s %-11s %s\n",
+  cat(sprintf("  %-18s %-11s %-11s %s\n",
               "model", "structure", "predictors", "structure groups"))
   for (m in MODELS) {
-    cat(sprintf("  %-10s %-11d %-11d %s\n", m,
+    cat(sprintf("  %-18s %-11d %-11d %s\n", m,
                 length(el$models[[m]]),
                 length(el$baseline) + length(el$models[[m]]),
                 if (length(el$models[[m]])) paste(structure_groups(), collapse = ", ")
