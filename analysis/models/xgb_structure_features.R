@@ -63,12 +63,14 @@ structure_groups <- function() {
 }
 
 
-#' Where this analysis's artefacts live.
+#' Where this analysis's artefacts live: one subfolder per response, so runs
+#' for different responses (halflife, translation_efficiency, ...) never
+#' overwrite each other.
 #' @param what "root", "tables" or "plots".
 #' @export
 run_dir <- function(what = c("root", "tables", "plots")) {
   what <- match.arg(what)
-  root <- file.path(OUTPUT_DIR, "xgb_structure")
+  root <- file.path(OUTPUT_DIR, "xgb_structure", TARGET_COL)
   if (what == "root") root else file.path(root, what)
 }
 

@@ -435,7 +435,7 @@ XGB_GRID_SIZE=6 Rscript analysis/models/xgb_structure_comparison.R   # fast smok
 Rscript analysis/models/xgb_structure_plots.R           # figures only, from the tables
 ```
 
-Fits are cached in `data/outputs/xgb_structure/final_fits.rds`, keyed on
+Fits are cached in `data/outputs/xgb_structure/halflife/final_fits.rds`, keyed on
 everything that determines them (both predictor lists, the exact genes, the
 seed, the grid, the fold count). Change any of those and it re-tunes; set
 `XGB_REFIT=1` to force it.
