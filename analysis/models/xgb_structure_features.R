@@ -41,7 +41,7 @@ suppressPackageStartupMessages({
 # Both responses are modelled RAW. `halflife` is PC1 of the Agarwal & Kelley
 # (2022) consensus half-life measure, not a duration in hours: a signed, roughly
 # symmetric score (range -17.2 to +18.2, sd 4.81 on the human v10 cache), and a
-# log is undefined on negative values. RMSE and MAE are in the response's units.
+# log is undefined on negative values. RMSE and MAE are in the response's units (for TE, a unitless residual).
 # The response columns are never predictors: halflife is in the "Response /
 # evaluation" group, which cannot be selected, and translation_efficiency is
 # flagged out of the model in R/feature_table.csv.
@@ -53,8 +53,10 @@ RESPONSES <- list(
                   "untransformed (signed score, not hours)")),
   translation_efficiency = list(
     label = "translation efficiency",
-    axis  = "TE",
-    note  = "Ribo-seq mean translation efficiency (mean_te), untransformed")
+    axis  = "TE, unitless residual",
+    note  = paste("Ribo-seq translation efficiency (mean_te), a unitless",
+                  "compositional-regression residual (Liu et al. 2025;",
+                  "Zheng et al. 2025), untransformed"))
 )
 
 TARGET_COL <- Sys.getenv("XGB_TARGET", "halflife")
