@@ -53,7 +53,7 @@ RESPONSES <- list(
                   "untransformed (signed score, not hours)")),
   translation_efficiency = list(
     label = "translation efficiency",
-    axis  = "TE, unitless residual",
+    axis  = "Translation Efficiency",
     note  = paste("Ribo-seq translation efficiency (mean_te), a unitless",
                   "compositional-regression residual (Liu et al. 2025;",
                   "Zheng et al. 2025), untransformed"))
