@@ -1,5 +1,5 @@
 # =============================================================================
-# Figures for the Baseline / Structure comparison — rendering only, no modelling
+# Figures for the Without Structure / With Structure comparison — rendering only, no modelling
 # =============================================================================
 # Every figure here is built from tables already written to disk by
 # xgb_structure_comparison.R. Nothing in this file fits, tunes or predicts
@@ -129,8 +129,8 @@ as_model <- function(x) factor(x, levels = PLOT_MODELS)
 
 preds  <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_test_predictions.csv")),
                    show_col_types = FALSE) |> mutate(model = as_model(model))
-deltas <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_delta_bootstrap.csv")),
-                   show_col_types = FALSE)
+model_ci <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_model_ci.csv")),
+                     show_col_types = FALSE) |> mutate(model = as_model(model))
 chunks <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_chunk_metrics.csv")),
                    show_col_types = FALSE) |> mutate(model = as_model(model))
 imp    <- read_csv(need(file.path(TABLE_DIR, "xgb_structure_gain_importance.csv")),
@@ -151,43 +151,27 @@ MODEL_COLS <- setNames(c(COL_BASELINE, COL_STRUCTURE), PLOT_MODELS)
 message("Rendering figures from ", RUN_DIR, " (", N_TEST, " held-out genes)")
 
 
-# ----------------------------- 1. Delta metrics -----------------------------
-# The primary figure. Fill encodes CONCLUSIVE (does the CI clear zero), not the
-# sign of the point estimate — colouring by sign would paint a point orange for
-# landing a hair on the favourable side of zero with an interval ten times its
-# own width, which is the exact misreading this figure exists to prevent.
-
-# Fill still encodes CONCLUSIVE rather than the sign of the point estimate,
-# but the explanation moves to the paper's legend. Both points are grey here,
-# so nothing is ambiguous on the figure as it stands; the key exists so that a
-# future run in which an interval DOES clear zero cannot be read as a win
-# without checking which side of zero it cleared.
-p_delta <- deltas |>
-  plot_metrics_only() |>
-  mutate(metric_lab = metric_factor(metric)) |>
-  ggplot(aes(x = delta, y = "")) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+# ----------------------------- 1. Held-out R-squared ------------------------
+# Each model's own R² with its 95% bootstrap CI (paired resampling of the
+# held-out genes; computed upstream into xgb_structure_model_ci.csv).
+p_r2 <- model_ci |>
+  filter(metric == "rsq_trad") |>
+  ggplot(aes(x = value, y = fct_rev(model), colour = model)) +
   geom_errorbar(aes(xmin = ci_low, xmax = ci_high), orientation = "y",
-                width = 0.15, linewidth = 0.8, colour = "grey25") +
-  geom_point(aes(fill = conclusive), size = 4, shape = 21, colour = "grey20",
-             show.legend = FALSE) +
-  scale_fill_manual(values = c(`TRUE` = COL_STRUCTURE, `FALSE` = COL_NULL)) +
-  facet_wrap(~ metric_lab, scales = "free_x") +
+                width = 0.15, linewidth = 0.8) +
+  geom_point(size = 4) +
+  scale_colour_manual(values = MODEL_COLS, guide = "none") +
   labs(
-    title    = "Held-out performance: Structure vs Baseline",
+    title    = "Held-out performance: R² by model",
     subtitle = sprintf("%s held-out genes, %s bootstrap replicates, 95%% CI",
                        format(N_TEST, big.mark = ","),
                        format(N_BOOT, big.mark = ",")),
-    x = "Difference (Structure − Baseline)",
-    y = NULL
+    x = "R²", y = NULL
   ) +
   theme_xgb() +
-  theme(panel.grid.major.y = element_blank(),
-        axis.text.y  = element_blank(),
-        axis.ticks.y = element_blank())
+  theme(panel.grid.major.y = element_blank())
 
-# Short: one row of data, so height beyond the title block is dead space.
-save_plot(p_delta, "xgb_structure_delta_metrics", w = 200, h = 58)
+save_plot(p_r2, "xgb_structure_r2", w = 200, h = 70)
 
 
 # ----------------------------- 2. Paired slices -----------------------------

@@ -233,7 +233,7 @@ Everything above is derived from artefacts in `data/outputs/xgb_structure/`:
 | `tables/xgb_structure_gain_share.csv`, `..._gain_importance.csv` | §4 |
 | `tables/xgb_structure_validation_checks.csv` | the 17 design assertions |
 | `plots/xgb_structure_redundancy.*` | the Fig. SX candidate (§3) |
-| `plots/xgb_structure_delta_metrics.*` | the Δ figure (§2) |
+| `plots/xgb_structure_r2.*` | each model's held-out R² with 95% CI |
 | `plots/xgb_structure_paired_slices.*` | per-slice consistency (§2) |
 | `plots/xgb_structure_observed_vs_predicted.*` | calibration, both models |
 | `plots/xgb_structure_gain_importance.*` | the gain pattern (§4) |
