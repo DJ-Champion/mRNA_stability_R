@@ -1,8 +1,8 @@
 # =============================================================================
 # Feature × two-response correlation scatter — top 30% labelled
 # =============================================================================
-# Single-plot variant of feature_response_scatter.R (the "included" plot, TE vs
-# halflife). Differences from the original:
+# Single-plot variant of feature_response_scatter.R (the "included" plot; here
+# halflife on x, TE on y). Differences from the original:
 #   - label_quantile 0.7: the top 30% of points by distance from origin are
 #     labelled (was 20%)
 #   - larger axis titles and tick numbers
@@ -107,8 +107,8 @@ suppressPackageStartupMessages({
 #'   distance_from_origin, labelled.
 #' @export
 feature_response_scatter <- function(df,
-                                     response_x     = "translation_efficiency",
-                                     response_y     = "halflife",
+                                     response_x     = "halflife",
+                                     response_y     = "translation_efficiency",
                                      method         = c("spearman", "pearson",
                                                         "kendall"),
                                      include        = "core",
@@ -384,10 +384,8 @@ feature_response_scatter <- function(df,
   shape_order <- intersect(names(shapes), unique(result$region))
   result$region_f <- factor(result$region, levels = shape_order)
 
-  axis_x_lab <- sprintf("%s correlation with %s",
-                        tools::toTitleCase(method), formatter(response_x))
-  axis_y_lab <- sprintf("%s correlation with %s",
-                        tools::toTitleCase(method), formatter(response_y))
+  axis_x_lab <- sprintf("Correlation with %s", formatter(response_x))
+  axis_y_lab <- sprintf("Correlation with %s", formatter(response_y))
 
   title <- sprintf("Feature correlations: %s vs %s",
                    formatter(response_x), formatter(response_y))
@@ -537,7 +535,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   print(out$plot)
 
-  base <- "feature_response_scatter_te_vs_halflife_top30"
+  base <- "feature_response_scatter_halflife_vs_te_top30"
   ggplot2::ggsave(
     file.path(OUTPUT_DIR, "plots", paste0(base, ".jpg")),
     plot = out$plot, width = 300, height = 220, units = "mm", dpi = 300
