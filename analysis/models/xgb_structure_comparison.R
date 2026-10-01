@@ -48,6 +48,7 @@
 #   Rscript analysis/models/xgb_structure_comparison.R
 #   XGB_GRID_SIZE=6 Rscript analysis/models/xgb_structure_comparison.R  # smoke
 #   XGB_REFIT=1     Rscript analysis/models/xgb_structure_comparison.R  # re-tune
+#   XGB_TARGET=translation_efficiency Rscript analysis/models/xgb_structure_comparison.R
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -737,13 +738,13 @@ if (nrow(redundancy) > 0) {
 
 manifest <- list(
   question        = paste("Does adding secondary-structure information improve",
-                          "prediction of measured mRNA half-life beyond a model",
+                          paste("prediction of measured mRNA", response_info()$label,
+                                "beyond a model"),
                           "containing non-structure transcript features?"),
   species         = "human",
   cache           = cache_path("human"),
   response        = TARGET_COL,
-  response_note   = paste("Agarwal & Kelley 2022 consensus half-life PC1,",
-                          "untransformed (signed score, not hours)"),
+  response_note   = response_info()$note,
   n_eligible      = nrow(dat),
   n_trainval      = nrow(trainval),
   n_test          = nrow(testing_),
@@ -823,7 +824,7 @@ summary_txt <- c(
   "XGBoost: does secondary structure add held-out predictive information?",
   strrep("=", 74),
   "",
-  sprintf("Response      : %s (Agarwal & Kelley consensus PC1, untransformed)", TARGET_COL),
+  sprintf("Response      : %s (%s)", TARGET_COL, response_info()$note),
   sprintf("Eligible genes: %d  (train+val %d / test %d)",
           nrow(dat), nrow(trainval), nrow(testing_)),
   sprintf("Eligibility   : %s", manifest$eligibility),

@@ -3,7 +3,7 @@
 **A reporting brief for the paper.** What was tested, what the numbers are, how
 to frame them, and — at least as importantly — what they do not license.
 
-Generated from `data/outputs/xgb_structure/` (fitted 2026-09-08 17:18, seed 42,
+Generated from `data/outputs/xgb_structure/halflife/` (fitted 2026-09-08 17:18, seed 42,
 R 4.5.2). Every number below is traceable to a file listed in
 [Provenance](#provenance); none of it is quoted from memory.
 
@@ -219,7 +219,7 @@ toward measured structure and the trans-acting factors that MFE cannot see.
 
 ## Provenance
 
-Everything above is derived from artefacts in `data/outputs/xgb_structure/`:
+Everything above is derived from artefacts in `data/outputs/xgb_structure/halflife/`:
 
 | File | Contents |
 |---|---|

@@ -25,12 +25,49 @@ suppressPackageStartupMessages({
 
 
 # --- Response ----------------------------------------------------------------
-# `halflife` is PC1 of the Agarwal & Kelley (2022) consensus half-life measure,
-# not a duration in hours: it is already a signed, roughly symmetric score
-# (range -17.2 to +18.2, sd 4.81 on the human v10 cache). No project code
-# transforms it, and a log is undefined on a variable that takes negative
-# values, so it is modelled RAW. RMSE and MAE are therefore in PC1 units.
-TARGET_COL <- "halflife"
+# Chosen with the XGB_TARGET environment variable (default "halflife"):
+#
+#   XGB_TARGET=translation_efficiency Rscript analysis/models/xgb_structure_comparison.R
+#
+# Everything else — predictors, split, tuning, bootstrap, figures — is shared.
+# Each response writes to its own folder (run_dir()), and the fit cache is keyed
+# on the target, so responses never overwrite or reuse each other's results.
+#
+# ROW POLICY per response: every gene with a non-missing target and a split.
+# For translation efficiency (missing for ~26% of human genes) that shrinks the
+# eligible set; the committed family-blocked split is reused as it stands,
+# because dropping genes cannot put a family on both sides of it.
+#
+# Both responses are modelled RAW. `halflife` is PC1 of the Agarwal & Kelley
+# (2022) consensus half-life measure, not a duration in hours: a signed, roughly
+# symmetric score (range -17.2 to +18.2, sd 4.81 on the human v10 cache), and a
+# log is undefined on negative values. RMSE and MAE are in the response's units (for TE, a unitless residual).
+# The response columns are never predictors: halflife is in the "Response /
+# evaluation" group, which cannot be selected, and translation_efficiency is
+# flagged out of the model in R/feature_table.csv.
+RESPONSES <- list(
+  halflife = list(
+    label = "half-life",
+    axis  = "PC1 score",
+    note  = paste("Agarwal & Kelley 2022 consensus half-life PC1,",
+                  "untransformed (signed score, not hours)")),
+  translation_efficiency = list(
+    label = "translation efficiency",
+    axis  = "Translation Efficiency",
+    note  = paste("Ribo-seq translation efficiency (mean_te), a unitless",
+                  "compositional-regression residual (Liu et al. 2025;",
+                  "Zheng et al. 2025), untransformed"))
+)
+
+TARGET_COL <- Sys.getenv("XGB_TARGET", "halflife")
+if (!TARGET_COL %in% names(RESPONSES)) {
+  stop("XGB_TARGET '", TARGET_COL, "' is not a known response. Known: ",
+       paste(names(RESPONSES), collapse = ", "), call. = FALSE)
+}
+
+#' Labels for a response (label, axis, note).
+#' @export
+response_info <- function(target = TARGET_COL) RESPONSES[[target]]
 
 
 # --- The two models ----------------------------------------------------------
@@ -63,12 +100,14 @@ structure_groups <- function() {
 }
 
 
-#' Where this analysis's artefacts live.
+#' Where this analysis's artefacts live: one subfolder per response, so runs
+#' for different responses (halflife, translation_efficiency, ...) never
+#' overwrite each other.
 #' @param what "root", "tables" or "plots".
 #' @export
 run_dir <- function(what = c("root", "tables", "plots")) {
   what <- match.arg(what)
-  root <- file.path(OUTPUT_DIR, "xgb_structure")
+  root <- file.path(OUTPUT_DIR, "xgb_structure", TARGET_COL)
   if (what == "root") root else file.path(root, what)
 }
 
@@ -254,8 +293,8 @@ eligible_dataset <- function(species = "human") {
 report_feature_sets <- function(el) {
   d <- el$data
   cat("\n=== Eligible analysis set ===\n")
-  cat(sprintf("Response          : %s (Agarwal & Kelley consensus PC1, untransformed)\n",
-              TARGET_COL))
+  cat(sprintf("Response          : %s (%s)\n",
+              TARGET_COL, response_info()$note))
   cat(sprintf("Genes             : %d (1 row per gene, %d distinct gene_id)\n",
               nrow(d), dplyr::n_distinct(d$gene_id)))
   miss <- mean(!stats::complete.cases(
