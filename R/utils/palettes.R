@@ -2,10 +2,9 @@
 # Feature group palettes and shape mappings
 # =============================================================================
 # Feature colours and every group/supergroup display label come from
-# R/feature_table.csv (the Colour, Feature, Group and Supergroup columns) —
-# edit them there. Colours follow supergroup families: structure purples,
-# magentas and oranges; sequence blues, greens and teals; translation
-# lavenders; transcript architecture browns and reds; RNA decay rusts.
+# R/feature_table.csv (the Feature, Display Short name, Group and Supergroup
+# columns) — edit them there. Feature colours follow their supergroup hue
+# and are set in R/colour_config.R.
 #
 # Plus Okabe-Ito colourblind-friendly palette for REGIONS, used when region
 # is the visual variable rather than the grouping (see feature_correlation_
@@ -25,15 +24,11 @@
 # Feature-group colours (used when GROUP is the visual variable)
 # -----------------------------------------------------------------------------
 
-#' Colour for each feature id (the table's Colour column), plus the `other`
-#' catch-all. Features without a colour (never-used rows) fall back to it via
-#' feature_colour(); scripts/check_feature_table.R requires a colour on every
-#' exploratory feature.
+#' Colour for each exploratory feature id (FEATURE_COLOURS, from
+#' R/colour_config.R), plus the `other` catch-all. Features without a colour
+#' (never-used rows) fall back to it via feature_colour().
 #' @export
-FEATURE_GROUP_COLOURS <- c(
-  with(FEATURE_TABLE[nzchar(FEATURE_TABLE$Colour), ], stats::setNames(Colour, feature_id)),
-  other = "#C7C7C7"
-)
+FEATURE_GROUP_COLOURS <- c(FEATURE_COLOURS, other = SUPERGROUP_OTHER_COLOUR)
 
 
 # -----------------------------------------------------------------------------
@@ -100,6 +95,10 @@ REGION_DISPLAYS <- c(
 #' the display bucket plots use for anything outside a named supergroup.
 FEATURE_GROUP_DISPLAY_NAMES <- c(
   stats::setNames(FEATURE_TABLE$Feature, FEATURE_TABLE$feature_id), other = "Other")
+#' Short display names (the table's Display Short name column), by feature id.
+FEATURE_SHORT_NAMES <- c(
+  stats::setNames(FEATURE_TABLE$`Display Short name`, FEATURE_TABLE$feature_id),
+  other = "Other")
 GROUP_DISPLAY_NAMES <- c(
   stats::setNames(FEATURE_TABLE$Group, FEATURE_TABLE$group_id)[!duplicated(FEATURE_TABLE$group_id)],
   other = "Other")
@@ -155,7 +154,7 @@ format_group_name <- function(g, kind = c("auto", "feature", "group",
 #' @examples
 #' format_metric_name("length_cds")                    # "Length"
 #' format_metric_name("rnafold_zscore_5utr")            # "MFE z-score"
-#' format_metric_name("cai")                            # "CAI"
+#' format_metric_name("cai_cds")                        # "CAI"
 #' format_metric_name("intron_length_mean_mrna")        # "Mean intron length"
 #' format_metric_name("nmd_fragile_codon_count_mrna")   # "NMD fragile codon count"
 #' @export

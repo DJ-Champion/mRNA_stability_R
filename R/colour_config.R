@@ -4,11 +4,14 @@
 # Project-wide colours that are a matter of taste rather than of the feature
 # schema. Edit the values here; every plot that reads them follows.
 #
-# Feature colours live in R/feature_table.csv (Colour column). Region colours
-# and shapes live in R/utils/palettes.R. This file holds the SUPERGROUP colours:
-# one hue per supergroup, used wherever a whole supergroup needs a colour (the
-# background bands in feature_correlation_bands.R, and anything that wants to
-# say "which family is this" without colouring every feature).
+# Region colours and shapes live in R/utils/palettes.R. This file holds the
+# SUPERGROUP colours: one hue per supergroup, used wherever a whole supergroup
+# needs a colour (the background bands in feature_correlation_bands.R, and
+# anything that wants to say "which family is this" without colouring every
+# feature), and the FEATURE colours, which are derived from them: each feature
+# is a saturated colour in its supergroup's hue family (see feature_colours()
+# below), so the two levels always read as one system. Change a supergroup colour and its features
+# follow.
 #
 # Keys are supergroup ids (the table's Supergroup column, snake-cased). Every
 # supergroup with built features (the names of SUPERGROUPS) must have an entry,
@@ -18,21 +21,40 @@
 # =============================================================================
 
 SUPERGROUP_COLOURS <- c(
-  structure               = "#2D004B",  # deep purple
-  sequence                = "#002642",  # deep navy
-  translation             = "#9E9AC8",  # lavender
-  transcript_architecture = "#DFC27D",  # sand
-  rna_decay               = "#B15928",  # rust
-  expression              = "#1B7837"   # green
+  structure               = "#9C27B0",  # purple-magenta
+  sequence                = "#1B7FC4",  # blue
+  translation             = "#0F9D8A",  # teal
+  transcript_architecture = "#E07B00",  # orange
+  rna_decay               = "#C62828",  # red
+  expression              = "#2E9E3E"   # green
 )
 
 # Colour for anything outside a named supergroup (the "other" bucket).
 SUPERGROUP_OTHER_COLOUR <- "#999999"
 
 # Background bands: the share of the supergroup colour kept when it is mixed
-# with white (0 = white, 1 = full colour), and the same for the label bar.
+# with white (0 = white, 1 = full colour), and the same for the label bar. The
+# supergroup colours are vivid (they are the base of the feature colours, which
+# have to stand out on white), so these mixes are what keep the bands subtle.
 SUPERGROUP_BAND_ALPHA  <- 0.18
 SUPERGROUP_LABEL_ALPHA <- 0.75
+
+# Feature colours: each feature stays in its supergroup's hue family, at a
+# higher saturation than the pale band tints. Within a supergroup the features
+# (table order) are spread evenly in lightness (FEATURE_LUMINANCE, dark ->
+# light) and in hue, over SUPERGROUP_HUE_SPREAD degrees centred on the
+# supergroup hue (0 = one hue). Bigger supergroups get bigger spreads so their
+# features stay apart. Chroma is the colourfulness, shared by every feature.
+FEATURE_CHROMA    <- 80
+FEATURE_LUMINANCE <- c(34, 62)
+SUPERGROUP_HUE_SPREAD <- c(
+  structure               = 36,
+  sequence                = 36,
+  translation             = 14,
+  transcript_architecture = 16,
+  rna_decay               = 22,
+  expression              = 0
+)
 
 
 # --- Validation --------------------------------------------------------------
@@ -65,3 +87,36 @@ supergroup_colour <- function(supergroups) {
   out[is.na(out)] <- SUPERGROUP_OTHER_COLOUR
   out
 }
+
+
+# --- Feature colours (vivid versions of the supergroup hue) ------------------
+
+#' Colour for every exploratory feature
+#'
+#' Within a supergroup the features, in table order, are spaced evenly in
+#' lightness (FEATURE_LUMINANCE) and in hue (over SUPERGROUP_HUE_SPREAD degrees
+#' centred on the supergroup hue) at a shared chroma (FEATURE_CHROMA). A
+#' supergroup with one feature gets the middle of both ranges.
+#' @return Named character vector keyed by feature id.
+#' @export
+feature_colours <- function() {
+  ids <- EXPLORATORY_FEATURES
+  sg  <- FEATURE_TABLE$supergroup_id[match(ids, FEATURE_TABLE$feature_id)]
+  out <- stats::setNames(rep(SUPERGROUP_OTHER_COLOUR, length(ids)), ids)
+  for (g in unique(sg[sg %in% names(SUPERGROUP_COLOURS)])) {
+    in_g <- ids[sg == g]
+    n    <- length(in_g)
+    t    <- if (n == 1) 0.5 else seq(0, 1, length.out = n)
+    hue0 <- farver::decode_colour(SUPERGROUP_COLOURS[[g]], to = "hcl")[1, "h"]
+    spread <- if (g %in% names(SUPERGROUP_HUE_SPREAD)) SUPERGROUP_HUE_SPREAD[[g]] else 0
+    out[in_g] <- grDevices::hcl(
+      h = (hue0 + spread * (t - 0.5)) %% 360,
+      c = FEATURE_CHROMA,
+      l = FEATURE_LUMINANCE[1] + diff(FEATURE_LUMINANCE) * t,
+      fixup = TRUE
+    )
+  }
+  out
+}
+
+FEATURE_COLOURS <- feature_colours()

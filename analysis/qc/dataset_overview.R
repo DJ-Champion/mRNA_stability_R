@@ -252,7 +252,7 @@ sample_size_summary_plot <- function(df, formatter = format_col_name) {
 
   # R5: guard each column individually
   has_hl  <- "halflife"               %in% names(df)
-  has_cai <- "cai"                    %in% names(df)
+  has_cai <- "cai_cds"                %in% names(df)
   has_te  <- "translation_efficiency" %in% names(df)
   has_mfe <- "rnafold_zscore_mrna"    %in% names(df)
 
@@ -261,11 +261,11 @@ sample_size_summary_plot <- function(df, formatter = format_col_name) {
     dplyr::summarise(
       total           = dplyr::n(),
       with_halflife   = if (has_hl)  sum(!is.na(halflife))                else NA_integer_,
-      with_cai        = if (has_cai) sum(!is.na(cai))                     else NA_integer_,
+      with_cai        = if (has_cai) sum(!is.na(cai_cds))                 else NA_integer_,
       with_te         = if (has_te)  sum(!is.na(translation_efficiency))  else NA_integer_,
       with_mrna_mfe_z = if (has_mfe) sum(!is.na(rnafold_zscore_mrna))     else NA_integer_,
       complete_core   = if (has_hl && has_cai && has_te && has_mfe) {
-        sum(!is.na(halflife) & !is.na(cai) &
+        sum(!is.na(halflife) & !is.na(cai_cds) &
             !is.na(translation_efficiency) & !is.na(rnafold_zscore_mrna))
       } else NA_integer_,
       .groups = "drop"
@@ -357,7 +357,7 @@ loader_health_plot <- function(df, formatter = format_col_name) {
     "Junctions / distances"       = "junctions_count_cds",
     "uORFs"                       = "uorf_count_mrna",
     "Amino-acid frequencies"      = "aa_l_cds",
-    "CAI"                         = "cai",
+    "CAI"                         = "cai_cds",
     "Translation efficiency"      = "translation_efficiency",
     "Agarwal features"            = "orfexondensity",
     "Saluki predictions"          = "saluki_prediction",

@@ -21,7 +21,7 @@
 #   # Bigger panel, Pearson, custom exclusion set:
 #   out <- top_n_response_correlations(
 #     df, top_n = 40, method = "pearson",
-#     exclude = c("^saluki_prediction$", "^prediction_difference$", "^cai$")
+#     exclude = c("^saluki_prediction$", "^prediction_difference$", "^cai_cds$")
 #   )
 #
 #   # Repurpose for Saluki residual analysis:

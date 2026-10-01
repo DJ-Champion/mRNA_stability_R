@@ -231,13 +231,11 @@ feature_response_scatter <- function(df,
   }
 
   # --- Region extraction (REGIONS-aware) ----------------------------------
+  # A region-less feature (te) sits in the mrna slot, as in the other
+  # region-aware plots; anything else with no region token stays "none".
   result <- result |>
     dplyr::mutate(
-      region = vapply(variable, function(co) {
-        tokens <- strsplit(co, "_", fixed = TRUE)[[1]]
-        last <- tokens[length(tokens)]
-        if (last %in% REGIONS) last else "none"
-      }, character(1)),
+      region     = dplyr::coalesce(column_regions(variable, group), "none"),
       supergroup = dplyr::coalesce(supergroup_of(group), "other")
     )
 
@@ -371,7 +369,14 @@ feature_response_scatter <- function(df,
   # --- Build the plot ------------------------------------------------------
   # Colour aesthetic is group; legend label reuses the same per-element
   # dispatch as the in-plot labels.
-  legend_labeller <- group_label
+  # The legend uses each feature's short name; collapsed group / supergroup
+  # keys have none, so they keep the in-plot label.
+  # Placeholders in a short name (nt.<x>%) are stripped: the legend names the
+  # feature, not one of its members.
+  legend_labeller <- function(g) {
+    short <- gsub("\\.?<[^>]*>", "", FEATURE_SHORT_NAMES[g])
+    ifelse(g %in% names(FEATURE_SHORT_NAMES), short, group_label(g))
+  }
 
   # Make the categorical axes factors so legend ordering is consistent
   group_order <- intersect(names(palette), unique(result$group))
@@ -452,8 +457,9 @@ feature_response_scatter <- function(df,
     ) +
     ggplot2::scale_shape_manual(
       values = shapes,
-      labels = function(r) ifelse(r == "none", "transcript-level",
-                                  formatter(r)),
+      labels = function(r) ifelse(r %in% names(REGION_DISPLAYS) &
+                                  nzchar(REGION_DISPLAYS[r]),
+                                  REGION_DISPLAYS[r], formatter(r)),
       name   = "Region",
       drop   = TRUE
     ) +

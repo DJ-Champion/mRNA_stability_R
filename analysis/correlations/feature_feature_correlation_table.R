@@ -52,8 +52,8 @@ suppressPackageStartupMessages({
 # Internal: build column → group and column → region lookup maps from a
 # select_features() result. group = the feature id the column was selected
 # under. region = the last underscore-delimited token when it is a legal
-# REGIONS member; NA_character_ otherwise (e.g. standalone scalars like `cai`
-# carry no region suffix).
+# REGIONS member; NA_character_ otherwise (e.g. standalone scalars like
+# `translation_efficiency` carry no region suffix).
 .ff_build_col_maps <- function(sel) {
   tokens_last <- sub("^.*_", "", sel$column)
   has_region  <- tokens_last %in% REGIONS & grepl("_", sel$column, fixed = TRUE)

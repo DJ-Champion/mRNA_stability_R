@@ -228,7 +228,7 @@ model_columns <- function(df, features = MODEL_FEATURES) {
 }
 
 
-#' Is a feature a single region-less column (e.g. cai, translation efficiency)?
+#' Is a feature a single region-less column (e.g. translation efficiency)?
 #'
 #' Region-aware plots place such columns in the `mrna` slot. True when the
 #' feature's regex is one literal column name whose last token is not a region.
@@ -290,7 +290,7 @@ is_regionless_feature <- function(feature) {
 #' Region token of each column, as the region-dodged plots place it
 #'
 #' A column ending in a real REGIONS token has that region. A column of a
-#' region-less feature (cai, translation efficiency) sits in the "mrna" slot.
+#' region-less feature (translation efficiency) sits in the "mrna" slot.
 #' Any other column has no region (NA) and cannot be drawn on a region axis.
 #'
 #' @param cols       Character vector of column names.

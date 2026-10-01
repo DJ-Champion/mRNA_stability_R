@@ -155,7 +155,7 @@ regions (5' UTR + 3' UTR)
 - its columns (a regex);
 - its place in the **Supergroup > Group > Feature** hierarchy;
 - whether it is **Included in exploratory analysis**, **Included in model** and **Included in core plots**;
-- its display names, colour, regions, and the reason it is in or out.
+- its display names, regions, and the reason it is in or out (colours follow the supergroup hue, set in `R/colour_config.R`).
 
 The code derives everything from it, so to change a feature, edit the table. Then check it against the built cache:
 

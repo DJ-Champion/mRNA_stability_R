@@ -113,7 +113,7 @@ suppressPackageStartupMessages({
   uorf_present     = 21L,
   codon_freqs      = 22L,
   aa_freqs         = 23L,
-  cai              = 24L,  # single region-less columns
+  cai              = 24L,  # CAI and TE: single columns
   te               = 24L
 )
 
