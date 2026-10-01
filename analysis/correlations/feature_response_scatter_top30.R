@@ -470,7 +470,7 @@ feature_response_scatter <- function(df,
     ggplot2::coord_cartesian(clip = "off") +
     ggplot2::labs(
       title    = title,
-      subtitle = paste(subtitle_bits, collapse = " · "),
+      #subtitle = paste(subtitle_bits, collapse = " · "),
       x        = axis_x_lab,
       y        = axis_y_lab
     ) +
