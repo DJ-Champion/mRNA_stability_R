@@ -29,7 +29,7 @@
 #   * nmd         -> nmd_*_mrna                            (single model)
 # so they are picked up by the region-token filter automatically. Two further
 # tiers are handled explicitly:
-#   * Single region-less columns (cai, translation_efficiency): a feature
+#   * Single region-less columns (translation_efficiency): a feature
 #     whose regex is one literal column (is_regionless_feature()) is mapped to
 #     the `mrna` region (column_regions()).
 #   * Any column that still has no region token is reported by the diagnostic

@@ -33,7 +33,7 @@
 # --- Labels from the feature table ---------------------------------------------
 # The table's "Display Short name" is the label for every column of a row whose
 # regex is one literal stem followed by a region token (`^mfe_delta_` +
-# `cds` -> "MFE.Δ CDS") or is one literal column (`^cai$` -> "CAI"). That covers
+# `cds` -> "MFE.Δ CDS") or is one literal column (`^translation_efficiency$` -> "TE"). That covers
 # most rows; edit the label in R/feature_table.csv.
 #
 # A row whose short name has a <placeholder>, or whose columns differ by more

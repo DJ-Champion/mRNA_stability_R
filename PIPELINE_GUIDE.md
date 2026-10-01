@@ -102,10 +102,10 @@ DO NOT invent new suffixes. If a feature genuinely needs a new region, add it to
 - `feature_id` and `columns`, the regex that claims that feature's columns;
 - its place in the **Supergroup > Group > Feature** hierarchy;
 - the three flags, **Included in exploratory analysis**, **Included in model** and **Included in core plots**;
-- its display names and colour;
+- its display names;
 - its Regions, Description and Notes (why it is in or out).
 
-`R/config.R` reads the table and derives `FEATURE_PATTERNS`, `FEATURE_GROUPS`, `SUPERGROUPS`, `EXPLORATORY_FEATURES`, `CORE_FEATURES`, `MODEL_FEATURES` and `NEVER_USED_PATTERNS`. `R/utils/palettes.R` takes colours and display names from it, and `R/utils/naming.R` takes labels from it. **Edit the table, never those objects.** Then run:
+`R/config.R` reads the table and derives `FEATURE_PATTERNS`, `FEATURE_GROUPS`, `SUPERGROUPS`, `EXPLORATORY_FEATURES`, `CORE_FEATURES`, `MODEL_FEATURES` and `NEVER_USED_PATTERNS`. `R/utils/palettes.R` takes display names from it, and `R/colour_config.R` derives each feature's colour from its supergroup hue, and `R/utils/naming.R` takes labels from it. **Edit the table, never those objects.** Then run:
 
 ```bash
 Rscript scripts/check_feature_table.R
@@ -117,7 +117,7 @@ It fails if any of these is broken:
 - a row's regex matches nothing;
 - a row's Regions disagree with its columns;
 - a label differs from the table's short name;
-- an exploratory feature lacks a colour;
+- two exploratory features share a colour;
 - a core feature is not an exploratory one, or a flag name collides with a table id;
 - a retired selection name (`GROUP_BUNDLES`, `DEFAULT_PLOT_GROUPS`, `resolve_selection`, `pick`/`drop` machinery, …) reappears in `R/`, `analysis/` or `scripts/`;
 - the model would see an identifier or benchmark column.
@@ -147,7 +147,7 @@ Rows in the "Response / evaluation" supergroup (`halflife`, `saluki`) and rows w
 1. **The patterns are mutually exclusive.** No column may match two rows. Plots that build a column → feature map (the dotplot, the response scatter, the heatmap workflow) would otherwise draw a column twice. The checker enforces this.
 2. **Every group sits in exactly one supergroup.** Enforced when config.R reads the table.
 
-> **Region-less features.** `cai` and `translation_efficiency` are single columns with no region suffix. `is_regionless_feature()` recognises them from their literal regex, and region-aware plots place them in the `mrna` slot.
+> **Region-less features.** `translation_efficiency` is a single column with no region suffix (CAI is `cai_cds`: it is a CDS measure and carries the token). `is_regionless_feature()` recognises them from their literal regex, and region-aware plots place them in the `mrna` slot.
 
 > **Whole-transcript scalars carry the real `mrna` suffix.** Architecture (`intron_length_mean_mrna`, …), uORF (`uorf_count_mrna`, …) and NMD fragility (`nmd_snv_fragile_codon_density_mrna`, …) all end in `mrna`. The old `transcript` pseudo-region and the `window`/`core`/`full` NMD pseudo-regions are gone; there is one NMD fragility model and "NMD" appears only as a metric-name prefix in the display string.
 
@@ -155,7 +155,7 @@ Rows in the "Response / evaluation" supergroup (`halflife`, `saluki`) and rows w
 
 Every column that appears on a plot **MUST** have a human-readable `format_col_name()` result.
 
-**Where labels come from.** Most rows are either one literal stem followed by a region token (`^mfe_delta_` + `cds`) or one literal column (`^cai$`). For these, the table's **Display Short name** is the label, plus the region's display string: `mfe_delta_cds` → `MFE.Δ CDS`. **To change a label, edit the table.**
+**Where labels come from.** Most rows are either one literal stem followed by a region token (`^mfe_delta_` + `cds`) or one literal column (`^translation_efficiency$`). For these, the table's **Display Short name** is the label, plus the region's display string: `mfe_delta_cds` → `MFE.Δ CDS`. **To change a label, edit the table.**
 
 **The exceptions.** A few rows cannot share one label across their columns. Their labels come from `format_single_name()` and a short `REPLACEMENTS` list in `R/utils/naming.R`:
 
@@ -331,8 +331,8 @@ through `format_group_name(key, kind)`, where `kind` is one of `"feature"`,
 precedence). Display strings come from the table's Feature, Group and
 Supergroup columns. Edit those rather than hardcoding a label in the plot.
 
-**Region-less features.** `cai` and `te` (translation efficiency) are single
-columns with no region suffix; `is_regionless_feature()` identifies them and
+**Region-less features.** `te` (translation efficiency) is a single
+column with no region suffix; `is_regionless_feature()` identifies them and
 `column_regions()` maps them to the `mrna` slot for region-aware plots.
 
 **Exception — single-feature tools.** A tool whose entire premise is "one panel
@@ -517,7 +517,7 @@ A "derived" feature is one computed from columns already in the assembled datafr
 
 ### 6.4 Adding a new feature
 
-One row in `R/feature_table.csv`. Nothing else needs editing: patterns, groups, supergroups, flags, labels and colours are all derived from it.
+One row in `R/feature_table.csv`. Nothing else needs editing: patterns, groups, supergroups, flags and labels are all derived from it; the colour follows the supergroup hue and is set in `R/colour_config.R`.
 
 | Column | What to put |
 |---|---|
@@ -527,7 +527,6 @@ One row in `R/feature_table.csv`. Nothing else needs editing: patterns, groups, 
 | `Supergroup`, `Group` | An existing pair, or a new one; a group sits in exactly one supergroup |
 | `Feature`, `Display Short name`, `Display Long name` | The Feature name labels the feature in legends and must be unique; the short name is the plot label |
 | `Regions` | The region display strings its columns carry (`5' UTR, CDS, …`) |
-| `Colour` | `#RRGGBB`, required if exploratory, unique among exploratory features |
 | `Description`, `Notes` | What it is; why it is in or out |
 
 No cache bump needed (the table is a query layer, not data). **Verify:**

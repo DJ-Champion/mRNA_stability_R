@@ -362,16 +362,19 @@ load_stopfree <- function(species) {
 }
 
 # --- Wide-form transcript-level loaders --------------------------------------
-# These return one row per transcript, no region column.
+# These return one row per transcript, no region column (the columns may still
+# carry a region token, e.g. cai_cds).
 
 #' Load Codon Adaptation Index.
-#' Expected columns: transcript_id, cai.
+#' Expected columns: transcript_id, cai. CAI is computed over the CDS, so the
+#' column is renamed `cai_cds` to carry its real region token.
 load_cai <- function(species) {
   df <- read_if_exists(species_path(species, "cai.tsv"))
   if (is.null(df)) return(NULL)
   df |> 
     dplyr::select(-dplyr::any_of(c("gene_id", "n_codons_cai"))) |>
-    lowercase_names()
+    lowercase_names() |>
+    dplyr::rename(cai_cds = cai)
 }
 
 

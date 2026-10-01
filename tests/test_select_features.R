@@ -94,7 +94,9 @@ check("regions keeps only that region",
       all(column_regions(cds$column, cds$feature_id) == "cds") && nrow(cds) > 0)
 check("regions = NULL keeps everything", nrow(select_features(df, "core", regions = NULL)) == nrow(core))
 check("region-less features count as mrna",
-      "cai" %in% select_features(df, "core", regions = "mrna")$feature_id)
+      "te" %in% select_features(df, "te", regions = "mrna")$feature_id)
+check("cai is a cds feature",
+      "cai" %in% select_features(df, "core", regions = "cds")$feature_id)
 check("unknown region errors", errors(select_features(df, regions = "nowhere")))
 utr <- select_features(df, "codon_freqs", regions = c("cds", "5utr"),
                           top_n = list(codon_freqs = 2), response = "halflife")
@@ -114,7 +116,7 @@ for (resp in c("halflife", "translation_efficiency")) {
   sel <- select_features(df, top_n = list(codon_freqs = 2, aa_freqs = 2), response = resp)
   key <- function(stem, region) paste(stem, region)
   region <- sub("^.*_", "", sel$column); stem <- .column_stem(sel$column)
-  # region-less columns (cai, ...) are plotted in the mrna slot
+  # region-less columns (te) are plotted in the mrna slot
   region <- ifelse(region %in% REGIONS, region, "mrna")
   check(paste(resp, ": same (stem, region) set as the baseline"),
         setequal(key(stem, region), key(b$metric_stem, b$region)))

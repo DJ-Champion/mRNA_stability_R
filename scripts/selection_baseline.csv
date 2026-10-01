@@ -15,7 +15,7 @@
 "correlation_heatmap_workflow.R","workflow","selected","at_skew","at_skew_mrna",,
 "correlation_heatmap_workflow.R","workflow","selected","at_skew","at_skew_start",,
 "correlation_heatmap_workflow.R","workflow","selected","at_skew","at_skew_stop",,
-"correlation_heatmap_workflow.R","workflow","selected","cai","cai",,
+"correlation_heatmap_workflow.R","workflow","selected","cai","cai_cds",,
 "correlation_heatmap_workflow.R","workflow","selected","codon_freqs","codon_agu_cds",,
 "correlation_heatmap_workflow.R","workflow","selected","codon_freqs","codon_uca_cds",,
 "correlation_heatmap_workflow.R","workflow","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -178,7 +178,7 @@
 "dataset_overview.R","overview","selected","at_skew","at_skew_mrna",,
 "dataset_overview.R","overview","selected","at_skew","at_skew_start",,
 "dataset_overview.R","overview","selected","at_skew","at_skew_stop",,
-"dataset_overview.R","overview","selected","cai","cai",,
+"dataset_overview.R","overview","selected","cai","cai_cds",,
 "dataset_overview.R","overview","selected","cds_codon_counts","cds_length_codons_cds",,
 "dataset_overview.R","overview","selected","cds_codon_counts","codon_other_cds",,
 "dataset_overview.R","overview","selected","cds_codon_counts","n_codons_scored_cds",,
@@ -452,7 +452,7 @@
 "feature_correlation_bands.R","halflife","plotted","at_skew",,"at_skew","mrna"
 "feature_correlation_bands.R","halflife","plotted","at_skew",,"at_skew","start"
 "feature_correlation_bands.R","halflife","plotted","at_skew",,"at_skew","stop"
-"feature_correlation_bands.R","halflife","plotted","cai",,"cai","mrna"
+"feature_correlation_bands.R","halflife","plotted","cai",,"cai","cds"
 "feature_correlation_bands.R","halflife","plotted","codon_freqs",,"codon_agu","cds"
 "feature_correlation_bands.R","halflife","plotted","codon_freqs",,"codon_auc","cds"
 "feature_correlation_bands.R","halflife","plotted","eej_dist_closest",,"eej_dist_closest","start"
@@ -603,7 +603,7 @@
 "feature_correlation_bands.R","halflife","selected","at_skew","at_skew_mrna",,
 "feature_correlation_bands.R","halflife","selected","at_skew","at_skew_start",,
 "feature_correlation_bands.R","halflife","selected","at_skew","at_skew_stop",,
-"feature_correlation_bands.R","halflife","selected","cai","cai",,
+"feature_correlation_bands.R","halflife","selected","cai","cai_cds",,
 "feature_correlation_bands.R","halflife","selected","codon_freqs","codon_aaa_cds",,
 "feature_correlation_bands.R","halflife","selected","codon_freqs","codon_aac_cds",,
 "feature_correlation_bands.R","halflife","selected","codon_freqs","codon_aag_cds",,
@@ -798,7 +798,7 @@
 "feature_correlation_bands.R","translation_efficiency","plotted","at_skew",,"at_skew","mrna"
 "feature_correlation_bands.R","translation_efficiency","plotted","at_skew",,"at_skew","start"
 "feature_correlation_bands.R","translation_efficiency","plotted","at_skew",,"at_skew","stop"
-"feature_correlation_bands.R","translation_efficiency","plotted","cai",,"cai","mrna"
+"feature_correlation_bands.R","translation_efficiency","plotted","cai",,"cai","cds"
 "feature_correlation_bands.R","translation_efficiency","plotted","codon_freqs",,"codon_agc","cds"
 "feature_correlation_bands.R","translation_efficiency","plotted","codon_freqs",,"codon_cac","cds"
 "feature_correlation_bands.R","translation_efficiency","plotted","eej_dist_closest",,"eej_dist_closest","start"
@@ -949,7 +949,7 @@
 "feature_correlation_bands.R","translation_efficiency","selected","at_skew","at_skew_mrna",,
 "feature_correlation_bands.R","translation_efficiency","selected","at_skew","at_skew_start",,
 "feature_correlation_bands.R","translation_efficiency","selected","at_skew","at_skew_stop",,
-"feature_correlation_bands.R","translation_efficiency","selected","cai","cai",,
+"feature_correlation_bands.R","translation_efficiency","selected","cai","cai_cds",,
 "feature_correlation_bands.R","translation_efficiency","selected","codon_freqs","codon_aaa_cds",,
 "feature_correlation_bands.R","translation_efficiency","selected","codon_freqs","codon_aac_cds",,
 "feature_correlation_bands.R","translation_efficiency","selected","codon_freqs","codon_aag_cds",,
@@ -1144,7 +1144,7 @@
 "feature_correlation_dotplot.R","halflife","plotted","at_skew",,"at_skew","mrna"
 "feature_correlation_dotplot.R","halflife","plotted","at_skew",,"at_skew","start"
 "feature_correlation_dotplot.R","halflife","plotted","at_skew",,"at_skew","stop"
-"feature_correlation_dotplot.R","halflife","plotted","cai",,"cai","mrna"
+"feature_correlation_dotplot.R","halflife","plotted","cai",,"cai","cds"
 "feature_correlation_dotplot.R","halflife","plotted","codon_freqs",,"codon_agu","cds"
 "feature_correlation_dotplot.R","halflife","plotted","codon_freqs",,"codon_uca","cds"
 "feature_correlation_dotplot.R","halflife","plotted","eej_dist_closest",,"eej_dist_closest","start"
@@ -1281,7 +1281,7 @@
 "feature_correlation_dotplot.R","halflife","selected","at_skew","at_skew_mrna",,
 "feature_correlation_dotplot.R","halflife","selected","at_skew","at_skew_start",,
 "feature_correlation_dotplot.R","halflife","selected","at_skew","at_skew_stop",,
-"feature_correlation_dotplot.R","halflife","selected","cai","cai",,
+"feature_correlation_dotplot.R","halflife","selected","cai","cai_cds",,
 "feature_correlation_dotplot.R","halflife","selected","codon_freqs","codon_agu_cds",,
 "feature_correlation_dotplot.R","halflife","selected","codon_freqs","codon_uca_cds",,
 "feature_correlation_dotplot.R","halflife","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -1607,7 +1607,7 @@
 "feature_correlation_dotplot.R","translation_efficiency","plotted","at_skew",,"at_skew","mrna"
 "feature_correlation_dotplot.R","translation_efficiency","plotted","at_skew",,"at_skew","start"
 "feature_correlation_dotplot.R","translation_efficiency","plotted","at_skew",,"at_skew","stop"
-"feature_correlation_dotplot.R","translation_efficiency","plotted","cai",,"cai","mrna"
+"feature_correlation_dotplot.R","translation_efficiency","plotted","cai",,"cai","cds"
 "feature_correlation_dotplot.R","translation_efficiency","plotted","codon_freqs",,"codon_agu","cds"
 "feature_correlation_dotplot.R","translation_efficiency","plotted","codon_freqs",,"codon_uca","cds"
 "feature_correlation_dotplot.R","translation_efficiency","plotted","eej_dist_closest",,"eej_dist_closest","start"
@@ -1744,7 +1744,7 @@
 "feature_correlation_dotplot.R","translation_efficiency","selected","at_skew","at_skew_mrna",,
 "feature_correlation_dotplot.R","translation_efficiency","selected","at_skew","at_skew_start",,
 "feature_correlation_dotplot.R","translation_efficiency","selected","at_skew","at_skew_stop",,
-"feature_correlation_dotplot.R","translation_efficiency","selected","cai","cai",,
+"feature_correlation_dotplot.R","translation_efficiency","selected","cai","cai_cds",,
 "feature_correlation_dotplot.R","translation_efficiency","selected","codon_freqs","codon_agu_cds",,
 "feature_correlation_dotplot.R","translation_efficiency","selected","codon_freqs","codon_uca_cds",,
 "feature_correlation_dotplot.R","translation_efficiency","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -1881,7 +1881,7 @@
 "feature_correlation_ranked.R","halflife","plotted","at_skew",,"at_skew","mrna"
 "feature_correlation_ranked.R","halflife","plotted","at_skew",,"at_skew","start"
 "feature_correlation_ranked.R","halflife","plotted","at_skew",,"at_skew","stop"
-"feature_correlation_ranked.R","halflife","plotted","cai",,"cai","mrna"
+"feature_correlation_ranked.R","halflife","plotted","cai",,"cai","cds"
 "feature_correlation_ranked.R","halflife","plotted","codon_freqs",,"codon_agu","cds"
 "feature_correlation_ranked.R","halflife","plotted","codon_freqs",,"codon_auc","cds"
 "feature_correlation_ranked.R","halflife","plotted","eej_dist_closest",,"eej_dist_closest","start"
@@ -2036,7 +2036,7 @@
 "feature_correlation_ranked.R","halflife","selected","at_skew","at_skew_mrna",,
 "feature_correlation_ranked.R","halflife","selected","at_skew","at_skew_start",,
 "feature_correlation_ranked.R","halflife","selected","at_skew","at_skew_stop",,
-"feature_correlation_ranked.R","halflife","selected","cai","cai",,
+"feature_correlation_ranked.R","halflife","selected","cai","cai_cds",,
 "feature_correlation_ranked.R","halflife","selected","codon_freqs","codon_aaa_cds",,
 "feature_correlation_ranked.R","halflife","selected","codon_freqs","codon_aac_cds",,
 "feature_correlation_ranked.R","halflife","selected","codon_freqs","codon_aag_cds",,
@@ -2403,7 +2403,7 @@
 "feature_correlation_ranked.R","translation_efficiency","plotted","at_skew",,"at_skew","mrna"
 "feature_correlation_ranked.R","translation_efficiency","plotted","at_skew",,"at_skew","start"
 "feature_correlation_ranked.R","translation_efficiency","plotted","at_skew",,"at_skew","stop"
-"feature_correlation_ranked.R","translation_efficiency","plotted","cai",,"cai","mrna"
+"feature_correlation_ranked.R","translation_efficiency","plotted","cai",,"cai","cds"
 "feature_correlation_ranked.R","translation_efficiency","plotted","codon_freqs",,"codon_agc","cds"
 "feature_correlation_ranked.R","translation_efficiency","plotted","codon_freqs",,"codon_cac","cds"
 "feature_correlation_ranked.R","translation_efficiency","plotted","eej_dist_closest",,"eej_dist_closest","start"
@@ -2558,7 +2558,7 @@
 "feature_correlation_ranked.R","translation_efficiency","selected","at_skew","at_skew_mrna",,
 "feature_correlation_ranked.R","translation_efficiency","selected","at_skew","at_skew_start",,
 "feature_correlation_ranked.R","translation_efficiency","selected","at_skew","at_skew_stop",,
-"feature_correlation_ranked.R","translation_efficiency","selected","cai","cai",,
+"feature_correlation_ranked.R","translation_efficiency","selected","cai","cai_cds",,
 "feature_correlation_ranked.R","translation_efficiency","selected","codon_freqs","codon_aaa_cds",,
 "feature_correlation_ranked.R","translation_efficiency","selected","codon_freqs","codon_aac_cds",,
 "feature_correlation_ranked.R","translation_efficiency","selected","codon_freqs","codon_aag_cds",,
@@ -2755,7 +2755,7 @@
 "feature_feature_correlation_table.R","default","selected","at_skew","at_skew_mrna",,
 "feature_feature_correlation_table.R","default","selected","at_skew","at_skew_start",,
 "feature_feature_correlation_table.R","default","selected","at_skew","at_skew_stop",,
-"feature_feature_correlation_table.R","default","selected","cai","cai",,
+"feature_feature_correlation_table.R","default","selected","cai","cai_cds",,
 "feature_feature_correlation_table.R","default","selected","eej_dist_closest","eej_dist_closest_start",,
 "feature_feature_correlation_table.R","default","selected","eej_dist_closest","eej_dist_closest_stop",,
 "feature_feature_correlation_table.R","default","selected","exon_density","exon_density_mrna",,
@@ -3116,7 +3116,7 @@
 "feature_response_scatter.R","included","plotted","at_skew",,"at_skew_mrna","mrna"
 "feature_response_scatter.R","included","plotted","at_skew",,"at_skew_start","start"
 "feature_response_scatter.R","included","plotted","at_skew",,"at_skew_stop","stop"
-"feature_response_scatter.R","included","plotted","cai",,"cai","none"
+"feature_response_scatter.R","included","plotted","cai",,"cai","cds"
 "feature_response_scatter.R","included","plotted","codon_freqs",,"codon_agu_cds","cds"
 "feature_response_scatter.R","included","plotted","codon_freqs",,"codon_uca_cds","cds"
 "feature_response_scatter.R","included","plotted","eej_dist_closest",,"eej_dist_closest_start","start"
@@ -3253,7 +3253,7 @@
 "feature_response_scatter.R","included","selected","at_skew","at_skew_mrna",,
 "feature_response_scatter.R","included","selected","at_skew","at_skew_start",,
 "feature_response_scatter.R","included","selected","at_skew","at_skew_stop",,
-"feature_response_scatter.R","included","selected","cai","cai",,
+"feature_response_scatter.R","included","selected","cai","cai_cds",,
 "feature_response_scatter.R","included","selected","codon_freqs","codon_agu_cds",,
 "feature_response_scatter.R","included","selected","codon_freqs","codon_uca_cds",,
 "feature_response_scatter.R","included","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -3377,7 +3377,7 @@
 "feature_response_scatter.R","top_1","plotted","aa_freqs",,"aa_s_cds","cds"
 "feature_response_scatter.R","top_1","plotted","amino_ratio",,"amino_ratio_cds","cds"
 "feature_response_scatter.R","top_1","plotted","at_skew",,"at_skew_mrna","mrna"
-"feature_response_scatter.R","top_1","plotted","cai",,"cai","none"
+"feature_response_scatter.R","top_1","plotted","cai",,"cai","cds"
 "feature_response_scatter.R","top_1","plotted","codon_freqs",,"codon_uca_cds","cds"
 "feature_response_scatter.R","top_1","plotted","eej_dist_closest",,"eej_dist_closest_stop","stop"
 "feature_response_scatter.R","top_1","plotted","exon_density",,"exon_density_mrna","mrna"
@@ -3414,7 +3414,7 @@
 "feature_response_scatter.R","top_1","selected","at_skew","at_skew_mrna",,
 "feature_response_scatter.R","top_1","selected","at_skew","at_skew_start",,
 "feature_response_scatter.R","top_1","selected","at_skew","at_skew_stop",,
-"feature_response_scatter.R","top_1","selected","cai","cai",,
+"feature_response_scatter.R","top_1","selected","cai","cai_cds",,
 "feature_response_scatter.R","top_1","selected","codon_freqs","codon_agu_cds",,
 "feature_response_scatter.R","top_1","selected","codon_freqs","codon_uca_cds",,
 "feature_response_scatter.R","top_1","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -3543,7 +3543,7 @@
 "feature_response_scatter.R","top_3","plotted","at_skew",,"at_skew_3utr","3utr"
 "feature_response_scatter.R","top_3","plotted","at_skew",,"at_skew_cds","cds"
 "feature_response_scatter.R","top_3","plotted","at_skew",,"at_skew_mrna","mrna"
-"feature_response_scatter.R","top_3","plotted","cai",,"cai","none"
+"feature_response_scatter.R","top_3","plotted","cai",,"cai","cds"
 "feature_response_scatter.R","top_3","plotted","codon_freqs",,"codon_agu_cds","cds"
 "feature_response_scatter.R","top_3","plotted","codon_freqs",,"codon_uca_cds","cds"
 "feature_response_scatter.R","top_3","plotted","eej_dist_closest",,"eej_dist_closest_start","start"
@@ -3610,7 +3610,7 @@
 "feature_response_scatter.R","top_3","selected","at_skew","at_skew_mrna",,
 "feature_response_scatter.R","top_3","selected","at_skew","at_skew_start",,
 "feature_response_scatter.R","top_3","selected","at_skew","at_skew_stop",,
-"feature_response_scatter.R","top_3","selected","cai","cai",,
+"feature_response_scatter.R","top_3","selected","cai","cai_cds",,
 "feature_response_scatter.R","top_3","selected","codon_freqs","codon_agu_cds",,
 "feature_response_scatter.R","top_3","selected","codon_freqs","codon_uca_cds",,
 "feature_response_scatter.R","top_3","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -3745,7 +3745,7 @@
 "group_panel_sweep.R","sweep","selected","at_skew","at_skew_mrna",,
 "group_panel_sweep.R","sweep","selected","at_skew","at_skew_start",,
 "group_panel_sweep.R","sweep","selected","at_skew","at_skew_stop",,
-"group_panel_sweep.R","sweep","selected","cai","cai",,
+"group_panel_sweep.R","sweep","selected","cai","cai_cds",,
 "group_panel_sweep.R","sweep","selected","eej_dist_closest","eej_dist_closest_start",,
 "group_panel_sweep.R","sweep","selected","eej_dist_closest","eej_dist_closest_stop",,
 "group_panel_sweep.R","sweep","selected","exon_density","exon_density_mrna",,
@@ -3892,7 +3892,7 @@
 "region_feature_heatmap.R","included","selected","at_skew","at_skew_mrna",,
 "region_feature_heatmap.R","included","selected","at_skew","at_skew_start",,
 "region_feature_heatmap.R","included","selected","at_skew","at_skew_stop",,
-"region_feature_heatmap.R","included","selected","cai","cai",,
+"region_feature_heatmap.R","included","selected","cai","cai_cds",,
 "region_feature_heatmap.R","included","selected","codon_freqs","codon_agu_cds",,
 "region_feature_heatmap.R","included","selected","codon_freqs","codon_uca_cds",,
 "region_feature_heatmap.R","included","selected","eej_dist_closest","eej_dist_closest_start",,
@@ -4079,7 +4079,7 @@
 "xgb_structure_features.R","baseline_columns","selected","at_skew","at_skew_mrna",,
 "xgb_structure_features.R","baseline_columns","selected","at_skew","at_skew_start",,
 "xgb_structure_features.R","baseline_columns","selected","at_skew","at_skew_stop",,
-"xgb_structure_features.R","baseline_columns","selected","cai","cai",,
+"xgb_structure_features.R","baseline_columns","selected","cai","cai_cds",,
 "xgb_structure_features.R","baseline_columns","selected","codon_freqs","codon_aaa_cds",,
 "xgb_structure_features.R","baseline_columns","selected","codon_freqs","codon_aac_cds",,
 "xgb_structure_features.R","baseline_columns","selected","codon_freqs","codon_aag_cds",,

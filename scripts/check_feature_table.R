@@ -42,14 +42,13 @@ dup_names <- tbl$Feature[duplicated(tbl$Feature)]
 if (length(dup_names)) fail("Feature names not unique (they label legends): ",
                             paste(unique(dup_names), collapse = ", "))
 
-for (id in EXPLORATORY_FEATURES) {
-  col <- tbl$Colour[tbl$feature_id == id]
-  if (!grepl("^#[0-9A-Fa-f]{6}$", col)) fail("exploratory feature '", id,
-                                              "' has no valid Colour (got '", col, "')")
-}
-cols_used <- tbl$Colour[tbl$feature_id %in% EXPLORATORY_FEATURES]
-if (anyDuplicated(cols_used)) fail("Colour reused across exploratory features: ",
-                                   paste(unique(cols_used[duplicated(cols_used)]), collapse = ", "))
+# Feature colours are derived (R/colour_config.R): every exploratory feature
+# must get a distinct one.
+fc <- FEATURE_COLOURS[EXPLORATORY_FEATURES]
+if (anyNA(fc)) fail("exploratory feature without a colour: ",
+                    paste(EXPLORATORY_FEATURES[is.na(fc)], collapse = ", "))
+if (anyDuplicated(fc)) fail("Colour reused across exploratory features: ",
+                            paste(unique(fc[duplicated(fc)]), collapse = ", "))
 
 not_expl <- setdiff(MODEL_FEATURES, EXPLORATORY_FEATURES)
 if (length(not_expl)) note("in the model but not the exploratory analysis: ",
@@ -113,7 +112,7 @@ for (sp in species) {
   for (i in seq_len(nrow(rows))) {
     rc <- cols[hits[, i]]
     have <- unique(stats::na.omit(vapply(rc, region_of, character(1))))
-    if (!length(have)) next                      # region-less columns (cai, te)
+    if (!length(have)) next                      # region-less columns (te)
     listed <- region_token[trimws(strsplit(rows$Regions[i], ",")[[1]])]
     if (anyNA(listed) || !setequal(have, listed))
       fail(sp, ": '", rows$feature_id[i], "' Regions lists {", rows$Regions[i],

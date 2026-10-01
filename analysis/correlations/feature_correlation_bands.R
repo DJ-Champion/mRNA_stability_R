@@ -22,7 +22,8 @@
 #
 # BAND COLOURS. Set in R/colour_config.R (SUPERGROUP_COLOURS, and the tint
 # strengths SUPERGROUP_BAND_ALPHA / SUPERGROUP_LABEL_ALPHA). The tints are pale
-# on purpose — the points carry the region colours.
+# on purpose — the points carry the region colours (the supergroup colours are
+# vivid; the mixes with white make them subtle).
 #
 # LEGEND. Drawn inside the panel, over the emptiest stretch of the right-hand
 # side (see choose_legend_position()), so the figure has no dead margin.

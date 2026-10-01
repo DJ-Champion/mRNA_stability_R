@@ -21,7 +21,9 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 # v11: Saluki predictions reach the cache. Up to v10 the .rds keyed on
 # `ensembl_gene_id`, join_gene_level() skipped it silently, and
 # `saluki_prediction` never existed. See load_saluki_predictions().
-CACHE_VERSION <- 11L
+#
+# v12: the CAI column is `cai_cds` (was `cai`), so it carries its real region.
+CACHE_VERSION <- 12L
 
 
 # --- Region vocabulary -------------------------------------------------------
