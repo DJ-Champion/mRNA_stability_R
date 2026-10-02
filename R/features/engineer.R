@@ -171,18 +171,14 @@ add_junction_density <- function(df) {
   df
 }
 
-# Exon-exon junction distance min
-# eej_dist_upstream_stop
+# Exon-exon junction distance from the stop codon to the closest junction
+# (min of eej_dist_{upstream,downstream}_stop). It is measured over the whole
+# mRNA, so the column carries the mrna region token. No start-codon version.
 add_eej_min_distance <- function(df) {
-  if (all(c("eej_dist_downstream_start", "eej_dist_upstream_start") %in% names(df))) {
-    df$eej_dist_closest_start = pmin(df$eej_dist_downstream_start,
-                                     df$eej_dist_upstream_start,
-                                     na.rm = TRUE)
-  }
   if (all(c("eej_dist_downstream_stop", "eej_dist_upstream_stop") %in% names(df))) {
-    df$eej_dist_closest_stop = pmin(df$eej_dist_downstream_stop,
-                                   df$eej_dist_upstream_stop,
-                                   na.rm = TRUE)
+    df$eej_dist_closest_stop_mrna = pmin(df$eej_dist_downstream_stop,
+                                         df$eej_dist_upstream_stop,
+                                         na.rm = TRUE)
   }
   df
 }

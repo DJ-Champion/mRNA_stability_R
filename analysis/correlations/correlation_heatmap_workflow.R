@@ -100,7 +100,7 @@ suppressPackageStartupMessages({
   nmd_transversion = 8L,
   nmd_transition_fraction = 8L,
   junction_density = 9L,   # junctions
-  eej_dist_closest = 10L,  # EEJ distances
+  eej_dist_closest_stop = 10L,  # EEJ distances
   stopfree         = 11L,  # stop-free length
   gc               = 12L,  # GC content
   nuc_ratios       = 13L,  # nucleotide ratios (frac_*)

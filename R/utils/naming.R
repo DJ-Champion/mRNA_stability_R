@@ -114,7 +114,7 @@ REPLACEMENTS <- list(
 #' format_col_name("length_cds")            # "Length CDS"
 #' format_col_name("halflife")              # "Half-life"
 #' format_col_name("gc_content_5utr")       # "C+G% 5' UTR"
-#' format_col_name("eej_dist_closest_start")            # "EEJ.closest start codon"
+#' format_col_name("eej_dist_closest_stop_mrna")        # "EEJ.closest mRNA"
 #' format_col_name("intron_length_mean_mrna")           # "Mean intron length mRNA"
 #' format_col_name("nmd_snv_fragile_codon_density_mrna")# "NMD.frag. mRNA"
 #' format_col_name("codon_aaa_cds")         # "codon.AAA%"

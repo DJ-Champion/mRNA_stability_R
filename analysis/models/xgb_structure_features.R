@@ -156,7 +156,7 @@ run_dir <- function(what = c("root", "tables", "plots")) {
 #'                                  this is a second, noisier copy of a
 #'                                  retained column. The 50-nt-rule geometry it
 #'                                  was once kept for is carried directly by
-#'                                  the retained eej_dist_closest_* columns.
+#'                                  the retained eej_dist_closest_stop_mrna column.
 #'
 #'   every `structure` supergroup member   that is the experimental variable.
 #'

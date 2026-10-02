@@ -23,7 +23,9 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 # `saluki_prediction` never existed. See load_saluki_predictions().
 #
 # v12: the CAI column is `cai_cds` (was `cai`), so it carries its real region.
-CACHE_VERSION <- 12L
+# v13: eej_dist_closest_start dropped; eej_dist_closest_stop renamed
+#      eej_dist_closest_stop_mrna (whole-mRNA region token).
+CACHE_VERSION <- 13L
 
 
 # --- Region vocabulary -------------------------------------------------------
