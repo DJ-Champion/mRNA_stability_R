@@ -339,7 +339,11 @@ selected_features <- function(include = "core", exclude = NULL) {
 #' @param regions  Character vector of region tokens to keep ("5utr", "cds", ...),
 #'   or NULL for all. Applied before `top_n`, so a family is ranked only on the
 #'   regions asked for. Region-less features count as "mrna"; columns with no
-#'   region at all are dropped whenever `regions` is given.
+#'   region at all are dropped whenever `regions` is given. A named list
+#'   restricts features individually: names are feature ids, groups or
+#'   supergroups, values are region vectors, and `.default` sets the rule for
+#'   every feature not named (omitted or NULL = all regions), e.g.
+#'   `list(stopfree = "mrna")` or `list(stopfree = "mrna", .default = "cds")`.
 #' @param response Column to rank against for `top_n`.
 #' @param method   Correlation for `top_n`; default "spearman".
 #' @param min_n    Minimum complete pairs for a column to be ranked; columns
@@ -355,6 +359,7 @@ selected_features <- function(include = "core", exclude = NULL) {
 #' select_features(df, exclude = "sequence")              # core minus Sequence
 #' select_features(df, "exploratory", exclude = c("codon_freqs", "aa_freqs"))
 #' select_features(df, top_n = list(codon_freqs = 2), response = "halflife")
+#' select_features(df, regions = list(stopfree = "mrna"))  # stop-free: mRNA only
 #' @export
 select_features <- function(df, include = "core", exclude = NULL,
                                top_n = NULL, response = NULL, regions = NULL,
@@ -369,10 +374,31 @@ select_features <- function(df, include = "core", exclude = NULL,
                                       stringsAsFactors = FALSE)
 
   if (!is.null(regions) && nrow(out)) {
-    bad <- setdiff(regions, REGIONS)
-    if (length(bad)) stop("select_features: unknown region(s): ",
-                          paste(bad, collapse = ", "), call. = FALSE)
-    out <- out[column_regions(out$column, out$feature_id) %in% regions, , drop = FALSE]
+    reg <- column_regions(out$column, out$feature_id)
+    if (is.list(regions)) {
+      # Per-feature: names are feature ids / groups / supergroups, values are
+      # region vectors; ".default" covers features not named (NULL = all).
+      if (is.null(names(regions)) || any(!nzchar(names(regions))))
+        stop("select_features: a list `regions` must be fully named", call. = FALSE)
+      keys <- setdiff(names(regions), ".default")
+      allowed <- stats::setNames(rep(list(regions[[".default"]]), length(names(FEATURE_PATTERNS))),
+                                 names(FEATURE_PATTERNS))
+      for (k in keys) for (id in .expand_tokens(k, FALSE, "regions"))
+        allowed[id] <- list(regions[[k]])   # later keys override earlier ones
+      bad <- setdiff(unlist(regions, use.names = FALSE), REGIONS)
+      if (length(bad)) stop("select_features: unknown region(s): ",
+                            paste(bad, collapse = ", "), call. = FALSE)
+      keep <- mapply(function(r, id) {
+        a <- allowed[[id]]
+        is.null(a) || (!is.na(r) && r %in% a)
+      }, reg, out$feature_id)
+      out <- out[keep, , drop = FALSE]
+    } else {
+      bad <- setdiff(regions, REGIONS)
+      if (length(bad)) stop("select_features: unknown region(s): ",
+                            paste(bad, collapse = ", "), call. = FALSE)
+      out <- out[reg %in% regions, , drop = FALSE]
+    }
   }
 
   trimmed <- list()

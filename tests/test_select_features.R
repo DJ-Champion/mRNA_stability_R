@@ -98,6 +98,15 @@ check("region-less features count as mrna",
 check("cai is a cds feature",
       "cai" %in% select_features(df, "core", regions = "cds")$feature_id)
 check("unknown region errors", errors(select_features(df, regions = "nowhere")))
+sf <- select_features(df, "core", regions = list(stopfree = "mrna"))
+reg_of <- function(x, id) column_regions(x$column[x$feature_id == id], x$feature_id[x$feature_id == id])
+check("per-feature: named feature restricted", all(reg_of(sf, "stopfree") == "mrna") && any(sf$feature_id == "stopfree"))
+check("per-feature: others untouched", nrow(sf[sf$feature_id != "stopfree", ]) == nrow(core[core$feature_id != "stopfree", ]))
+sd <- select_features(df, "core", regions = list(stopfree = "mrna", .default = "cds"))
+check("per-feature: .default applies to the rest",
+      all(reg_of(sd, "stopfree") == "mrna") && all(column_regions(sd$column, sd$feature_id)[sd$feature_id != "stopfree"] == "cds"))
+check("per-feature: unknown feature errors", errors(select_features(df, regions = list(nope = "cds"))))
+check("per-feature: unknown region errors", errors(select_features(df, regions = list(stopfree = "nowhere"))))
 utr <- select_features(df, "codon_freqs", regions = c("cds", "5utr"),
                           top_n = list(codon_freqs = 2), response = "halflife")
 check("top_n ranks after the region filter", nrow(utr) == 2 && all(grepl("_cds$", utr$column)))
