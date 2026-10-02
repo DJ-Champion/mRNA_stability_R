@@ -21,12 +21,12 @@
 # =============================================================================
 
 SUPERGROUP_COLOURS <- c(
-  structure               = "#9C27B0",  # purple-magenta
-  sequence                = "#1B7FC4",  # blue
-  translation             = "#0F9D8A",  # teal
-  transcript_architecture = "#E07B00",  # orange
-  rna_decay               = "#C62828",  # red
-  expression              = "#2E9E3E"   # green
+  structure               = "#FF0000",  
+  sequence                = "#00FFFF",  
+  translation             = "#FF00FF",  
+  transcript_architecture = "#00FF00",  
+  rna_decay               = "#0000FF",  
+  expression              = "#FFFF00"   
 )
 
 # Colour for anything outside a named supergroup (the "other" bucket).
@@ -36,8 +36,8 @@ SUPERGROUP_OTHER_COLOUR <- "#999999"
 # with white (0 = white, 1 = full colour), and the same for the label bar. The
 # supergroup colours are vivid (they are the base of the feature colours, which
 # have to stand out on white), so these mixes are what keep the bands subtle.
-SUPERGROUP_BAND_ALPHA  <- 0.18
-SUPERGROUP_LABEL_ALPHA <- 0.75
+SUPERGROUP_BAND_ALPHA  <- 0.10
+SUPERGROUP_LABEL_ALPHA <- 0.40
 
 # Feature colours: each feature stays in its supergroup's hue family, at a
 # higher saturation than the pale band tints. Within a supergroup the features
@@ -45,11 +45,11 @@ SUPERGROUP_LABEL_ALPHA <- 0.75
 # light) and in hue, over SUPERGROUP_HUE_SPREAD degrees centred on the
 # supergroup hue (0 = one hue). Bigger supergroups get bigger spreads so their
 # features stay apart. Chroma is the colourfulness, shared by every feature.
-FEATURE_CHROMA    <- 80
-FEATURE_LUMINANCE <- c(34, 62)
+FEATURE_CHROMA    <- 100
+FEATURE_LUMINANCE <- c(30, 68)
 SUPERGROUP_HUE_SPREAD <- c(
-  structure               = 36,
-  sequence                = 36,
+  structure               = 40,
+  sequence                = 40,
   translation             = 14,
   transcript_architecture = 16,
   rna_decay               = 22,
