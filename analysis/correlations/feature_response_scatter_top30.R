@@ -531,6 +531,7 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   out <- feature_response_scatter(
     df,
     top_n          = list(codon_freqs = 2, aa_freqs = 2),
+    regions        = list(stopfree = "mrna"),  # stop-free: mRNA only
     noise_filter   = 0,
     label_quantile = 0.7
   )
