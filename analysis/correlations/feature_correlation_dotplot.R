@@ -22,8 +22,7 @@
 # Every transcript-architecture and regulatory column carries a real region
 # token as its LAST token:
 #   * junctions   -> junctions_count_<5utr|cds|3utr|mrna>
-#   * distances   -> eej_dist_closest_<start|stop>       (start/stop are
-#                                                          real regions)
+#   * distances   -> eej_dist_closest_stop_mrna          (whole-transcript)
 #   * architecture-> *_mrna                               (whole-transcript)
 #   * uorfs       -> uorf_*_mrna                           (whole-transcript)
 #   * nmd         -> nmd_*_mrna                            (single model)
