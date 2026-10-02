@@ -197,7 +197,9 @@ critical_correlation <- function(n,
 #'                           select_features().
 #' @param exclude            Tokens to subtract from `include`. NULL = none.
 #' @param regions            Region tokens to draw ("5utr", "cds", ...). NULL
-#'                           (default) = all. Applied before `top_n`.
+#'                           (default) = all. Applied before `top_n`. A named
+#'                           list restricts features individually, e.g.
+#'                           list(stopfree = "mrna"); see select_features().
 #' @param orientation        "vertical" (default) puts features on the x axis,
 #'                           as feature_correlation_dotplot does. "horizontal"
 #'                           puts features on the y axis and correlations on

@@ -312,7 +312,12 @@ selected_columns(select_features(df, "global_folding"))    # plain character vec
   and species). Two figures with the same response can therefore never disagree
   about which codons are "top". `top_n` never means anything else; an argument
   limiting how many things are *drawn* is called `max_features`.
-- **`regions`** restricts to region tokens before `top_n` ranks.
+- **`regions`** restricts to region tokens before `top_n` ranks. A character
+  vector applies to every selected feature; a named list restricts features
+  individually (`list(stopfree = "mrna")`, names = feature ids / groups /
+  supergroups; `.default` covers the features not named, NULL = all regions).
+  Plots that treat `regions` as an axis (`region_feature_heatmap()`, the
+  cross-species probing plots) accept the character form only.
 - Do **not** hand-name columns to keep or drop, and do not add default skip
   lists inside an analysis: if a default excludes something (the sweep and the
   feature-feature table skip `codon_freqs` and `aa_freqs`), it is a visible

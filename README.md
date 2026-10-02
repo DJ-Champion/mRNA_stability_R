@@ -228,7 +228,14 @@ select_features(df, top_n = list(codon_freqs = 2, aa_freqs = 2),
 
 Half-life and translation efficiency may then show different codons; that is
 intended. `regions = c("5utr", "cds")` restricts columns to those regions
-before `top_n` ranks them.
+before `top_n` ranks them. To restrict only some features, pass a named list:
+`regions = list(stopfree = "mrna")` shows stop-free's mRNA column only and
+leaves every other feature at all regions; `.default` sets the rule for the
+features not named (`list(stopfree = "mrna", .default = "cds")`). Names can be
+feature ids, groups or supergroups. The list form works in everything that
+hands `regions` to `select_features()` (ranked, dotplot, feature-response
+scatters); `region_feature_heatmap()` and the probing plots use `regions` as an
+axis and take a character vector only.
 
 The plotting functions (`feature_correlation_ranked()`, `_bands()`,
 `_dotplot()`, `feature_response_scatter()`, `region_feature_heatmap()`,
