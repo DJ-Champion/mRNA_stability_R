@@ -226,9 +226,8 @@ feature_correlation_bands <- function(df,
                          levels = intersect(names(region_colours),
                                             unique(tab$region)))
 
-  value_lab <- sprintf("%s %s correlation with %s",
+  value_lab <- sprintf("%s correlation with %s",
                        if (absolute) "Absolute" else "Signed",
-                       tools::toTitleCase(out$report$method),
                        format_col_name(response))
 
   p <- ggplot2::ggplot(tab) +
@@ -299,8 +298,7 @@ feature_correlation_bands <- function(df,
     ) +
     ggplot2::labs(
       x = value_lab, y = NULL,
-      title    = sprintf("%s correlation with %s",
-                         tools::toTitleCase(out$report$method),
+      title    = sprintf("Correlation with %s",
                          format_col_name(response)),
       subtitle = sprintf("%d%% CI; within each supergroup ordered by |r|",
                          round(out$report$conf * 100))
