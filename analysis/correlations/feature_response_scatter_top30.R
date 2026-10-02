@@ -66,7 +66,9 @@ suppressPackageStartupMessages({
 #'                       select_features().
 #' @param exclude        Tokens to subtract from `include`. NULL = none.
 #' @param regions        Region tokens to keep ("5utr", "cds", ...). NULL
-#'                       (default) = all.
+#'                       (default) = all. A named list restricts features
+#'                       individually, e.g. list(stopfree = "mrna"); see
+#'                       select_features().
 #' @param collapse       "none" (one point per column, default), "region" (one
 #'                       point per group × region — median r), or "group" (one
 #'                       point per group — median r across all members).

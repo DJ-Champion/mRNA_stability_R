@@ -29,6 +29,7 @@
 #   select_features(df, "core", exclude = "sequence")        # core minus one
 #   select_features(df, "exploratory", exclude = c("codon_freqs", "aa_freqs"))
 #   select_features(df, top_n = list(codon_freqs = 2), response = "halflife")
+#   select_features(df, regions = list(stopfree = "mrna"))   # per-feature regions
 #   selected_columns(select_features(df, "structure"))       # plain vector
 # =============================================================================
 

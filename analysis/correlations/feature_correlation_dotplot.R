@@ -154,7 +154,9 @@ correlation_with_ci <- function(x, y,
 #'                           select_features().
 #' @param exclude            Tokens to subtract from `include`. NULL = none.
 #' @param regions            Region tokens to draw ("5utr", "cds", ...). NULL
-#'                           (default) = all. Applied before `top_n`.
+#'                           (default) = all. Applied before `top_n`. A named
+#'                           list restricts features individually, e.g.
+#'                           list(stopfree = "mrna"); see select_features().
 #' @param absolute           Logical. If TRUE (default) plot |correlation|
 #'                           and transform the CI accordingly; if FALSE plot
 #'                           signed correlation.
