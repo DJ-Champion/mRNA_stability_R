@@ -162,7 +162,8 @@ p_r2 <- model_ci |>
   geom_point(size = 4) +
   scale_colour_manual(values = MODEL_COLS, guide = "none") +
   labs(
-    title    = "Held-out performance: R² by model",
+    title    = paste0("Held-out performance: R² for ", response_info()$label,
+                      " prediction"),
     subtitle = sprintf("%s held-out genes, %s bootstrap replicates, 95%% CI",
                        format(N_TEST, big.mark = ","),
                        format(N_BOOT, big.mark = ",")),
@@ -189,7 +190,8 @@ p_paired <- chunks |>
   scale_colour_manual(values = MODEL_COLS) +
   facet_wrap(~ metric_lab, scales = "free_y") +
   labs(
-    title    = "Performance across held-out slices",
+    title    = paste("Performance across held-out slices:",
+                       response_info()$label, "prediction"),
     subtitle = sprintf("%d family-blocked slices of the held-out set, one line each",
                        n_distinct(chunks$chunk)),
     x = NULL, y = NULL
@@ -253,7 +255,8 @@ p_imp <- imp |>
   scale_fill_manual(values = setNames(c("grey65", COL_STRUCTURE),
                                       c("Baseline", "Structure"))) +
   scale_y_discrete(labels = function(x) format_col_name(x)) +
-  labs(title = "Gain importance, Structure model (top 25)",
+  labs(title = paste0("Gain importance for ", response_info()$label,
+                  ", Structure model (top 25)"),
        subtitle = "Exploratory: gain is shared among correlated predictors",
        x = "Gain", y = NULL, fill = NULL) +
   theme_xgb() +
