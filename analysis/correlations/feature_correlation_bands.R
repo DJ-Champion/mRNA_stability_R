@@ -20,6 +20,16 @@
 # strongest feature is on top too. Band order therefore depends on the
 # response, and ties fall back to the feature table's supergroup order.
 #
+# MATCHING ANOTHER PLOT. To flip between two figures (halflife vs TE), pass the
+# first result as `order_from` and pick how much of its order to copy:
+#   order_follow = "supergroup"  - bands in the reference's order, features
+#                                  still ranked by this response's own |r|;
+#   order_follow = "feature"     - bands AND the features inside them in the
+#                                  reference's order.
+# Anything the reference does not have (e.g. a codon that made the top_n cut
+# for one response only) goes after the reference's rows in its band, by this
+# response's own |r|; a band the reference lacks goes after its bands.
+#
 # BAND COLOURS. Set in R/colour_config.R (SUPERGROUP_COLOURS, and the tint
 # strengths SUPERGROUP_BAND_ALPHA / SUPERGROUP_LABEL_ALPHA). The tints are pale
 # on purpose — the points carry the region colours (the supergroup colours are
@@ -108,6 +118,11 @@ choose_legend_position <- function(rows, tab, bands, legend_rows) {
 #' @param row_fill     Fraction of a row's height the dodged regions span.
 #' @param row_mm       Approximate millimetres per row on the saved figure;
 #'                     used only to fit the supergroup labels into their bands.
+#' @param order_from   A previous feature_correlation_bands() result whose band
+#'                     (and optionally feature) order to reuse. Default NULL:
+#'                     order by this response's own |r|.
+#' @param order_follow With `order_from`: "supergroup" copies only the band
+#'                     order, "feature" copies the feature order as well.
 #' @param ...          Passed to feature_correlation_ranked(): method,
 #'                     include, exclude, regions, top_n, min_abs_correlation,
 #'                     sig_threshold, sig_alpha, conf, min_n.
@@ -123,7 +138,14 @@ feature_correlation_bands <- function(df,
                                       legend_position = "auto",
                                       row_fill   = 0.75,
                                       row_mm     = 9,
+                                      order_from = NULL,
+                                      order_follow = c("supergroup", "feature"),
                                       ...) {
+  order_follow <- match.arg(order_follow)
+  ref_rows <- if (!is.null(order_from)) order_from$report$row_order
+  if (!is.null(order_from) && is.null(ref_rows)) {
+    stop("order_from must be a feature_correlation_bands() result")
+  }
 
   out <- .ranked_env$feature_correlation_ranked(
     df,
@@ -147,6 +169,11 @@ feature_correlation_bands <- function(df,
   sg_max    <- vapply(sg_table, function(g)
     max(tab$correlation_abs[tab$supergroup == g], na.rm = TRUE), numeric(1))
   sg_levels <- sg_table[order(-sg_max)]
+  if (!is.null(ref_rows)) {
+    ref_sg <- unique(as.character(ref_rows$supergroup))
+    # Reference bands first, in its order; any extra bands after, by own |r|.
+    sg_levels <- c(intersect(ref_sg, sg_levels), setdiff(sg_levels, ref_sg))
+  }
   tab$supergroup <- factor(tab$supergroup, levels = sg_levels)
   tab$row_key    <- paste(tab$supergroup, tab$metric_display, sep = "::")
 
@@ -155,6 +182,12 @@ feature_correlation_bands <- function(df,
     dplyr::summarise(max_r = max(correlation_abs, na.rm = TRUE),
                      .groups = "drop") |>
     dplyr::arrange(supergroup, dplyr::desc(max_r))
+  if (!is.null(ref_rows) && order_follow == "feature") {
+    ref_key <- paste(ref_rows$supergroup, ref_rows$metric_display, sep = "::")
+    ref_pos <- match(rows$row_key, ref_key)
+    rows <- rows[order(rows$supergroup,
+                       is.na(ref_pos), ref_pos, -rows$max_r), ]
+  }
 
   # A discrete y axis draws its first level at the bottom; reverse so the
   # first row of the first band is at the top.
@@ -370,6 +403,9 @@ feature_correlation_bands <- function(df,
     dplyr::select(-dplyr::any_of(c(".value", ".lo", ".hi", "row_key", "y",
                                    "region_f")))
   out$report$bands  <- as.character(bands$supergroup)
+  out$report$row_order <- data.frame(
+    supergroup     = as.character(rows$supergroup),
+    metric_display = rows$metric_display)
   out$report$n_rows_plot <- nrow(rows)
   out
 }
@@ -404,24 +440,11 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     list(response = "translation_efficiency", suffix = "translation_efficiency")
   )
 
-  for (job in jobs) {
-    if (!job$response %in% names(df)) {
-      message("Skipping: ", job$response, " not in dataset")
-      next
-    }
-    message("\nBanded plot: ", job$response)
-
-    res <- feature_correlation_bands(
-      df,
-      response        = job$response,
-      include         = "core",
-      row_mm          = row_mm,
-      top_n           = top_n
-    )
-
+  # Draw one job and save it under `suffix`.
+  save_banded <- function(res, suffix) {
     height <- max(140, 70 + res$report$n_rows_plot * row_mm)
     base   <- file.path(OUTPUT_DIR, "plots",
-                        paste0("feature_correlation_bands_", job$suffix))
+                        paste0("feature_correlation_bands_", suffix))
     ggplot2::ggsave(paste0(base, ".jpg"), res$plot, width = 260,
                     height = height, units = "mm", dpi = 300,
                     limitsize = FALSE)
@@ -430,10 +453,39 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
                     device = grDevices::cairo_pdf)
     write.csv(res$table,
               file.path(OUTPUT_DIR, "tables",
-                        paste0("feature_correlation_bands_", job$suffix,
-                               ".csv")),
+                        paste0("feature_correlation_bands_", suffix, ".csv")),
               row.names = FALSE)
     message("  ", res$report$n_rows_plot, " rows, bands: ",
             paste(res$report$bands, collapse = ", "))
+  }
+
+  # The first job is the reference. Every later job is drawn three ways: in its
+  # own |r| order, with the reference's band order, and with the reference's
+  # band and feature order, so the figures can be flipped between.
+  reference <- NULL
+  for (job in jobs) {
+    if (!job$response %in% names(df)) {
+      message("Skipping: ", job$response, " not in dataset")
+      next
+    }
+    message("\nBanded plot: ", job$response)
+
+    draw <- function(...) feature_correlation_bands(
+      df, response = job$response, include = "core", row_mm = row_mm,
+      top_n = top_n, ...)
+
+    res <- draw()
+    save_banded(res, job$suffix)
+
+    if (is.null(reference)) {
+      reference <- res
+      ref_name  <- job$suffix
+    } else {
+      for (follow in c("supergroup", "feature")) {
+        message("  ordered like ", ref_name, " (", follow, ")")
+        save_banded(draw(order_from = reference, order_follow = follow),
+                    paste0(job$suffix, "_", ref_name, "_", follow, "_order"))
+      }
+    }
   }
 }
