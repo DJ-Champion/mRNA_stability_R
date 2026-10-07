@@ -459,33 +459,56 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
             paste(res$report$bands, collapse = ", "))
   }
 
-  # The first job is the reference. Every later job is drawn three ways: in its
-  # own |r| order, with the reference's band order, and with the reference's
-  # band and feature order, so the figures can be flipped between.
+  # When TRUE, the codons and amino acids shown are the union of each
+  # response's own top-N, so a figure ordered like the reference carries
+  # exactly the reference's rows. The reference figure itself uses the union
+  # too; a later job's standalone figure keeps its own top-N. FALSE gives the
+  # strict top-N everywhere (the feature-order figure then appends rows the
+  # reference lacks at the end of their band).
+  match_features <- TRUE
+
+  # The trimmed families, as columns kept for a response under `top_n`.
+  trimmed_cols <- function(response) {
+    sel <- select_features(df, "core", top_n = top_n, response = response)
+    sel$column[sel$feature_id %in% names(top_n)]
+  }
+  # `df` without the trimmed-family columns that no response's top-N kept.
+  df_union <- function(responses) {
+    fam  <- select_features(df, "core")
+    fam  <- fam$column[fam$feature_id %in% names(top_n)]
+    keep <- unique(unlist(lapply(responses, trimmed_cols)))
+    df[, setdiff(names(df), setdiff(fam, keep)), drop = FALSE]
+  }
+
+  jobs <- Filter(function(j) j$response %in% names(df), jobs)
+  df_match <- if (match_features) df_union(vapply(jobs, `[[`, "", "response"))
+
+  # Draw one job. `d` is the data; `trim` the top_n it applies.
+  draw <- function(job, d = df, trim = top_n, ...) {
+    feature_correlation_bands(d, response = job$response, include = "core",
+                              row_mm = row_mm, top_n = trim, ...)
+  }
+
+  # The first job is the reference. Every later job is drawn in its own |r|
+  # order and again ordered like the reference (bands and features), so the
+  # two figures can be flipped between.
   reference <- NULL
   for (job in jobs) {
-    if (!job$response %in% names(df)) {
-      message("Skipping: ", job$response, " not in dataset")
-      next
-    }
     message("\nBanded plot: ", job$response)
 
-    draw <- function(...) feature_correlation_bands(
-      df, response = job$response, include = "core", row_mm = row_mm,
-      top_n = top_n, ...)
-
-    res <- draw()
-    save_banded(res, job$suffix)
-
     if (is.null(reference)) {
-      reference <- res
+      reference <- if (match_features) draw(job, df_match, NULL) else draw(job)
       ref_name  <- job$suffix
+      save_banded(reference, job$suffix)
     } else {
-      for (follow in c("supergroup", "feature")) {
-        message("  ordered like ", ref_name, " (", follow, ")")
-        save_banded(draw(order_from = reference, order_follow = follow),
-                    paste0(job$suffix, "_", ref_name, "_", follow, "_order"))
-      }
+      save_banded(draw(job), job$suffix)
+      message("  ordered like ", ref_name)
+      matched <- if (match_features) draw(job, df_match, NULL,
+                                          order_from = reference,
+                                          order_follow = "feature")
+                 else draw(job, order_from = reference,
+                           order_follow = "feature")
+      save_banded(matched, paste0(job$suffix, "_", ref_name, "_feature_order"))
     }
   }
 }
