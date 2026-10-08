@@ -20,31 +20,34 @@ suppressPackageStartupMessages({
 
 #' Drop transcripts whose UTRs are too short to carry meaningful features
 #'
-#' The cohort filter. A transcript is kept only if BOTH `length_5utr` and
-#' `length_3utr` are present and at least `min_len`; NA fails, because a
-#' missing length cannot be shown to clear the threshold and reads as "no
-#' annotated UTR" rather than a failed measurement. See the MIN_UTR_LENGTH
-#' block in config.R for the rationale and the measured cost.
+#' The cohort filter. A transcript is kept only if `length_5utr` is present
+#' and at least `min_5utr` AND `length_3utr` is present and at least
+#' `min_3utr`; NA fails, because a missing length cannot be shown to clear the
+#' threshold. See the MIN_5UTR_LENGTH / MIN_3UTR_LENGTH block in config.R for
+#' the rationale (the 3' threshold guarantees the last-100-nt tail lies wholly
+#' inside the 3'UTR).
 #'
 #' This is the row-filter counterpart to drop_excluded(). Unlike that function
 #' it is applied for you, by build_dataset(), rather than called at the head of
-#' each analysis script — the short-UTR transcripts are outside the study, not
-#' merely outside the covariate pool, so nothing downstream should have to
-#' remember them.
+#' each analysis script.
 #'
 #' Safe to apply at any point after the join: engineer_features() derives every
 #' column row-wise, with no statistic pooled across transcripts, so removing
 #' rows cannot change the feature values of the rows that remain.
 #'
 #' @param df A dataset from build_dataset() / build_all().
-#' @param min_len Integer. NULL or NA returns `df` untouched.
+#' @param min_5utr Integer. Minimum 5'UTR length. NULL or NA skips this filter.
+#' @param min_3utr Integer. Minimum 3'UTR length. NULL or NA skips this filter.
 #' @param verbose Logical. If TRUE (default) report how many rows went.
 #' @return `df` without the short-UTR transcripts.
 #' @export
-drop_short_utr <- function(df, min_len = MIN_UTR_LENGTH, verbose = TRUE) {
-  if (is.null(min_len) || is.na(min_len)) return(df)
+drop_short_utr <- function(df, min_5utr = MIN_5UTR_LENGTH,
+                           min_3utr = MIN_3UTR_LENGTH, verbose = TRUE) {
+  skip5 <- is.null(min_5utr) || is.na(min_5utr)
+  skip3 <- is.null(min_3utr) || is.na(min_3utr)
+  if (skip5 && skip3) return(df)
 
-  cols <- c("length_5utr", "length_3utr")
+  cols <- c(if (!skip5) "length_5utr", if (!skip3) "length_3utr")
   missing_cols <- setdiff(cols, names(df))
   if (length(missing_cols) > 0) {
     warning("drop_short_utr: no ", paste(missing_cols, collapse = " / "),
@@ -52,16 +55,17 @@ drop_short_utr <- function(df, min_len = MIN_UTR_LENGTH, verbose = TRUE) {
     return(df)
   }
 
-  keep <- !is.na(df$length_5utr) & !is.na(df$length_3utr) &
-          df$length_5utr >= min_len & df$length_3utr >= min_len
+  pass5 <- if (skip5) rep(TRUE, nrow(df))
+           else !is.na(df$length_5utr) & df$length_5utr >= min_5utr
+  pass3 <- if (skip3) rep(TRUE, nrow(df))
+           else !is.na(df$length_3utr) & df$length_3utr >= min_3utr
+  keep <- pass5 & pass3
 
   if (verbose) {
-    n_na <- sum(is.na(df$length_5utr) | is.na(df$length_3utr))
     message("drop_short_utr: removed ", sum(!keep), " of ", nrow(df),
-            " transcripts with a UTR under ", min_len, " nt",
-            if (n_na > 0) paste0(" (", n_na, " of them for a missing UTR length)")
-            else "",
-            "; ", sum(keep), " remain")
+            " transcripts (", sum(!pass5), " with 5'UTR < ", min_5utr,
+            " nt or missing, ", sum(!pass3), " with 3'UTR < ", min_3utr,
+            " nt or missing); ", sum(keep), " remain")
   }
 
   # Belt and braces, and currently redundant: base `[` on a tibble preserves
@@ -86,14 +90,16 @@ drop_short_utr <- function(df, min_len = MIN_UTR_LENGTH, verbose = TRUE) {
 #' @param rebuild Logical. If FALSE (default) and a cache exists for this
 #'   species at the current CACHE_VERSION, returns the cache. If TRUE, rebuilds
 #'   from raw files.
-#' @param min_utr Integer. Transcripts with either UTR shorter than this are
-#'   dropped from the RETURNED frame — see drop_short_utr() and the
-#'   MIN_UTR_LENGTH block in config.R. Pass NULL for the unfiltered table (the
-#'   QC scripts do). The cache written to disk is always complete, so this
+#' @param min_5utr,min_3utr Integer. Transcripts with a 5'UTR / 3'UTR shorter
+#'   than these are dropped from the RETURNED frame — see drop_short_utr() and
+#'   the MIN_5UTR_LENGTH / MIN_3UTR_LENGTH block in config.R. Pass NULL for
+#'   either to skip that filter (the QC scripts pass NULL for both). The cache written to disk is always complete, so this
 #'   never invalidates it and never needs a CACHE_VERSION bump.
 #' @return A wide-form tibble with a `species` column.
 #' @export
-build_dataset <- function(species, rebuild = FALSE, min_utr = MIN_UTR_LENGTH) {
+build_dataset <- function(species, rebuild = FALSE,
+                          min_5utr = MIN_5UTR_LENGTH,
+                          min_3utr = MIN_3UTR_LENGTH) {
   if (!species %in% names(SPECIES_CONFIG)) {
     stop("Unknown species '", species, "'. Known: ",
          paste(names(SPECIES_CONFIG), collapse = ", "))
@@ -104,7 +110,7 @@ build_dataset <- function(species, rebuild = FALSE, min_utr = MIN_UTR_LENGTH) {
     if (!is.null(cached)) {
       message("Loaded cache for ", species, " (", nrow(cached), " rows, ",
               ncol(cached), " columns)")
-      return(drop_short_utr(cached, min_utr))
+      return(drop_short_utr(cached, min_5utr, min_3utr))
     }
   }
 
@@ -242,9 +248,9 @@ build_dataset <- function(species, rebuild = FALSE, min_utr = MIN_UTR_LENGTH) {
 
   # AFTER save_snapshot, deliberately. The cache is the complete built table;
   # the cohort filter is selection intent applied to what callers receive, so
-  # the two never have to be kept in step and changing MIN_UTR_LENGTH does not
+  # the two never have to be kept in step and changing the UTR thresholds does not
   # invalidate a single cache.
-  drop_short_utr(wide, min_utr)
+  drop_short_utr(wide, min_5utr, min_3utr)
 }
 
 
@@ -253,14 +259,15 @@ build_dataset <- function(species, rebuild = FALSE, min_utr = MIN_UTR_LENGTH) {
 #' @param species Character vector. Defaults to ANALYSIS_SPECIES (config.R);
 #'   pass names(SPECIES_CONFIG) for every registered species.
 #' @param rebuild Logical, passed through to build_dataset.
-#' @param min_utr Integer or NULL, passed through to build_dataset. Applied
+#' @param min_5utr,min_3utr Integer or NULL, passed through to build_dataset. Applied
 #'   per species before stacking, which is the same result as filtering after —
 #'   the threshold is a property of one transcript.
 #' @return A single tibble with a `species` column. Columns absent from a
 #'   given species are NA for that species' rows.
 #' @export
 build_all <- function(species = ANALYSIS_SPECIES, rebuild = FALSE,
-                      min_utr = MIN_UTR_LENGTH) {
-  dfs <- lapply(species, build_dataset, rebuild = rebuild, min_utr = min_utr)
+                      min_5utr = MIN_5UTR_LENGTH, min_3utr = MIN_3UTR_LENGTH) {
+  dfs <- lapply(species, build_dataset, rebuild = rebuild,
+                min_5utr = min_5utr, min_3utr = min_3utr)
   dplyr::bind_rows(dfs)
 }

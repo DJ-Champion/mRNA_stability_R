@@ -31,7 +31,7 @@ load_fns <- function(path) {
 quiet <- function(expr) suppressWarnings(suppressMessages(expr))
 
 df_full <- suppressMessages(build_dataset("human"))
-df_utr  <- suppressMessages(build_dataset("human", min_utr = MIN_UTR_LENGTH))
+df_utr  <- suppressMessages(build_dataset("human", min_5utr = MIN_5UTR_LENGTH, min_3utr = MIN_3UTR_LENGTH))
 base    <- read.csv("scripts/selection_baseline.csv", stringsAsFactors = FALSE)
 
 ranked  <- load_fns("analysis/correlations/feature_correlation_ranked.R")

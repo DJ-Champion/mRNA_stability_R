@@ -22,11 +22,11 @@ suppressPackageStartupMessages({
 })
 
 species <- "human"
-# min_utr = NULL: QC describes the whole built table, including the short-UTR
+# min_5utr = NULL, min_3utr = NULL: QC describes the whole built table, including the short-UTR
 # transcripts the cohort filter removes from every analysis. Their missingness
 # is exactly what a coverage diagnostic should be able to see. See
-# MIN_UTR_LENGTH in config.R.
-df <- build_dataset(species, min_utr = NULL)
+# MIN_5UTR_LENGTH / MIN_3UTR_LENGTH in config.R.
+df <- build_dataset(species, min_5utr = NULL, min_3utr = NULL)
 
 # impute_mrna_mfe() is switched off in engineer_features(), so the cache holds
 # only the directly-folded mRNA values and no *_imputed columns. Run the

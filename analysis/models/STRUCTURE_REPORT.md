@@ -22,8 +22,8 @@ Two XGBoost models on human MANE-select transcripts, differing in one thing:
 measure. A signed score, not a duration in hours, modelled untransformed. RMSE
 and MAE are therefore in PC1 units.
 
-**Cohort:** 12,277 genes. Transcripts with either UTR under 30 nt (or a missing
-UTR length) are excluded — see `MIN_UTR_LENGTH` in `R/config.R`. A UTR of a few
+**Cohort:** 12,277 genes. Transcripts with a 5'UTR under 30 nt or a 3'UTR under 100 nt (or a missing
+UTR length) are excluded — see `MIN_5UTR_LENGTH` / `MIN_3UTR_LENGTH` in `R/config.R`. (This report was produced under the earlier 30 nt filter on both UTRs.) A UTR of a few
 nucleotides makes the regional features degenerate rather than merely noisy.
 
 **Design:** hyperparameters tuned by 5-fold cross-validation blocked on

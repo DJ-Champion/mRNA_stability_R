@@ -383,9 +383,9 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   species <- "human"
 
-  df <- build_dataset(species, min_utr = MIN_UTR_LENGTH)
-  message("Cohort: ", nrow(df), " transcripts (both UTRs >= ",
-          MIN_UTR_LENGTH, " nt)")
+  df <- build_dataset(species, min_5utr = MIN_5UTR_LENGTH, min_3utr = MIN_3UTR_LENGTH)
+  message("Cohort: ", nrow(df), " transcripts (5'UTR >= ",
+          MIN_5UTR_LENGTH, " nt, 3'UTR >= ", MIN_3UTR_LENGTH, " nt)")
 
   dir.create(file.path(OUTPUT_DIR, "plots"),  showWarnings = FALSE, recursive = TRUE)
   dir.create(file.path(OUTPUT_DIR, "tables"), showWarnings = FALSE, recursive = TRUE)

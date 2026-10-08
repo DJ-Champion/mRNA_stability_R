@@ -188,50 +188,48 @@ rm(.feature_rows)
 
 
 # --- Cohort definition -------------------------------------------------------
-# The minimum length, in nucleotides, that BOTH UTRs must reach for a
-# transcript to enter the analysis. A transcript failing it is dropped
-# entirely — this is a ROW filter, and the counterpart to drop_excluded(),
-# which is a column filter.
+# Two minimum UTR lengths, in nucleotides, that a transcript must reach to
+# enter the analysis. A transcript failing either is dropped entirely — this
+# is a ROW filter, and the counterpart to drop_excluded(), which is a column
+# filter.
 #
-# WHY. A UTR of a few nucleotides is not a short UTR so much as an absent or
-# mis-annotated one, and it poisons the regional features rather than merely
-# weakening them. Every per-region metric becomes degenerate at that scale:
-# folding energy over 12 nt is not comparable to folding energy over 1,200,
-# GC content over 12 nt takes a handful of distinct values, and the
-# length-normalised z-scores divide by a shuffled-sequence distribution that
-# is itself near-degenerate. The models cannot tell "this UTR is unstructured"
-# from "this UTR is barely there".
+#   MIN_5UTR_LENGTH   30   5'UTR must be at least this long
+#   MIN_3UTR_LENGTH  100   3'UTR must be at least this long
 #
-# 30 nt is the project's agreed threshold. Measured on the v10 caches:
+# WHY 5'UTR. A UTR of a few nucleotides is not a short UTR so much as an
+# absent or mis-annotated one, and it poisons the regional features rather
+# than merely weakening them. Folding energy over 12 nt is not comparable to
+# folding energy over 1,200, GC content over 12 nt takes a handful of distinct
+# values, and the length-normalised z-scores divide by a shuffled-sequence
+# distribution that is itself near-degenerate.
 #
-#   human  13,660 -> 12,302 built rows      (1,358 removed, 9.9%)
-#          13,601 -> 12,277 modellable      (1,324 removed, 9.7%)
-#   mouse  14,197 -> 13,215 built rows        (982 removed, 6.9%)
+# WHY 3'UTR 100. The "tail" region is the last 100 nt of the transcript. The
+# sequence extraction extended a short 3'UTR's tail UPSTREAM into the CDS
+# (wrong: it should extend downstream) and never extended a 3'UTR shorter
+# than the tail. Rather than re-extract, transcripts with a 3'UTR under 100 nt
+# are removed, which guarantees the tail lies wholly inside the 3'UTR. About
+# 200 transcripts are affected by the extraction issue; the filter removes
+# every one of them.
 #
-# The cut falls overwhelmingly on the 5' side: 1,244 human transcripts have a
-# 5'UTR under 30 nt against 50 with a short 3'UTR.
-#
-# NA COUNTS AS FAILING. A missing UTR length cannot be shown to clear the
-# threshold, and no transcript in either cache has a recorded length of 0
-# while the minimum observed is 1 nt — so NA reads as "no annotated UTR", not
-# as a failed measurement. 72 human and 302 mouse rows are dropped on this
-# branch, and they are included in the totals above.
+# NA COUNTS AS FAILING for both. A missing UTR length cannot be shown to clear
+# the threshold, and reads as "no annotated UTR" rather than a failed
+# measurement.
 #
 # WHERE IT IS APPLIED. build_dataset() applies it to the frame it RETURNS,
 # after the cache is read or written — so the cache on disk stays complete and
-# this needs no CACHE_VERSION bump. It is selection intent, like
-# the feature table's flags, not a schema change. Pass
-# `min_utr = NULL` to build_dataset() / build_all() for the unfiltered table;
-# the QC scripts do exactly that, because a coverage and missingness diagnostic
-# should describe the whole built table including what this removes.
+# this needs no CACHE_VERSION bump. It is selection intent, like the feature
+# table's flags, not a schema change. Pass `min_5utr = NULL, min_3utr = NULL`
+# to build_dataset() / build_all() for the unfiltered table; the QC scripts do
+# exactly that, because a coverage and missingness diagnostic should describe
+# the whole built table including what this removes.
 #
 # THE SPLIT ARTEFACT DOES NOT NEED REBUILDING. Blocking is preserved under any
-# subsetting (removing genes cannot make a family span two splits), and the
-# proportions barely move: 80.12 / 9.99 / 9.90 against a target of 80/10/10,
-# inside validate_splits()'s tolerance. holdout_medium.rds therefore remains
-# valid, and results stay traceable to the clustering run behind it.
+# subsetting (removing genes cannot make a family span two splits). Split
+# proportions shift slightly with the larger removal; re-check with
+# validate_splits() if the tolerance matters.
 
-MIN_UTR_LENGTH <- 30L
+MIN_5UTR_LENGTH <- 30L
+MIN_3UTR_LENGTH <- 100L
 
 
 # --- Identity, family and split columns --------------------------------------

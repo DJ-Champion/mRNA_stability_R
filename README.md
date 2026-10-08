@@ -388,17 +388,14 @@ print(out$plot)
 
 ## The analysed cohort
 
-`build_dataset()` drops any transcript whose 5'UTR **or** 3'UTR is shorter than
-`MIN_UTR_LENGTH` (30 nt), or whose UTR length is missing. A UTR of a few
-nucleotides is an absent or mis-annotated one, and it makes every regional
-feature degenerate — folding energy over 12 nt is not comparable to folding
-energy over 1,200, and the length-normalised z-scores divide by a
-shuffled-sequence distribution that is itself near-degenerate.
-
-```
-human  13,660 → 12,302 built rows  (9.9% removed; 12,277 modellable)
-mouse  14,197 → 13,215 built rows  (6.9% removed)
-```
+`build_dataset()` drops any transcript whose 5'UTR is shorter than
+`MIN_5UTR_LENGTH` (30 nt) **or** whose 3'UTR is shorter than `MIN_3UTR_LENGTH`
+(100 nt), or whose relevant UTR length is missing. A 5'UTR of a few nucleotides
+is an absent or mis-annotated one and makes every regional feature degenerate.
+The 3' threshold matches the "tail" (last 100 nt) region: the sequence
+extraction did not extend short 3'UTRs downstream (and extended the tail
+upstream into the CDS), so requiring a 3'UTR of at least 100 nt guarantees the
+tail lies wholly inside the 3'UTR.
 
 The filter applies to the frame `build_dataset()` **returns**, not to what it
 writes — so `data/cache/*.rds` stays complete, changing the threshold never
@@ -407,10 +404,10 @@ intent, like the feature table's flags.
 
 ```r
 df  <- build_dataset("human")                   # filtered — the default
-all <- build_dataset("human", min_utr = NULL)   # everything, for QC
+all <- build_dataset("human", min_5utr = NULL, min_3utr = NULL)   # everything, for QC
 ```
 
-The three `analysis/qc/` scripts pass `min_utr = NULL`: a coverage and
+The three `analysis/qc/` scripts pass `min_5utr = NULL, min_3utr = NULL`: a coverage and
 missingness diagnostic should describe the whole built table, including what
 the filter removes.
 

@@ -3,7 +3,7 @@
 # Uses the cached human dataset (data/cache/), like scripts/check_feature_table.R.
 
 suppressMessages(source("R/load_all.R"))
-df <- suppressMessages(build_dataset("human", min_utr = MIN_UTR_LENGTH))
+df <- suppressMessages(build_dataset("human", min_5utr = MIN_5UTR_LENGTH, min_3utr = MIN_3UTR_LENGTH))
 
 n_fail <- 0L
 check <- function(desc, cond) {
