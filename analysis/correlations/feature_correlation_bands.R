@@ -37,6 +37,13 @@
 #
 # LEGEND. Drawn inside the panel, over the emptiest stretch of the right-hand
 # side (see choose_legend_position()), so the figure has no dead margin.
+#
+# COMPARABLE FIGURES. To flip between two figures, give them the same x range
+# (`x_max`), the same drawn panel width (`panel_width_mm`) and the same legend
+# spot. `legend_from` takes the other figures' results (same rows, same order)
+# and picks the one window where the legend clears the points of all of them.
+# The runner below does this in two passes: draw, take the common x maximum,
+# draw again.
 # =============================================================================
 
 source("R/load_all.R")
@@ -73,11 +80,19 @@ mix_with_white <- function(col, amount) {
 #' Ties go to the lowest window. Returns the vertical position in npc units
 #' of the panel, plus the rightmost data extent under the chosen window so the
 #' caller can warn when the legend is likely to cover points.
-choose_legend_position <- function(rows, tab, bands, legend_rows) {
+choose_legend_position <- function(rows, tab, bands, legend_rows,
+                                   other_reach = NULL) {
   ys    <- sort(rows$y)                           # bottom -> top
   n_win <- min(ceiling(legend_rows), length(ys))
   band_of <- stats::setNames(as.character(rows$supergroup), rows$y)
   reach <- tapply(tab$.hi, tab$y, max, na.rm = TRUE)
+  # Other figures' reach for the same rows (named by row_key): the legend must
+  # clear their points too.
+  if (!is.null(other_reach)) {
+    key   <- rows$row_key[match(names(reach), as.character(rows$y))]
+    extra <- other_reach[key]
+    reach <- pmax(reach, ifelse(is.na(extra), -Inf, extra))
+  }
 
   starts <- seq_len(length(ys) - n_win + 1)
   cand <- do.call(rbind, lapply(starts, function(i) {
@@ -114,6 +129,18 @@ choose_legend_position <- function(rows, tab, bands, legend_rows) {
 #' @param legend_position "auto" (default) puts the legend inside the panel over
 #'                     the emptiest right-hand stretch; "right" puts it outside;
 #'                     c(x, y) places it at those panel (npc) coordinates.
+#' @param legend_from  Other feature_correlation_bands() results drawn with the
+#'                     same rows in the same order (a result, or a list of
+#'                     them). The legend goes where it clears the points of
+#'                     this figure and of all of them, so every figure gets the
+#'                     same spot. Default NULL: this figure alone decides.
+#' @param x_max        Upper end of the x axis. Default NULL: just past the
+#'                     largest confidence limit. Give the larger of several
+#'                     figures' `report$x_max` to put them on one scale.
+#' @param panel_width_mm Drawn width of the panel in mm (needs ggplot2 >= 4.0).
+#'                     Default NULL: whatever the y labels leave over. Set the
+#'                     same value on figures to be compared, so equal data
+#'                     lengths are equal on paper.
 #' @param label_size   Text size (mm) of the supergroup label bars.
 #' @param row_fill     Fraction of a row's height the dodged regions span.
 #' @param row_mm       Approximate millimetres per row on the saved figure;
@@ -136,6 +163,9 @@ feature_correlation_bands <- function(df,
                                       label_alpha = SUPERGROUP_LABEL_ALPHA,
                                       label_size = 4.2,
                                       legend_position = "auto",
+                                      legend_from = NULL,
+                                      x_max      = NULL,
+                                      panel_width_mm = NULL,
                                       row_fill   = 0.75,
                                       row_mm     = 9,
                                       order_from = NULL,
@@ -231,6 +261,7 @@ feature_correlation_bands <- function(df,
   pad <- 0.03 * (xhi - xlo)
   xlo <- if (absolute) 0 else xlo - pad
   xhi <- xhi + pad
+  if (!is.null(x_max)) xhi <- max(xhi, x_max)
   bar_w <- 0.09 * (xhi - xlo)
   x_breaks <- round(seq(ceiling(xlo * 10 - 1e-9) / 10,
                         floor(xhi * 10 + 1e-9) / 10, by = 0.1), 1)
@@ -374,8 +405,17 @@ feature_correlation_bands <- function(df,
       pos <- list(x = legend_position[1], y = legend_position[2])
     } else {
       # Legend height in rows: title (~10 mm) plus ~7.5 mm per entry.
+      other <- NULL
+      if (!is.null(legend_from)) {
+        if (!is.null(legend_from$report)) legend_from <- list(legend_from)
+        other <- Reduce(function(a, b) {
+          k <- union(names(a), names(b))
+          pmax(a[k], b[k], na.rm = TRUE)
+        }, lapply(legend_from, function(r) r$report$row_reach))
+      }
       lg <- choose_legend_position(rows, tab, bands,
-                                   (10 + n_regions * 7.5) / row_mm)
+                                   (10 + n_regions * 7.5) / row_mm,
+                                   other_reach = other)
       pos <- list(x = 0.995, y = lg$y_npc)
       # The legend is roughly a quarter of the panel wide.
       if (lg$reach > xhi - 0.26 * (xhi - xlo)) {
@@ -398,6 +438,10 @@ feature_correlation_bands <- function(df,
     )
   }
 
+  if (!is.null(panel_width_mm)) {
+    p <- p + ggplot2::theme(panel.widths = ggplot2::unit(panel_width_mm, "mm"))
+  }
+
   out$plot   <- p
   out$table  <- tab |>
     dplyr::select(-dplyr::any_of(c(".value", ".lo", ".hi", "row_key", "y",
@@ -407,6 +451,9 @@ feature_correlation_bands <- function(df,
     supergroup     = as.character(rows$supergroup),
     metric_display = rows$metric_display)
   out$report$n_rows_plot <- nrow(rows)
+  out$report$x_max <- xhi
+  # Furthest right any point or CI reaches in each row, for legend_from.
+  out$report$row_reach <- tapply(tab$.hi, tab$row_key, max, na.rm = TRUE)
   out
 }
 
@@ -491,24 +538,53 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   # The first job is the reference. Every later job is drawn in its own |r|
   # order and again ordered like the reference (bands and features), so the
-  # two figures can be flipped between.
-  reference <- NULL
-  for (job in jobs) {
-    message("\nBanded plot: ", job$response)
-
-    if (is.null(reference)) {
-      reference <- if (match_features) draw(job, df_match, NULL) else draw(job)
-      ref_name  <- job$suffix
-      save_banded(reference, job$suffix)
-    } else {
-      save_banded(draw(job), job$suffix)
-      message("  ordered like ", ref_name)
-      matched <- if (match_features) draw(job, df_match, NULL,
-                                          order_from = reference,
-                                          order_follow = "feature")
-                 else draw(job, order_from = reference,
-                           order_follow = "feature")
-      save_banded(matched, paste0(job$suffix, "_", ref_name, "_feature_order"))
+  # two figures can be flipped between. Returns list(figs, linked): `figs` is
+  # every figure with its file suffix, `linked` those sharing the reference's
+  # rows (the reference and the feature-ordered ones).
+  #
+  # Two passes make the figures comparable: the first finds the common x
+  # maximum and the rows' reach; the second redraws on that x range with one
+  # legend spot that clears every linked figure's points. Every figure gets
+  # the same drawn panel width.
+  draw_all <- function(x_max = NULL, legend_from = NULL) {
+    reference <- NULL
+    figs <- list(); linked <- list()
+    common <- list(x_max = x_max, panel_width_mm = panel_width_mm)
+    for (job in jobs) {
+      message("\nBanded plot: ", job$response)
+      if (is.null(reference)) {
+        reference <- do.call(draw, c(list(job, if (match_features) df_match else df,
+                                          if (match_features) NULL else top_n,
+                                          legend_from = legend_from), common))
+        ref_name  <- job$suffix
+        figs[[job$suffix]] <- reference
+        linked <- c(linked, list(reference))
+      } else {
+        figs[[job$suffix]] <- do.call(draw, c(list(job), common))
+        message("  ordered like ", ref_name)
+        matched <- if (match_features)
+          do.call(draw, c(list(job, df_match, NULL, order_from = reference,
+                               order_follow = "feature",
+                               legend_from = legend_from), common))
+        else
+          do.call(draw, c(list(job, order_from = reference,
+                               order_follow = "feature",
+                               legend_from = legend_from), common))
+        nm <- paste0(job$suffix, "_", ref_name, "_feature_order")
+        figs[[nm]] <- matched
+        linked <- c(linked, list(matched))
+      }
     }
+    list(figs = figs, linked = linked)
   }
+
+  # Drawn panel width (mm) for every figure. Must leave room, on the 260 mm
+  # page, for the y labels, the label bar and the margins.
+  panel_width_mm <- 150
+
+  first <- draw_all()
+  x_max <- max(vapply(first$figs, function(r) r$report$x_max, numeric(1)))
+  message("\nCommon x maximum: ", signif(x_max, 3))
+  final <- draw_all(x_max = x_max, legend_from = first$linked)
+  for (nm in names(final$figs)) save_banded(final$figs[[nm]], nm)
 }
