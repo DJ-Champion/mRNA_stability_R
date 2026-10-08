@@ -490,12 +490,18 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   # Draw one job and save it under `suffix`.
   save_banded <- function(res, suffix) {
     height <- max(140, 70 + res$report$n_rows_plot * row_mm)
+    # Page width = the plot's natural width (fixed panel plus labels, margins
+    # and label bar), so no slack is left around the outside.
+    grDevices::pdf(NULL)                  # scratch device for the unit conversion
+    width  <- as.numeric(grid::convertWidth(
+      sum(ggplot2::ggplotGrob(res$plot)$widths), "mm"))
+    grDevices::dev.off()
     base   <- file.path(OUTPUT_DIR, "plots",
                         paste0("feature_correlation_bands_", suffix))
-    ggplot2::ggsave(paste0(base, ".jpg"), res$plot, width = 260,
+    ggplot2::ggsave(paste0(base, ".jpg"), res$plot, width = width,
                     height = height, units = "mm", dpi = 300,
                     limitsize = FALSE)
-    ggplot2::ggsave(paste0(base, ".pdf"), res$plot, width = 260,
+    ggplot2::ggsave(paste0(base, ".pdf"), res$plot, width = width,
                     height = height, units = "mm", limitsize = FALSE,
                     device = grDevices::cairo_pdf)
     write.csv(res$table,
@@ -578,9 +584,8 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
     list(figs = figs, linked = linked)
   }
 
-  # Drawn panel width (mm) for every figure. Must leave room, on the 260 mm
-  # page, for the y labels, the label bar and the margins.
-  panel_width_mm <- 150
+  # Drawn panel width (mm) for every figure; the saved page is sized around it.
+  panel_width_mm <- 175
 
   first <- draw_all()
   x_max <- max(vapply(first$figs, function(r) r$report$x_max, numeric(1)))
