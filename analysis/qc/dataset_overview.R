@@ -434,10 +434,10 @@ loader_health_plot <- function(df, formatter = format_col_name) {
 if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   # Switch to build_all() once mouse (or others) come online.
-  # min_utr = NULL: a coverage and missingness overview should describe the
+  # min_5utr = NULL, min_3utr = NULL: a coverage and missingness overview should describe the
   # whole built table, including the short-UTR transcripts the cohort filter
-  # removes from every analysis. See MIN_UTR_LENGTH in config.R.
-  df <- build_dataset("human", min_utr = NULL)
+  # removes from every analysis. See MIN_5UTR_LENGTH / MIN_3UTR_LENGTH in config.R.
+  df <- build_dataset("human", min_5utr = NULL, min_3utr = NULL)
 
   # R8: outputs go under OUTPUT_DIR
   dir.create(file.path(OUTPUT_DIR, "plots"),

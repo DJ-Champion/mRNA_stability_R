@@ -91,7 +91,7 @@ if (length(unbuilt)) note("not yet built (no columns): ", paste(unbuilt, collaps
 # --- Checks against each species' cache -----------------------------------------
 for (sp in species) {
   cat("\n== ", sp, " ==\n", sep = "")
-  df <- suppressMessages(build_dataset(sp, min_utr = NULL))
+  df <- suppressMessages(build_dataset(sp, min_5utr = NULL, min_3utr = NULL))
   cols <- setdiff(names(df), setdiff(META_COLS, BENCHMARK_COLS))   # benchmarks have rows
 
   # 1. Every column claimed by exactly one row.

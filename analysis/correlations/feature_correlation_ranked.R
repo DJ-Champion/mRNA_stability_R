@@ -28,7 +28,7 @@
 #      which n is used.
 #
 # COHORT. Nothing here filters transcripts. build_dataset() applies
-# MIN_UTR_LENGTH (30 nt, config.R) to the frame it returns, so this script
+# the UTR length filters (config.R) to the frame it returns, so this script
 # sees the reduced set automatically — 12,302 human rows against 13,660
 # built. Deliberately, none of that is written onto the figures: the subtitle
 # stays to the method and the CI level, and every cohort number, per-feature
@@ -722,10 +722,11 @@ format_run_report <- function(report, title, species = "human") {
             species, fmt_n(report$n_rows_df)),
     sprintf("- Non-missing `%s`: **%s**",
             report$response, fmt_n(report$n_response)),
-    sprintf(paste0("- Cohort definition: transcripts with EITHER UTR under ",
-                   "%d nt are excluded from every analysis ",
-                   "(`MIN_UTR_LENGTH`, applied in `build_dataset()`)"),
-            MIN_UTR_LENGTH),
+    sprintf(paste0("- Cohort definition: transcripts with a 5'UTR under %d nt or a ",
+                   "3'UTR under %d nt are excluded from every analysis ",
+                   "(`MIN_5UTR_LENGTH` / `MIN_3UTR_LENGTH`, applied in ",
+                   "`build_dataset()`)"),
+            MIN_5UTR_LENGTH, MIN_3UTR_LENGTH),
     "",
     "### Features plotted",
     "",
@@ -881,18 +882,18 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   species <- "human"
 
-  # Filtered cohort, explicitly. build_dataset() applies MIN_UTR_LENGTH to the
+  # Filtered cohort, explicitly. build_dataset() applies the UTR length filters to the
   # frame it returns by default, so this is what you get anyway — naming it
   # and asserting it means a future change to that default cannot silently
   # move these figures onto the unfiltered table.
-  df <- build_dataset(species, min_utr = MIN_UTR_LENGTH)
+  df <- build_dataset(species, min_5utr = MIN_5UTR_LENGTH, min_3utr = MIN_3UTR_LENGTH)
   stopifnot(
-    all(df$length_5utr >= MIN_UTR_LENGTH, na.rm = TRUE),
-    all(df$length_3utr >= MIN_UTR_LENGTH, na.rm = TRUE),
+    all(df$length_5utr >= MIN_5UTR_LENGTH, na.rm = TRUE),
+    all(df$length_3utr >= MIN_3UTR_LENGTH, na.rm = TRUE),
     !anyNA(df$length_5utr), !anyNA(df$length_3utr)
   )
-  message("Cohort: ", nrow(df), " transcripts (both UTRs >= ",
-          MIN_UTR_LENGTH, " nt)")
+  message("Cohort: ", nrow(df), " transcripts (5'UTR >= ",
+          MIN_5UTR_LENGTH, " nt, 3'UTR >= ", MIN_3UTR_LENGTH, " nt)")
 
   dir.create(file.path(OUTPUT_DIR, "plots"),
              showWarnings = FALSE, recursive = TRUE)
