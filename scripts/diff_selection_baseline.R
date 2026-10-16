@@ -16,6 +16,10 @@
 #     ranked and bands always did.
 #   * the QC overview covers exploratory features only (owner's decision), so
 #     it loses exactly the columns of features the table excludes.
+#   * `expression` (Xpresso median RPKM) is an exploratory-only feature added at
+#     cache v14 and appears as an addition wherever exploratory features are
+#     selected. It is deliberately NOT in the core or model sets, so the
+#     step-4 figure sets and the xgb blocks must be unchanged.
 # Anything else is a regression.
 #
 # Usage (project root):  Rscript scripts/diff_selection_baseline.R
@@ -188,7 +192,8 @@ for (k in names(now_cols)) {
   bad_gone <- gone[!(allow_probing & is_probing) &
                    !(allow_pin & gone %in% unlist(lapply(c("codon_freqs", "aa_freqs"), fg_columns, df = df_full))) &
                    !(allow_qc & gone %in% non_expl)]
-  bad_add  <- added[!(allow_pin & added %in% unlist(lapply(c("codon_freqs", "aa_freqs"), fg_columns, df = df_full)))]
+  bad_add  <- added[!(allow_pin & added %in% unlist(lapply(c("codon_freqs", "aa_freqs"), fg_columns, df = df_full))) &
+                    added != "expression"]
   cat(sprintf("%-58s was %3d, now %3d | gone %3d, added %3d | UNEXPECTED %d\n",
               k, length(w), length(n), length(gone), length(added),
               length(bad_gone) + length(bad_add)))
