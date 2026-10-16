@@ -186,11 +186,8 @@ f5_plot_a <- function(a, compartment = "cytoplasm", view_q = 0.99,
     scale_fill_viridis_c(trans = "log10", name = "Genes") +
     coord_cartesian(xlim = xr, ylim = yr) +
     labs(title = "Probing and predicted structure", subtitle = lab,
-         x = sprintf("%s (more structured →)",
-                     f5_measure_labels(compartment)[["probing"]]),
-         # the y label is rotated, so "down" on the page is "left" in its text
-         y = sprintf("%s\n(← more structured)",
-                     f5_measure_labels(compartment)[["prediction"]])) +
+         x = f5_measure_labels(compartment)[["probing"]],
+         y = f5_measure_labels(compartment)[["prediction"]]) +
     theme_minimal(base_size = base_size) +
     theme(panel.grid.minor = element_blank(),
           plot.title = element_text(face = "bold", size = base_size),
