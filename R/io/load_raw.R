@@ -389,12 +389,15 @@ load_nte <- function(species) {
 
 #' Load Agarwal features (shared file, subset by gene_id).
 #' Expected columns: gene_id (or ENSID), expression, orfexondensity.
+#' `expression` is the Xpresso label: median RPKM across 57 Roadmap epigenomes,
+#' linear scale (Agarwal & Shendure 2020), so a cross-tissue level, not the
+#' icSHAPE cell type's.
 load_agarwal_features <- function(species) {
   df <- read_if_exists(species_path(species, "agarwal_features.csv"))
   if (is.null(df)) return(NULL)
   df <- lowercase_names(df)
   if ("ensid" %in% names(df)) df <- dplyr::rename(df, gene_id = ensid)
-  df |> dplyr::select(dplyr::any_of(c("gene_id", "orfexondensity")))
+  df |> dplyr::select(dplyr::any_of(c("gene_id", "expression", "orfexondensity")))
 }
 
 #' Load Gini probing scores (icSHAPE-derived) from a shared long-form file.
@@ -409,8 +412,8 @@ load_agarwal_features <- function(species) {
 #' the gene_ids do (and are unversioned, matching transcripts.csv). The new
 #' gini pipeline collapsed to one transcript per gene, so each
 #' (gene_id, compartment, region) cell is a single value — the pivot below is
-#' guaranteed not to produce list-columns. `transcript_id` and `n_valid` are
-#' dropped.
+#' guaranteed not to produce list-columns. `transcript_id` is dropped; `n_valid`
+#' is kept as icshape_nvalid_<compartment>_<region> (see below).
 #'
 #' Returns wide form keyed on gene_id, with columns `gini_<compartment>_<region>`
 #' (region token last, per the schema invariant). Routed through the gene-level
@@ -428,7 +431,7 @@ load_gini_probing <- function(species) {
   df <- dplyr::filter(df, species == !!species)
   if (nrow(df) == 0) return(NULL)
   
-  df |>
+  gini_wide <- df |>
     dplyr::select(dplyr::any_of(c("gene_id", "compartment", "region", "gini"))) |>
     tidyr::pivot_wider(
       id_cols     = gene_id,
@@ -436,6 +439,20 @@ load_gini_probing <- function(species) {
       values_from = gini,
       names_glue  = "gini_{compartment}_{region}"
     )
+
+  # n_valid: positions with usable icSHAPE reactivity, i.e. the coverage the
+  # Gini was estimated from. A measurement covariate, not a feature of the
+  # mRNA. Named icshape_nvalid_* so the ^gini_ pattern does not claim it.
+  if (!"n_valid" %in% names(df)) return(gini_wide)
+  nvalid_wide <- df |>
+    dplyr::select(dplyr::any_of(c("gene_id", "compartment", "region", "n_valid"))) |>
+    tidyr::pivot_wider(
+      id_cols     = gene_id,
+      names_from  = c(compartment, region),
+      values_from = n_valid,
+      names_glue  = "icshape_nvalid_{compartment}_{region}"
+    )
+  dplyr::left_join(gini_wide, nvalid_wide, by = "gene_id")
 }
 
 #' Load sequence-family assignments from the shared clustering seam.

@@ -25,7 +25,9 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 # v12: the CAI column is `cai_cds` (was `cai`), so it carries its real region.
 # v13: eej_dist_closest_start dropped; eej_dist_closest_stop renamed
 #      eej_dist_closest_stop_mrna (whole-mRNA region token).
-CACHE_VERSION <- 13L
+# v14: gene-level `expression` (Xpresso median RPKM) and the icSHAPE coverage
+#      columns icshape_nvalid_<compartment>_<region> reach the cache.
+CACHE_VERSION <- 14L
 
 
 # --- Region vocabulary -------------------------------------------------------
