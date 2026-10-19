@@ -161,6 +161,9 @@ p_r2 <- model_ci |>
                 width = 0.15, linewidth = 0.8) +
   geom_point(size = 4) +
   scale_colour_manual(values = MODEL_COLS, guide = "none") +
+  # Fixed 0-0.8 axis for both responses, so half-life and TE panels compare
+  # directly rather than each zooming to its own CI range.
+  scale_x_continuous(limits = c(0, 0.8), breaks = seq(0, 0.8, 0.2)) +
   labs(
     title    = paste0("Held-out performance:\nR² for ", response_info()$label,
                       " prediction"),
