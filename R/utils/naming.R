@@ -36,16 +36,22 @@
 # `cds` -> "MFE.Δ CDS") or is one literal column (`^translation_efficiency$` -> "TE"). That covers
 # most rows; edit the label in R/feature_table.csv.
 #
-# A row whose short name has a <placeholder>, or whose columns differ by more
-# than their region (uORF count vs n overlapping uORFs, intron mean/median/sd,
-# icSHAPE nucleoplasm/cytoplasm, nucleotide fractions), cannot be labelled by
-# one string: those fall through to the codon/amino-acid special case and the
+# The one placeholder the formatter fills is <compartment> (icSHAPE Gini:
+# `gini_cytoplasm_mrna` -> "icSHAPE.Gini.cyto mRNA"), from COMPARTMENT_LABELS.
+#
+# A row whose short name has any other <placeholder>, or whose columns differ by
+# more than their region (uORF count vs n overlapping uORFs, intron
+# mean/median/sd, nucleotide fractions), cannot be labelled by one string: those fall through to the codon/amino-acid special case and the
 # REPLACEMENTS rules below. scripts/check_feature_table.R checks their output
 # against the table's short name too.
 
+COMPARTMENT_LABELS <- c(cytoplasm = "cyto", nucleoplasm = "nuc")
+
 .TABLE_LABELS <- local({
+  sn   <- FEATURE_TABLE$`Display Short name`
   rows <- FEATURE_TABLE[nzchar(FEATURE_TABLE$columns) &
-                        !grepl("<", FEATURE_TABLE$`Display Short name`, fixed = TRUE), ]
+                        (!grepl("<", sn, fixed = TRUE) |
+                         grepl("<compartment>", sn, fixed = TRUE)), ]
   lit <- regmatches(rows$columns, regexpr("^\\^[a-z0-9_]*", rows$columns))
   lit <- sub("^\\^", "", lit)
   data.frame(pattern = rows$columns, literal = lit,
@@ -57,6 +63,15 @@
   hit <- which(vapply(.TABLE_LABELS$pattern, grepl, logical(1), x = name))
   if (length(hit) != 1) return(NULL)
   r <- .TABLE_LABELS[hit, ]
+  if (grepl("<compartment>", r$label, fixed = TRUE)) {
+    # `<stem><compartment>_<region>`, e.g. gini_cytoplasm_mrna
+    rest   <- substring(name, nchar(r$literal) + 1)
+    comp   <- sub("_.*$", "", rest)
+    region <- sub("^[^_]*_", "", rest)
+    if (!comp %in% names(COMPARTMENT_LABELS) || !region %in% REGIONS) return(NULL)
+    return(paste(sub("<compartment>", COMPARTMENT_LABELS[[comp]], r$label,
+                     fixed = TRUE), REGION_DISPLAYS[[region]]))
+  }
   toks <- strsplit(name, "_", fixed = TRUE)[[1]]
   region <- if (r$whole) {
     if (length(toks) > 1 && toks[length(toks)] %in% REGIONS) toks[length(toks)] else ""
@@ -79,8 +94,6 @@ REPLACEMENTS <- list(
   list("^frac_c",                      "nt.C% "),
   list("^frac_g",                      "nt.G% "),
   list("^frac_u",                      "nt.U% "),
-  list("^gini_nucleoplasm_",           "icSHAPE.nuc "),
-  list("^gini_cytoplasm_",             "icSHAPE.cyto "),
 
   # --- Identifiers / metadata ---
   list("^gene_name$",                  "Gene name"),
