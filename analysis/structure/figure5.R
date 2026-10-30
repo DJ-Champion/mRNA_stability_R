@@ -18,7 +18,10 @@
 #
 # COHORT. build_dataset() applies the UTR length filters. Gini exists for only
 # the genes with enough icSHAPE coverage (roughly 10-20 % depending on region
-# and compartment), so every number here is for that subset. For each region
+# and compartment), so every number here is for that subset. "Enough" is set
+# upstream (Gini-from-icSHAPE, lib/gini_core.py, VALID_CUTOFF = 15): a region
+# gets a Gini only if more than 15 of its nucleotides have a valid icSHAPE
+# score (0-1) and the scores are not all zero. There is no read-depth filter. For each region
 # the cohort is the genes with Gini AND the predicted metric(s) in that region
 # (and, in C, the response), so probing and prediction are always compared on
 # identical genes. One transcript per gene is kept: Gini is gene-level and is
@@ -120,25 +123,15 @@ suppressPackageStartupMessages(library(ggplot2))
 #' many points for a scatter to read), with the Spearman rho and n.
 #' Gini rises with structure; the MFE z-score falls with it.
 #'
-#' DISPLAY RANGE. The z-scores are heavy-tailed (median 0.9, 99th percentile
-#' 21, maximum 56), which squeezes the bulk into a sliver. The view is cropped
-#' to the central `view_q` of each axis; the correlation uses all the genes.
-#' The number outside the view is returned as attr(, "n_outside").
-f5_plot_a <- function(a, compartment = "cytoplasm", view_q = 0.99,
-                      base_size = 16) {
+#' The axes show the full range of both measures (no cropping), so the heavy
+#' right tail of the MFE z-scores is visible.
+f5_plot_a <- function(a, compartment = "cytoplasm", base_size = 16) {
   ct <- a$cor; d <- a$data
-  lo <- (1 - view_q) / 2
-  xr <- stats::quantile(d$gini,  c(lo, 1 - lo))
-  yr <- stats::quantile(d$mfe_z, c(lo, 1 - lo))
-  inside  <- d$gini >= xr[1] & d$gini <= xr[2] &
-             d$mfe_z >= yr[1] & d$mfe_z <= yr[2]
-  outside <- sum(!inside)
   lab <- sprintf("ρ = %.2f, n = %s", ct$estimate,
                  format(ct$n, big.mark = ","))
-  p <- ggplot(d[inside, ], aes(gini, mfe_z)) +
+  p <- ggplot(d, aes(gini, mfe_z)) +
     geom_hex(bins = 35) +
     scale_fill_viridis_c(trans = "log10", name = "Genes") +
-    coord_cartesian(xlim = xr, ylim = yr) +
     labs(title = "Probing and predicted structure", subtitle = lab,
          x = f5_measure_labels(compartment)[["probing"]],
          y = f5_measure_labels(compartment)[["prediction"]]) +
@@ -146,7 +139,6 @@ f5_plot_a <- function(a, compartment = "cytoplasm", view_q = 0.99,
     theme(panel.grid.minor = element_blank(),
           plot.title = element_text(face = "bold", size = base_size),
           plot.subtitle = element_text(size = base_size * 0.75))
-  attr(p, "n_outside") <- outside
   p
 }
 
@@ -223,12 +215,12 @@ f5_run_report <- function(df, tab, pa, path) {
     "## Cohort", "",
     sprintf("- Transcripts in the analysed frame (human): **%s** (`build_dataset()`, UTR length filters applied)", fmt(nrow(df))),
     sprintf("- Genes after keeping one transcript per gene: **%s**", fmt(nrow(g))),
-    "- icSHAPE Gini exists only for genes with enough coverage; every statistic below is on genes with Gini AND the predicted metric(s) in that region.", "",
+    "- icSHAPE Gini exists only for regions with more than 15 nucleotides carrying a valid icSHAPE score (and non-zero total), per Gini-from-icSHAPE; every statistic below is on genes with Gini AND the predicted metric(s) in that region.", "",
     md(cohort), "",
     "## Panel A", "",
     sprintf("- Gini (cytoplasm, mRNA) vs robust MFE z-score: Spearman rho **%.3f** (95%% CI %.3f to %.3f), n **%s**",
             pa$cor$estimate, pa$cor$conf.low, pa$cor$conf.high, fmt(pa$cor$n)),
-    sprintf("- Display cropped to the central 99%% of each axis; **%d** genes lie outside the view (all genes enter the correlation)", attr(pa$plot, "n_outside")),
+    "- Axes show the full data range (no cropping)",
     "- MFE z-score = (MFE - null median) / (1.4826 x MAD) over esl-shuffle nulls, i.e. a robust z-score; more negative = more structured (plotted as is)", "",
     "## Panel B", "",
     sprintf("- **%d** Spearman correlations (6 predicted metrics, C+G%% and length x 4 regions x 2 compartments, plus expression for the full mRNA), n **%s** to **%s** each; BH-adjusted over all %d; **%d** at q < 0.05",
