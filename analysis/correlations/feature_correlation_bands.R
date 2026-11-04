@@ -35,6 +35,13 @@
 # on purpose — the points carry the region colours (the supergroup colours are
 # vivid; the mixes with white make them subtle).
 #
+# LANDSCAPE. `landscape = TRUE` turns the figure a quarter turn
+# counter-clockwise: features run left to right (strongest band first, at the
+# left), the correlation axis is vertical, and the supergroup label bars sit
+# along the top. Same table, same order, same colours; only the layout changes.
+# Here `row_mm` is the width of one feature column, and `panel_width_mm` is the
+# height of the panel (the correlation axis length).
+#
 # LEGEND. Drawn inside the panel, over the emptiest stretch of the right-hand
 # side (see choose_legend_position()), so the figure has no dead margin.
 #
@@ -141,6 +148,8 @@ choose_legend_position <- function(rows, tab, bands, legend_rows,
 #'                     Default NULL: whatever the y labels leave over. Set the
 #'                     same value on figures to be compared, so equal data
 #'                     lengths are equal on paper.
+#' @param landscape    Rotate the figure 90 degrees counter-clockwise (features
+#'                     along x, correlation up y, label bars on top).
 #' @param label_size   Text size (mm) of the supergroup label bars.
 #' @param row_fill     Fraction of a row's height the dodged regions span.
 #' @param row_mm       Approximate millimetres per row on the saved figure;
@@ -162,6 +171,7 @@ feature_correlation_bands <- function(df,
                                       band_alpha = SUPERGROUP_BAND_ALPHA,
                                       label_alpha = SUPERGROUP_LABEL_ALPHA,
                                       label_size = 4.2,
+                                      landscape  = FALSE,
                                       legend_position = "auto",
                                       legend_from = NULL,
                                       x_max      = NULL,
@@ -221,7 +231,7 @@ feature_correlation_bands <- function(df,
 
   # A discrete y axis draws its first level at the bottom; reverse so the
   # first row of the first band is at the top.
-  rows$y <- rev(seq_len(nrow(rows)))
+  rows$y <- if (landscape) seq_len(nrow(rows)) else rev(seq_len(nrow(rows)))
   tab$y  <- rows$y[match(tab$row_key, rows$row_key)]
   tab$row_order <- match(tab$row_key, rows$row_key)
 
@@ -235,7 +245,8 @@ feature_correlation_bands <- function(df,
       .k    = dplyr::n(),
       .rank = match(region, region_order),
       .slot = rank(.rank, ties.method = "first"),
-      y_dodged = y + (((.k + 1) / 2 - .slot)) * (row_fill / pmax(.k, 1))
+      y_dodged = y + (if (landscape) -1 else 1) *
+        (((.k + 1) / 2 - .slot)) * (row_fill / pmax(.k, 1))
     ) |>
     dplyr::ungroup()
 
@@ -294,6 +305,11 @@ feature_correlation_bands <- function(df,
                        if (absolute) "Absolute" else "Signed",
                        format_col_name(response))
 
+  coord_args <- list(xlim = c(xlo, xhi),
+                     ylim = c(min(bands$ymin), max(bands$ymax)), clip = "off")
+  coord <- if (landscape) do.call(ggplot2::coord_flip, coord_args)
+           else do.call(ggplot2::coord_cartesian, coord_args)
+
   p <- ggplot2::ggplot(tab) +
     # Bands first so they sit under everything.
     ggplot2::geom_rect(
@@ -337,7 +353,7 @@ feature_correlation_bands <- function(df,
       ggplot2::aes(x = xhi + bar_w / 2, y = (ymin + ymax) / 2,
                    label = label_wrapped, size = label_size,
                    colour = I(text_col)),
-      angle = 270, fontface = "bold", lineheight = 0.85,
+      angle = if (landscape) 0 else 270, fontface = "bold", lineheight = 0.85,
       inherit.aes = FALSE, show.legend = FALSE
     ) +
     ggplot2::scale_size_identity() +
@@ -349,9 +365,7 @@ feature_correlation_bands <- function(df,
       breaks = x_breaks,
       expand = ggplot2::expansion(0)
     ) +
-    ggplot2::coord_cartesian(xlim = c(xlo, xhi),
-                             ylim = c(min(bands$ymin), max(bands$ymax)),
-                             clip = "off") +
+    coord +
     ggplot2::scale_colour_manual(
       values = region_colours, drop = TRUE,
       labels = function(r) REGION_DISPLAYS[r], name = "Region"
@@ -384,8 +398,25 @@ feature_correlation_bands <- function(df,
       panel.border     = ggplot2::element_rect(colour = "grey40", fill = NA,
                                                linewidth = 0.5),
       # Room on the right for the label bars, which draw outside the panel.
-      plot.margin      = ggplot2::margin(10, 24, 10, 10, unit = "mm")
+      plot.margin      = if (landscape) ggplot2::margin(24, 10, 10, 10, unit = "mm")
+                         else ggplot2::margin(10, 24, 10, 10, unit = "mm")
     )
+  if (landscape) {
+    # After the flip the feature names are the horizontal axis text.
+    # The label bars stand above the panel; keep the subtitle clear of them.
+    bar_mm <- if (!is.null(panel_width_mm))
+      bar_w / (xhi - xlo) * panel_width_mm else 15
+    p <- p + ggplot2::theme(
+      plot.subtitle = ggplot2::element_text(
+        size = 16, colour = "grey30",
+        margin = ggplot2::margin(b = bar_mm + 4, unit = "mm")),
+      axis.text.x = ggplot2::element_text(size = 14, angle = 90, hjust = 1,
+                                          vjust = 0.5, colour = "black"),
+      axis.text.y = ggplot2::element_text(size = 16),
+      axis.title.x = ggplot2::element_blank(),
+      axis.title.y = ggplot2::element_text(size = 18, face = "bold",
+                                           margin = ggplot2::margin(r = 10)))
+  }
 
   if (!is.null(sig_value) && is.finite(sig_value)) {
     p <- p + ggplot2::geom_vline(xintercept = sig_value, linetype = "dotted",
@@ -414,11 +445,15 @@ feature_correlation_bands <- function(df,
         }, lapply(legend_from, function(r) r$report$row_reach))
       }
       lg <- choose_legend_position(rows, tab, bands,
-                                   (10 + n_regions * 7.5) / row_mm,
+                                   if (landscape) 45 / row_mm
+                                   else (10 + n_regions * 7.5) / row_mm,
                                    other_reach = other)
-      pos <- list(x = 0.995, y = lg$y_npc)
-      # The legend is roughly a quarter of the panel wide.
-      if (lg$reach > xhi - 0.26 * (xhi - xlo)) {
+      pos <- if (landscape) list(x = lg$y_npc, y = 0.995)
+             else list(x = 0.995, y = lg$y_npc)
+      # The legend is roughly a quarter of the panel wide (tall, in landscape).
+      leg_share <- if (landscape && !is.null(panel_width_mm))
+        (10 + n_regions * 7.5) / panel_width_mm else 0.26
+      if (lg$reach > xhi - leg_share * (xhi - xlo)) {
         message("feature_correlation_bands: no clear stretch for the legend; ",
                 "it may cover points. Pass legend_position = c(x, y) or ",
                 "\"right\".")
@@ -427,7 +462,7 @@ feature_correlation_bands <- function(df,
     p <- p + ggplot2::theme(
       legend.position = "inside",
       legend.position.inside = c(pos$x, pos$y),
-      legend.justification.inside = c(1, 0.5),
+      legend.justification.inside = if (landscape) c(0.5, 1) else c(1, 0.5),
       legend.background = ggplot2::element_rect(
         fill = grDevices::adjustcolor("white", 0.9), colour = "grey40",
         linewidth = 0.4),
@@ -438,7 +473,14 @@ feature_correlation_bands <- function(df,
     )
   }
 
-  if (!is.null(panel_width_mm)) {
+  if (landscape) {
+    p <- p + ggplot2::theme(
+      panel.widths = ggplot2::unit(nrow(rows) * row_mm, "mm"))
+    if (!is.null(panel_width_mm)) {
+      p <- p + ggplot2::theme(
+        panel.heights = ggplot2::unit(panel_width_mm, "mm"))
+    }
+  } else if (!is.null(panel_width_mm)) {
     p <- p + ggplot2::theme(panel.widths = ggplot2::unit(panel_width_mm, "mm"))
   }
 
@@ -488,13 +530,16 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   )
 
   # Draw one job and save it under `suffix`.
-  save_banded <- function(res, suffix) {
+  save_banded <- function(res, suffix, landscape = FALSE) {
     height <- max(140, 70 + res$report$n_rows_plot * row_mm)
     # Page width = the plot's natural width (fixed panel plus labels, margins
     # and label bar), so no slack is left around the outside.
     grDevices::pdf(NULL)                  # scratch device for the unit conversion
-    width  <- as.numeric(grid::convertWidth(
-      sum(ggplot2::ggplotGrob(res$plot)$widths), "mm"))
+    grob   <- ggplot2::ggplotGrob(res$plot)
+    width  <- as.numeric(grid::convertWidth(sum(grob$widths), "mm"))
+    # Landscape fixes the panel height too, so the page hugs it the same way.
+    if (landscape) height <- as.numeric(grid::convertHeight(
+      sum(grob$heights), "mm"))
     grDevices::dev.off()
     base   <- file.path(OUTPUT_DIR, "plots",
                         paste0("feature_correlation_bands_", suffix))
@@ -592,4 +637,16 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
   message("\nCommon x maximum: ", signif(x_max, 3))
   final <- draw_all(x_max = x_max, legend_from = first$linked)
   for (nm in names(final$figs)) save_banded(final$figs[[nm]], nm)
+
+  # Landscape version of the halflife figure (same rows, same order, same
+  # x range and legend spot as the portrait one).
+  land_mm <- 10                      # width of one feature column
+  ref <- final$linked[[1]]
+  land <- do.call(feature_correlation_bands, list(
+    if (match_features) df_match else df,
+    response = jobs[[1]]$response, include = "core",
+    top_n = if (match_features) NULL else top_n,
+    row_mm = land_mm, landscape = TRUE, x_max = x_max,
+    panel_width_mm = panel_width_mm * 0.75, legend_from = final$linked))
+  save_banded(land, paste0(jobs[[1]]$suffix, "_landscape"), landscape = TRUE)
 }
