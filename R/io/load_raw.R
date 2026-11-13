@@ -242,6 +242,84 @@ load_rnaup <- function(species) {
 }
 
 
+#' Load RNAplfold start-codon accessibility (from tools/rnaplfold/, collated by
+#' 05_collate.sh -t rnaplfold into `combined.tsv`).
+#'
+#' One row per transcript. RNAplfold is run on the full spliced mRNA and
+#' summarised over a window around the AUG (30 nt + AUG + 30 nt by default):
+#' the mean probability that the window's nucleotides are unpaired. Higher =
+#' more accessible. Every column is a probability in [0, 1] spanning orders of
+#' magnitude, so expect strong right skew (log10 / logit for parametric models).
+#'
+#' Returns a transcript-level frame keyed on `transcript_id` (versioned Ensembl
+#' ID, as in the file), with the region token LAST:
+#'   rnaplfold_aug_unpaired_start     P(all 3 nt of the AUG unpaired)
+#'   rnaplfold_unpaired_u<l>_start    mean P(l consecutive nt all unpaired)
+#' The u<l> columns are discovered by pattern (`start_mean_unpaired_u<l>`), not
+#' hard-coded: the upstream `u_values` is configurable.
+#'
+#' Unreliable rows are set to NA rather than dropped, so the transcript keeps
+#' every other feature: short_utrs == "true", seq_shorter_than_window == 1
+#' (whole molecule in one RNAplfold window, end artefacts), or a 5' UTR shorter
+#' than the 30 nt upstream flank (window clipped at the transcript start).
+#'
+#' The run parameters (-W, -L, -u) are the only provenance in the file. They
+#' must be constant: the loader stops if they vary, and returns them as the
+#' "rnaplfold_params" attribute (attached to the cache by build_dataset()).
+#'
+#' Local accessibility only (pair span capped at -L): long-range pairing is
+#' invisible to it.
+RNAPLFOLD_MIN_UPSTREAM <- 30L
+
+load_rnaplfold <- function(species) {
+  df <- read_if_exists(species_path(species, "rnaplfold_combined.tsv"),
+                       na = c("", "NA"))
+  if (is.null(df)) return(NULL)
+  df <- lowercase_names(df)
+
+  need <- c("transcript_id", "aug_unpaired", "short_utrs",
+            "seq_shorter_than_window", "cds_offset",
+            "rnaplfold_window", "rnaplfold_span", "rnaplfold_u_max")
+  if (!all(need %in% names(df))) {
+    stop("rnaplfold file is missing column(s): ",
+         paste(setdiff(need, names(df)), collapse = ", "), call. = FALSE)
+  }
+  if (anyDuplicated(df$transcript_id)) {
+    stop("rnaplfold: transcript_id is not unique", call. = FALSE)
+  }
+
+  params <- lapply(df[c("rnaplfold_window", "rnaplfold_span", "rnaplfold_u_max")],
+                   function(x) unique(x[!is.na(x)]))
+  if (any(lengths(params) != 1L)) {
+    stop("rnaplfold: run parameters are not constant (", paste(
+           names(params), vapply(params, paste, "", collapse = "/"),
+           sep = "=", collapse = ", "),
+         "); do not mix runs with different W/L", call. = FALSE)
+  }
+  params <- vapply(params, function(x) as.numeric(x), numeric(1))
+
+  u_cols <- grep("^start_mean_unpaired_u[0-9]+$", names(df), value = TRUE)
+  out <- df |>
+    dplyr::select(transcript_id, aug_unpaired, dplyr::all_of(u_cols)) |>
+    dplyr::rename(rnaplfold_aug_unpaired_start = aug_unpaired)
+  names(out) <- sub("^start_mean_unpaired_(u[0-9]+)$",
+                    "rnaplfold_unpaired_\\1_start", names(out))
+
+  unreliable <- df$short_utrs %in% c("true", "TRUE", TRUE) |
+    df$seq_shorter_than_window %in% 1 |
+    df$cds_offset < RNAPLFOLD_MIN_UPSTREAM
+  unreliable[is.na(unreliable)] <- TRUE
+  value_cols <- setdiff(names(out), "transcript_id")
+  out[unreliable, value_cols] <- NA_real_
+  message("  rnaplfold: ", nrow(out), " transcripts, ", sum(unreliable),
+          " gated to NA (short UTR / short sequence / clipped window); W=",
+          params[["rnaplfold_window"]], " L=", params[["rnaplfold_span"]])
+
+  attr(out, "rnaplfold_params") <- params
+  out
+}
+
+
 #' Load sequence basic metrics (Long Form)
 #' Replaces old load_length_gc and load_skews.
 load_sequence_basic <- function(species) {

@@ -27,7 +27,10 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 #      eej_dist_closest_stop_mrna (whole-mRNA region token).
 # v14: gene-level `expression` (Xpresso median RPKM) and the icSHAPE coverage
 #      columns icshape_nvalid_<compartment>_<region> reach the cache.
-CACHE_VERSION <- 14L
+#
+# v15: RNAplfold start-codon accessibility, rnaplfold_aug_unpaired_start and
+#      rnaplfold_unpaired_u<l>_start (transcript-level, see load_rnaplfold()).
+CACHE_VERSION <- 15L
 
 
 # --- Region vocabulary -------------------------------------------------------
