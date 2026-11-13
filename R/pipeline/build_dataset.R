@@ -132,6 +132,8 @@ build_dataset <- function(species, rebuild = FALSE,
     stopfree       = load_stopfree(species)
   )
   
+  rnaplfold_df <- load_rnaplfold(species)   # start-codon accessibility
+
   # Transcript Level (Wide form)
   transcript_level <- list(
     nmd           = load_nmd_fragility(species),                  # v4: single model
@@ -140,7 +142,8 @@ build_dataset <- function(species, rebuild = FALSE,
     uorfs         = load_uorfs(species),                          # UPDATED
     codon_aa      = load_codon_aa_counts(species),                # REPLACEMENT
     cai           = load_cai(species),
-    nte           = load_nte(species)
+    nte           = load_nte(species),
+    rnaplfold     = rnaplfold_df
   )
   
   halflife_df  <- load_halflife(species)
@@ -242,6 +245,12 @@ build_dataset <- function(species, rebuild = FALSE,
   # frame, is the one point where survival to disk is guaranteed.
   if (!is.null(family_df)) {
     attr(wide, "family_provenance") <- family_provenance()
+  }
+
+  if (!is.null(rnaplfold_df)) {
+    attr(wide, "rnaplfold_params") <- attr(rnaplfold_df, "rnaplfold_params")
+    n_hit <- sum(!is.na(wide$rnaplfold_aug_unpaired_start))
+    message("  rnaplfold: ", n_hit, " of ", nrow(wide), " transcripts with a value")
   }
 
   save_snapshot(wide, species)
