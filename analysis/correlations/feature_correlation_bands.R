@@ -583,7 +583,8 @@ if (sys.nframe() == 0 || identical(environment(), globalenv())) {
 
   # Draw one job. `d` is the data; `trim` the top_n it applies.
   draw <- function(job, d = df, trim = top_n, ...) {
-    feature_correlation_bands(d, response = job$response, include = "core",
+    feature_correlation_bands(d, response = job$response,
+                              include = "core",
                               row_mm = row_mm, top_n = trim, ...)
   }
 
