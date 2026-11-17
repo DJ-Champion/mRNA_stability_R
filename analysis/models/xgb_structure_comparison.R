@@ -322,19 +322,45 @@ if (!force_refit && file.exists(FITS_PATH)) {
 }
 
 if (is.null(cached)) {
-  tuned <- lapply(MODELS, function(m) tune_model(PREDS[[m]], m))
+  # XGB_REUSE_FROM=<run folder> reuses that run's tuned fit for any model whose
+  # predictors, fitting pool, test set, seed, grid and folds are identical
+  # (same key test as the cache above), and tunes only the rest. Used to rerun
+  # just the With Structure model with a changed structure set.
+  reuse <- list()
+  reuse_dir <- Sys.getenv("XGB_REUSE_FROM")
+  if (nzchar(reuse_dir)) {
+    prior      <- readRDS(file.path(reuse_dir, "final_fits.rds"))
+    prior_tune <- readRDS(file.path(reuse_dir, "tuning_results.rds"))
+    same_run <- identical(prior$key[setdiff(names(fit_key), "preds")],
+                          fit_key[setdiff(names(fit_key), "preds")])
+    for (m in MODELS) {
+      if (same_run && identical(prior$key$preds[[m]], PREDS[[m]])) {
+        reuse[[m]] <- list(final = prior$finals[[m]], splits = prior$splits[[m]],
+                           tune = prior_tune[[m]])
+        log_msg("Reusing tuned ", m, " from ", reuse_dir)
+      }
+    }
+  }
+
+  tuned <- lapply(MODELS, function(m)
+    if (is.null(reuse[[m]])) tune_model(PREDS[[m]], m) else NULL)
   names(tuned) <- MODELS
 
-  saveRDS(lapply(tuned, `[[`, "tune"),
+  saveRDS(lapply(MODELS, function(m)
+            if (is.null(reuse[[m]])) tuned[[m]]$tune else reuse[[m]]$tune) |>
+            setNames(MODELS),
           file.path(RUN_DIR, "tuning_results.rds"))
 
   # ---- 6. Finalise and refit. Selection on inner folds; `test` unread. ----
-  finals <- lapply(tuned, finalise)
+  finals <- lapply(MODELS, function(m)
+    if (is.null(reuse[[m]])) finalise(tuned[[m]]) else reuse[[m]]$final)
   names(finals) <- MODELS
 
   cached <- list(key      = fit_key,
                  finals   = finals,
-                 splits   = lapply(tuned, function(f) f$tune$splits),
+                 splits   = lapply(MODELS, function(m)
+                   if (is.null(reuse[[m]])) tuned[[m]]$tune$splits else reuse[[m]]$splits) |>
+                   setNames(MODELS),
                  tuned_at = Sys.time())
   saveRDS(cached, FITS_PATH)
 }

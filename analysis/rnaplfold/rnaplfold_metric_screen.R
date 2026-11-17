@@ -31,7 +31,7 @@ responses <- c("halflife", "translation_efficiency")
 adjust    <- c("length_5utr", "length_cds", "length_3utr", "gc_content_5utr",
                "gc_content_cds", "gc_content_3utr", "gc_content_start")
 
-rp <- load_rnaplfold("human")
+rp <- load_rnaplfold("human", all = TRUE)
 df <- build_dataset("human") |> drop_excluded(verbose = FALSE)
 df <- df |> select(-starts_with("rnaplfold_")) |>
   inner_join(rp, by = "transcript_id")
