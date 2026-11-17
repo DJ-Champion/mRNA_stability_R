@@ -107,7 +107,12 @@ structure_groups <- function() {
 #' @export
 run_dir <- function(what = c("root", "tables", "plots")) {
   what <- match.arg(what)
-  root <- file.path(OUTPUT_DIR, "xgb_structure", TARGET_COL)
+  # XGB_TAG (optional) writes a variant run beside the default one, e.g.
+  # XGB_TAG=rnaplfold -> xgb_structure/halflife_rnaplfold/, so a rerun with a
+  # changed feature set never overwrites or reuses the reference fits.
+  tag  <- Sys.getenv("XGB_TAG", "")
+  root <- file.path(OUTPUT_DIR, "xgb_structure",
+                    if (nzchar(tag)) paste0(TARGET_COL, "_", tag) else TARGET_COL)
   if (what == "root") root else file.path(root, what)
 }
 

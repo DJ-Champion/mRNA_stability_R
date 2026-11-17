@@ -255,8 +255,13 @@ load_rnaup <- function(species) {
 #' ID, as in the file), with the region token LAST:
 #'   rnaplfold_aug_unpaired_start     P(all 3 nt of the AUG unpaired)
 #'   rnaplfold_unpaired_u<l>_start    mean P(l consecutive nt all unpaired)
-#' The u<l> columns are discovered by pattern (`start_mean_unpaired_u<l>`), not
-#' hard-coded: the upstream `u_values` is configurable.
+#' plus, when the file carries them, other statistics of the same window
+#' (meanlog, min, max, median, openfrac, up/down halves), flank windows of f nt each side of the AUG
+#' (rnaplfold_flank<f>_<stat>_unpaired_u<l>_start) and whole-transcript region
+#' means (rnaplfold_meanlog_unpaired_u<l>_5utr / _cds / _3utr, and
+#' rnaplfold_cap50_meanlog_unpaired_u<l>_mrna). Columns are discovered by
+#' pattern, not hard-coded: the upstream `u_values` and window sizes are
+#' configurable.
 #'
 #' Unreliable rows are set to NA rather than dropped, so the transcript keeps
 #' every other feature: short_utrs == "true", seq_shorter_than_window == 1
@@ -298,21 +303,51 @@ load_rnaplfold <- function(species) {
   }
   params <- vapply(params, function(x) as.numeric(x), numeric(1))
 
-  u_cols <- grep("^start_mean_unpaired_u[0-9]+$", names(df), value = TRUE)
-  out <- df |>
-    dplyr::select(transcript_id, aug_unpaired, dplyr::all_of(u_cols)) |>
-    dplyr::rename(rnaplfold_aug_unpaired_start = aug_unpaired)
-  names(out) <- sub("^start_mean_unpaired_(u[0-9]+)$",
-                    "rnaplfold_unpaired_\\1_start", names(out))
+  # Upstream column -> canonical name, discovered by pattern (the u<l> set and
+  # the window sizes f are configurable upstream). `start` columns are the
+  # primary 30/30 window or an f-nt symmetric variant; region means carry their
+  # real region token. The plain start mean keeps its original name
+  # (rnaplfold_unpaired_u<l>_start); every other statistic names itself:
+  # rnaplfold_<stat>_unpaired_u<l>_<region>.
+  stats <- "mean|meanlog|min|max|median|openfrac|up_meanlog|down_meanlog"
+  renames <- list(
+    c("^start_mean_unpaired_(u[0-9]+)$",       "rnaplfold_unpaired_\\1_start"),
+    c(paste0("^start_(", stats, ")_unpaired_(u[0-9]+)$"),
+                                               "rnaplfold_\\1_unpaired_\\2_start"),
+    c("^(flank[0-9]+_(?:mean|meanlog))_unpaired_(u[0-9]+)$",
+                                               "rnaplfold_\\1_unpaired_\\2_start"),
+    c("^utr5_meanlog_unpaired_(u[0-9]+)$",     "rnaplfold_meanlog_unpaired_\\1_5utr"),
+    c("^cds_meanlog_unpaired_(u[0-9]+)$",      "rnaplfold_meanlog_unpaired_\\1_cds"),
+    c("^utr3_meanlog_unpaired_(u[0-9]+)$",     "rnaplfold_meanlog_unpaired_\\1_3utr"),
+    c("^cap50_meanlog_unpaired_(u[0-9]+)$",    "rnaplfold_cap50_meanlog_unpaired_\\1_mrna"))
+  new_name <- rep(NA_character_, ncol(df)); names(new_name) <- names(df)
+  for (r in renames) {
+    hit <- is.na(new_name) & grepl(r[1], names(df), perl = TRUE)
+    new_name[hit] <- sub(r[1], r[2], names(df)[hit], perl = TRUE)
+  }
+  new_name["aug_unpaired"] <- "rnaplfold_aug_unpaired_start"
+  new_name["transcript_id"] <- "transcript_id"
+  out <- df[, !is.na(new_name), drop = FALSE]
+  names(out) <- new_name[!is.na(new_name)]
+  out <- dplyr::as_tibble(out)
 
-  unreliable <- df$short_utrs %in% c("true", "TRUE", TRUE) |
-    df$seq_shorter_than_window %in% 1 |
+  # Gating. seq_shorter_than_window makes every statistic unreliable. The
+  # start-window statistics are also unreliable when the window is clipped at
+  # the transcript start (short 5' UTR). Region means are not clipped by that,
+  # so they keep their values.
+  short_seq <- df$seq_shorter_than_window %in% 1
+  clipped   <- df$short_utrs %in% c("true", "TRUE", TRUE) |
     df$cds_offset < RNAPLFOLD_MIN_UPSTREAM
-  unreliable[is.na(unreliable)] <- TRUE
+  short_seq[is.na(short_seq)] <- TRUE
+  clipped[is.na(clipped)]     <- TRUE
   value_cols <- setdiff(names(out), "transcript_id")
-  out[unreliable, value_cols] <- NA_real_
-  message("  rnaplfold: ", nrow(out), " transcripts, ", sum(unreliable),
-          " gated to NA (short UTR / short sequence / clipped window); W=",
+  start_cols <- grep("_start$", value_cols, value = TRUE)
+  out[short_seq | clipped, start_cols] <- NA_real_
+  out[short_seq, setdiff(value_cols, start_cols)] <- NA_real_
+  unreliable <- short_seq | clipped
+  message("  rnaplfold: ", nrow(out), " transcripts, ", length(value_cols),
+          " columns, ", sum(unreliable),
+          " start-window rows gated to NA (short UTR / short sequence / clipped window); W=",
           params[["rnaplfold_window"]], " L=", params[["rnaplfold_span"]])
 
   attr(out, "rnaplfold_params") <- params

@@ -30,7 +30,16 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 #
 # v15: RNAplfold start-codon accessibility, rnaplfold_aug_unpaired_start and
 #      rnaplfold_unpaired_u<l>_start (transcript-level, see load_rnaplfold()).
-CACHE_VERSION <- 15L
+#
+# v16: RNAplfold loader ingests the extended file (meanlog/min/max/median/
+#      openfrac, up/down halves, window variants, region means), named
+#      rnaplfold_<stat>_unpaired_u<l>_<region>. The plain start mean keeps
+#      rnaplfold_unpaired_u<l>_start.
+#
+# v17: RNAplfold window-size variants renamed w<f> -> flank<f>
+#      (rnaplfold_flank<f>_<mean|meanlog>_unpaired_u<l>_start), matching the
+#      upstream rename; "window" is reserved for RNAplfold's -W.
+CACHE_VERSION <- 17L
 
 
 # --- Region vocabulary -------------------------------------------------------
