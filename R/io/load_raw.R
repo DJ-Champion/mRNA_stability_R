@@ -253,8 +253,8 @@ load_rnaup <- function(species) {
 #' Returns a transcript-level frame keyed on `transcript_id` (versioned Ensembl
 #' ID, as in the file), with the region token LAST. By default only the four
 #' columns the model uses (stretch length l = 8):
-#'   rnaplfold_meanlog_unpaired_u8_start   30 nt + AUG + 30 nt window
-#'   rnaplfold_meanlog_unpaired_u8_5utr / _cds / _3utr   whole regions
+#'   rnaplfold_meanlog_unpaired_u1_start   30 nt + AUG + 30 nt window
+#'   rnaplfold_meanlog_unpaired_u1_5utr / _cds / _3utr   whole regions
 #' `all = TRUE` also returns every other statistic in the file (plain mean, min,
 #' max, median, open fraction, up/down halves, flank windows, cap-proximal
 #' means, AUG, all stretch lengths), named rnaplfold_<stat>_unpaired_u<l>_<region>
@@ -275,10 +275,10 @@ load_rnaup <- function(species) {
 #' Local accessibility only (pair span capped at -L): long-range pairing is
 #' invisible to it.
 #' @param all Return every statistic in the file, not just the model columns.
-RNAPLFOLD_COLUMNS <- c("rnaplfold_meanlog_unpaired_u8_start",
-                       "rnaplfold_meanlog_unpaired_u8_5utr",
-                       "rnaplfold_meanlog_unpaired_u8_cds",
-                       "rnaplfold_meanlog_unpaired_u8_3utr")
+RNAPLFOLD_COLUMNS <- c("rnaplfold_meanlog_unpaired_u1_start",
+                       "rnaplfold_meanlog_unpaired_u1_5utr",
+                       "rnaplfold_meanlog_unpaired_u1_cds",
+                       "rnaplfold_meanlog_unpaired_u1_3utr")
 RNAPLFOLD_MIN_UPSTREAM <- 30L
 
 load_rnaplfold <- function(species, all = FALSE) {

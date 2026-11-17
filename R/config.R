@@ -43,7 +43,10 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 # v18: RNAplfold ingestion narrowed to mean log at u8 in the start window, 5' UTR,
 #      CDS and 3' UTR (rnaplfold_meanlog_unpaired_u8_<region>); the rest of the
 #      extended file is available via load_rnaplfold(all = TRUE).
-CACHE_VERSION <- 18L
+#
+# v19: RNAplfold model columns switched from u8 to u1
+#      (rnaplfold_meanlog_unpaired_u1_<region>).
+CACHE_VERSION <- 19L
 
 
 # --- Region vocabulary -------------------------------------------------------
