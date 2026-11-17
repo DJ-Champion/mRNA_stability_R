@@ -39,7 +39,11 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 # v17: RNAplfold window-size variants renamed w<f> -> flank<f>
 #      (rnaplfold_flank<f>_<mean|meanlog>_unpaired_u<l>_start), matching the
 #      upstream rename; "window" is reserved for RNAplfold's -W.
-CACHE_VERSION <- 17L
+#
+# v18: RNAplfold ingestion narrowed to mean log at u8 in the start window, 5' UTR,
+#      CDS and 3' UTR (rnaplfold_meanlog_unpaired_u8_<region>); the rest of the
+#      extended file is available via load_rnaplfold(all = TRUE).
+CACHE_VERSION <- 18L
 
 
 # --- Region vocabulary -------------------------------------------------------

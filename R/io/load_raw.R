@@ -242,31 +242,31 @@ load_rnaup <- function(species) {
 }
 
 
-#' Load RNAplfold start-codon accessibility (from tools/rnaplfold/, collated by
+#' Load RNAplfold local accessibility (from tools/rnaplfold/, collated by
 #' 05_collate.sh -t rnaplfold into `combined.tsv`).
 #'
-#' One row per transcript. RNAplfold is run on the full spliced mRNA and
-#' summarised over a window around the AUG (30 nt + AUG + 30 nt by default):
-#' the mean probability that the window's nucleotides are unpaired. Higher =
-#' more accessible. Every column is a probability in [0, 1] spanning orders of
-#' magnitude, so expect strong right skew (log10 / logit for parametric models).
+#' One row per transcript. RNAplfold is run on the full spliced mRNA; each
+#' column is the mean over a region of log10 P(l consecutive nt all unpaired)
+#' ("mean log": mean opening energy up to a constant; closer to 0 = more
+#' accessible). Every value spans orders of magnitude, hence the log scale.
 #'
 #' Returns a transcript-level frame keyed on `transcript_id` (versioned Ensembl
-#' ID, as in the file), with the region token LAST:
-#'   rnaplfold_aug_unpaired_start     P(all 3 nt of the AUG unpaired)
-#'   rnaplfold_unpaired_u<l>_start    mean P(l consecutive nt all unpaired)
-#' plus, when the file carries them, other statistics of the same window
-#' (meanlog, min, max, median, openfrac, up/down halves), flank windows of f nt each side of the AUG
-#' (rnaplfold_flank<f>_<stat>_unpaired_u<l>_start) and whole-transcript region
-#' means (rnaplfold_meanlog_unpaired_u<l>_5utr / _cds / _3utr, and
-#' rnaplfold_cap50_meanlog_unpaired_u<l>_mrna). Columns are discovered by
-#' pattern, not hard-coded: the upstream `u_values` and window sizes are
-#' configurable.
+#' ID, as in the file), with the region token LAST. By default only the four
+#' columns the model uses (stretch length l = 8):
+#'   rnaplfold_meanlog_unpaired_u8_start   30 nt + AUG + 30 nt window
+#'   rnaplfold_meanlog_unpaired_u8_5utr / _cds / _3utr   whole regions
+#' `all = TRUE` also returns every other statistic in the file (plain mean, min,
+#' max, median, open fraction, up/down halves, flank windows, cap-proximal
+#' means, AUG, all stretch lengths), named rnaplfold_<stat>_unpaired_u<l>_<region>
+#' (the plain start mean is rnaplfold_unpaired_u<l>_start). Used by the
+#' screening scripts in analysis/rnaplfold/. Columns are discovered by
+#' pattern: the upstream `u_values` and window sizes are configurable.
 #'
 #' Unreliable rows are set to NA rather than dropped, so the transcript keeps
 #' every other feature: short_utrs == "true", seq_shorter_than_window == 1
 #' (whole molecule in one RNAplfold window, end artefacts), or a 5' UTR shorter
-#' than the 30 nt upstream flank (window clipped at the transcript start).
+#' than the 30 nt upstream flank (window clipped at the transcript start; start
+#' window only, region means keep their values).
 #'
 #' The run parameters (-W, -L, -u) are the only provenance in the file. They
 #' must be constant: the loader stops if they vary, and returns them as the
@@ -274,9 +274,14 @@ load_rnaup <- function(species) {
 #'
 #' Local accessibility only (pair span capped at -L): long-range pairing is
 #' invisible to it.
+#' @param all Return every statistic in the file, not just the model columns.
+RNAPLFOLD_COLUMNS <- c("rnaplfold_meanlog_unpaired_u8_start",
+                       "rnaplfold_meanlog_unpaired_u8_5utr",
+                       "rnaplfold_meanlog_unpaired_u8_cds",
+                       "rnaplfold_meanlog_unpaired_u8_3utr")
 RNAPLFOLD_MIN_UPSTREAM <- 30L
 
-load_rnaplfold <- function(species) {
+load_rnaplfold <- function(species, all = FALSE) {
   df <- read_if_exists(species_path(species, "rnaplfold_combined.tsv"),
                        na = c("", "NA"))
   if (is.null(df)) return(NULL)
@@ -330,6 +335,14 @@ load_rnaplfold <- function(species) {
   out <- df[, !is.na(new_name), drop = FALSE]
   names(out) <- new_name[!is.na(new_name)]
   out <- dplyr::as_tibble(out)
+  if (!all) {
+    missing_cols <- setdiff(RNAPLFOLD_COLUMNS, names(out))
+    if (length(missing_cols)) {
+      stop("rnaplfold file lacks column(s): ", paste(missing_cols, collapse = ", "),
+           call. = FALSE)
+    }
+    out <- out[c("transcript_id", RNAPLFOLD_COLUMNS)]
+  }
 
   # Gating. seq_shorter_than_window makes every statistic unreliable. The
   # start-window statistics are also unreliable when the window is clipped at

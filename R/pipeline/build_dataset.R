@@ -132,7 +132,7 @@ build_dataset <- function(species, rebuild = FALSE,
     stopfree       = load_stopfree(species)
   )
   
-  rnaplfold_df <- load_rnaplfold(species)   # start-codon accessibility
+  rnaplfold_df <- load_rnaplfold(species)   # local accessibility
 
   # Transcript Level (Wide form)
   transcript_level <- list(
@@ -249,7 +249,7 @@ build_dataset <- function(species, rebuild = FALSE,
 
   if (!is.null(rnaplfold_df)) {
     attr(wide, "rnaplfold_params") <- attr(rnaplfold_df, "rnaplfold_params")
-    n_hit <- sum(!is.na(wide$rnaplfold_aug_unpaired_start))
+    n_hit <- sum(!is.na(wide$rnaplfold_meanlog_unpaired_u8_start))
     message("  rnaplfold: ", n_hit, " of ", nrow(wide), " transcripts with a value")
   }
 

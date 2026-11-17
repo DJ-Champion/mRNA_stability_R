@@ -90,10 +90,6 @@ REPLACEMENTS <- list(
   list("^intron_length_mean_",         "Mean intron length "),
   list("^uorf_count_",                 "uORF count "),
   list("^codon_",                      "codon."),     # codon_other_cds only
-  list("^rnaplfold_unpaired_u([0-9]+)_", "Unpaired.u\\1 "),
-  list("^rnaplfold_(up|down)_meanlog_unpaired_u([0-9]+)_",       "Unpaired.\\1.meanlog.u\\2 "),
-  list("^rnaplfold_(flank[0-9]+)_(mean|meanlog)_unpaired_u([0-9]+)_", "Unpaired.\\1.\\2.u\\3 "),
-  list("^rnaplfold_cap50_meanlog_unpaired_u([0-9]+)_",           "Unpaired.cap50.meanlog.u\\1 "),
   list("^rnaplfold_([a-z0-9_]+)_unpaired_u([0-9]+)_", "Unpaired.\\1.u\\2 "),
   list("^frac_a",                      "nt.A% "),
   list("^frac_c",                      "nt.C% "),
