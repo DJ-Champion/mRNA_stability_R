@@ -13,7 +13,8 @@
 #      (rnafold_median_*, 1,000 esl-shuffles), same layout as 2: how far a
 #      GC-and-length-only baseline is from one that also keeps dinucleotides.
 #
-# Figures carry no subtitles or in-plot notes. Everything a legend needs
+# Figures carry no subtitles or in-plot notes, apart from the Spearman rho on
+# each panel of figures 2-3. Everything else a legend needs
 # (definitions, counts off scale, zoom windows, model limits, provenance) is
 # written to reports/mfe_observed_vs_predicted_report.md.
 #
@@ -145,9 +146,12 @@ mfe_scatter <- function(data, x, y, title, xlab, ylab) {
   panels <- lapply(levels(data$region), function(reg) {
     z <- filter(zoom, region == reg)
     d <- filter(data, region == reg, !is.na(.data[[x]]), !is.na(.data[[y]]))
+    rho <- stats::cor(d[[x]], d[[y]], method = "spearman")
     ggplot(d, aes(x = .data[[x]], y = .data[[y]])) +
       geom_hex(binwidth = rep((z$hi - z$lo) / HEX_BINS, 2)) +
       geom_abline(slope = 1, intercept = 0, colour = "#D55E00", linewidth = 0.5) +
+      annotate("text", x = -Inf, y = Inf, label = sprintf("Spearman ρ = %.3f", rho),
+               hjust = -0.08, vjust = 1.6, size = 4.2) +
       facet_wrap(~ region) +
       coord_cartesian(xlim = c(z$lo, z$hi), ylim = c(z$lo, z$hi)) +
       scale_x_continuous(labels = scales::label_comma()) +
@@ -222,7 +226,7 @@ mfe_report <- function(path) {
   lines <- c(
     "# Observed vs predicted MFE: run report", "",
     sprintf("Generated %s from `analysis/qc/mfe_observed_vs_predicted.R`.", Sys.Date()), "",
-    "The figures carry no subtitles or in-plot notes; the definitions and numbers for their captions are here.", "",
+    "The figures carry no subtitles or in-plot notes (except the Spearman rho on each panel of figures 2 and 3); the definitions and numbers for their captions are here.", "",
     "## Cohort and model", "",
     sprintf("- Human, analysed cohort: **%s** transcripts (`build_dataset()` defaults: 5' UTR >= %d nt, 3' UTR >= %d nt; the same frame the models use)",
             fmt(nrow(df)), MIN_5UTR_LENGTH, MIN_3UTR_LENGTH),
@@ -250,7 +254,7 @@ mfe_report <- function(path) {
     sprintf("- Each panel is zoomed, not filtered: all rows are binned, and the view runs from the lower of the two %s quantiles (x or y) up to the highest value of either, equal on x and y. Only the long negative tail is outside the view (\"rows in view\" below, about %s). Scales differ by panel",
             pct(1 - ZOOM_KEEP), pct(ZOOM_KEEP)),
     sprintf("- Hexagonal bins (%d across the visible range of each panel); fill = transcripts per hex, log scale, one scale across panels", HEX_BINS),
-    "- Statistics are on all rows, not only those shown", "",
+    "- Statistics are on all rows, not only those shown; each panel is labelled with its Spearman rho from the table below", "",
     md(scatter_stats("observed", "predicted")), "",
     "## Figure 3: predicted MFE vs dinucleotide-shuffle median", "",
     "- x = dinucleotide-shuffle median MFE, y = predicted MFE (kcal/mol); orange line y = x",
