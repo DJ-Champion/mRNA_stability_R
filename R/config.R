@@ -47,7 +47,8 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 # v19: RNAplfold model columns switched from u8 to u1
 #      (rnaplfold_meanlog_unpaired_u1_<region>).
 #
-# v20: taken by the RNAup-avoidance branch.
+# v20: RNAup ncRNA avoidance in the start window, rnaup_gint_zscore_start and
+#      rnaup_gint_sum_start (transcript-level, see load_rnaup_avoidance()).
 #
 # v21: mfe_expected_* comes from RNAexpected::expected_mfe(model = "C"), refitted
 #      with 1/length weights (d 13.56 -> 9.32), so mfe_expected_* and
