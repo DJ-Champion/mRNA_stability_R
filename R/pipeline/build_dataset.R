@@ -84,6 +84,25 @@ drop_short_utr <- function(df, min_5utr = MIN_5UTR_LENGTH,
 }
 
 
+#' Warn when a cache's mfe_expected_* came from different coefficients
+#'
+#' CACHE_VERSION only catches changes made in this repo; an RNAexpected update
+#' would otherwise leave a cache of the old coefficients looking current.
+#' Silent when RNAexpected is not installed: reading a cache does not need it.
+check_mfe_model <- function(df) {
+  if (!requireNamespace("RNAexpected", quietly = TRUE)) return(invisible())
+  built   <- attr(df, "mfe_model")$coefficients
+  current <- RNAexpected::expected_mfe_coefficients(MFE_EXPECTED_MODEL)
+  if (is.null(built) || !isTRUE(all.equal(built, current))) {
+    warning("cached mfe_expected_* / mfe_delta_* were not built with the ",
+            "installed RNAexpected model ", MFE_EXPECTED_MODEL,
+            " coefficients; rebuild with build_dataset(..., rebuild = TRUE)",
+            call. = FALSE)
+  }
+  invisible()
+}
+
+
 #' Build (or load) the full dataset for one species
 #'
 #' @param species Character. Must be a key of SPECIES_CONFIG.
@@ -110,6 +129,7 @@ build_dataset <- function(species, rebuild = FALSE,
     if (!is.null(cached)) {
       message("Loaded cache for ", species, " (", nrow(cached), " rows, ",
               ncol(cached), " columns)")
+      check_mfe_model(cached)
       return(drop_short_utr(cached, min_5utr, min_3utr))
     }
   }
@@ -252,6 +272,8 @@ build_dataset <- function(species, rebuild = FALSE,
     n_hit <- sum(!is.na(wide$rnaplfold_meanlog_unpaired_u1_start))
     message("  rnaplfold: ", n_hit, " of ", nrow(wide), " transcripts with a value")
   }
+
+  attr(wide, "mfe_model") <- mfe_model_provenance()
 
   save_snapshot(wide, species)
 
