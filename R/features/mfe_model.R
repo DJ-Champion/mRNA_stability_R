@@ -1,36 +1,58 @@
 # =============================================================================
 # MFE thermodynamic model
 # =============================================================================
-# Parameters from in-house model
+# Expected MFE comes from the RNAexpected package
+# (github.com/DJ-Champion/RNAexpectedMFE), the single source of truth for the
+# coefficients. This file only wraps it so callers keep one stable name.
 #
 # Expected MFE = (a * GC^b + c) * length + d,  capped at 0,  GC as a fraction.
+# The average MFE of a random sequence of the same GC and length: a
+# composition-matched baseline, not a dinucleotide-matched one (that is
+# rnafold_median_*, from the per-transcript shuffles).
+#
+# Known limits of the model: it still under-predicts structure below ~100 nt
+# and returns 0 below ~30-60 nt (GC-dependent), and it was fitted on
+# 20-4000 nt, so longer regions are extrapolations.
 # =============================================================================
+
+#' RNAexpected model used for every mfe_expected_* column.
+MFE_EXPECTED_MODEL <- "C"
 
 
 #' Calculate expected MFE for given GC content and sequence length
 #'
-#' Vectorised. GC is expected as a FRACTION (0-1), which is the scale the
-#' underlying nls was fit on (see RNAexpected/A-DataInput.R, eq3) and the
-#' scale the gc_content_* columns are stored in. Passing percent (0-100)
-#' drives gc^b to ~0 and silently collapses the model to a constant
-#' c = -0.1534 kcal/mol/nt with no GC dependence at all, so it is rejected.
+#' Thin wrapper around RNAexpected::expected_mfe(). Vectorised; NA in either
+#' argument gives NA. GC must be a FRACTION (0-1): RNAexpected stops on values
+#' outside [0, 1], since passing percent would drive gc^b to ~0 and silently
+#' collapse the model to a GC-free constant.
 #'
 #' @param gc Numeric vector of GC content as a fraction in [0, 1].
 #' @param length Numeric vector of sequence lengths (nt).
-#' @return Numeric vector of expected MFE values. Capped at 0 (folding free
-#'   energy cannot be positive).
+#' @return Numeric vector of expected MFE values (kcal/mol), capped at 0.
 #' @export
 calculate_mfe_expected <- function(gc, length) {
-  a <- -0.8403211
-  b <-  2.3521348
-  c <- -0.1534111
-  d <- 13.5600933
-  if (any(gc > 1, na.rm = TRUE)) {
-    stop("gc must be a fraction in [0, 1], not percent — got max ",
-         format(max(gc, na.rm = TRUE)))
+  if (!requireNamespace("RNAexpected", quietly = TRUE)) {
+    stop("calculate_mfe_expected() needs the RNAexpected package:\n",
+         "  remotes::install_github(\"DJ-Champion/RNAexpectedMFE\")",
+         call. = FALSE)
   }
-  expected <- (a * gc^b + c) * length + d
-  pmin(expected, 0)
+  RNAexpected::expected_mfe(gc, length, model = MFE_EXPECTED_MODEL)
+}
+
+
+#' Provenance of the expected-MFE model, for stamping on the cache
+#'
+#' There is no lockfile, so this is what records which coefficients a cached
+#' dataset's mfe_expected_* / mfe_delta_* columns were built with.
+#' @return List: model, coefficients, package version and (if installed from
+#'   GitHub) commit SHA.
+mfe_model_provenance <- function() {
+  calculate_mfe_expected(0.5, 100)  # fails early with the install hint
+  desc <- utils::packageDescription("RNAexpected")
+  list(model        = MFE_EXPECTED_MODEL,
+       coefficients = RNAexpected::expected_mfe_coefficients(MFE_EXPECTED_MODEL),
+       version      = desc$Version,
+       sha          = desc$RemoteSha)
 }
 
 

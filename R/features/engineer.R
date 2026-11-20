@@ -27,7 +27,10 @@ add_mfe_expected_and_delta <- function(df, regions = REGIONS) {
     del_col   <- paste0("mfe_delta_", r)
 
     if (all(c(score_col, gc_col, len_col) %in% names(df))) {
-      df[[exp_col]] <- calculate_mfe_expected(df[[gc_col]], df[[len_col]])
+      # Quiet: RNAexpected notes every region with lengths outside 20-4000 nt
+      # on every build. Extrapolation is flagged in analysis/qc/mfe_expected_check.R.
+      df[[exp_col]] <- suppressMessages(
+        calculate_mfe_expected(df[[gc_col]], df[[len_col]]))
       df[[del_col]] <- calculate_mfe_delta(df[[score_col]], df[[exp_col]])
     }
   }

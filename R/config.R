@@ -49,7 +49,11 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 #
 # v20: RNAup ncRNA avoidance in the start window, rnaup_gint_zscore_start and
 #      rnaup_gint_sum_start (transcript-level, see load_rnaup_avoidance()).
-CACHE_VERSION <- 20L
+#
+# v21: mfe_expected_* comes from RNAexpected::expected_mfe(model = "C"), refitted
+#      with 1/length weights (d 13.56 -> 9.32), so mfe_expected_* and
+#      mfe_delta_* change. The cache carries an "mfe_model" attribute.
+CACHE_VERSION <- 21L
 
 
 # --- Region vocabulary -------------------------------------------------------
