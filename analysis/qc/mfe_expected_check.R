@@ -119,19 +119,23 @@ plot_by_gc <- ggplot(complete,
            hjust = -0.2, vjust = 2, size = 4) +
   coord_cartesian(xlim = x_lims, ylim = y_lims) +
   labs(
-    title    = paste0("Observed MFE vs predicted MFE — ", REGION_DISPLAYS[[region]]),
+    title    = paste0("Predicted vs observed ", REGION_DISPLAYS[[region]], " MFE"),
     subtitle = bquote(Predicted ~ MFE == (.(k[["a"]]) ~ GC^.(k[["b"]]) ~ .(k[["c"]])) %.%
                       length + .(k[["d"]])),
-    x = format_col_name(score_col),
-    y = format_col_name(exp_col),
+    x = paste(format_col_name(score_col), "(kcal/mol)"),
+    y = paste(format_col_name(exp_col),   "(kcal/mol)"),
     colour = format_col_name(gc_col)
   ) +
   theme_minimal() +
   theme(
-    plot.title    = element_text(size = 20, face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(size = 12, hjust = 0.5),
-    axis.title    = element_text(size = 16),
-    axis.text     = element_text(size = 14)
+    plot.title       = element_text(size = 20, face = "bold", hjust = 0.5),
+    plot.subtitle    = element_text(size = 12, hjust = 0.5),
+    axis.title       = element_text(size = 16),
+    axis.text        = element_text(size = 14),
+    panel.background = element_rect(fill = "grey96", colour = NA),
+    panel.border     = element_rect(fill = NA, colour = "grey45", linewidth = 0.6),
+    panel.grid.major = element_line(colour = "grey80", linewidth = 0.4),
+    panel.grid.minor = element_line(colour = "grey88", linewidth = 0.3)
   )
 
 # --- Plot 2: coloured by length -----------------------------------------------
