@@ -466,6 +466,14 @@ supplementary analysis.
 Core pipeline: `dplyr`, `tidyr`, `readr`, `purrr`, `stringr`, `tibble`,
 `tidyselect`, `rlang`.
 
+Expected MFE: `RNAexpected` (not on CRAN; supplies the `mfe_expected_*`
+coefficients, see `R/features/mfe_model.R`). Needs a GitHub PAT while the repo
+is private:
+
+```r
+remotes::install_github("DJ-Champion/RNAexpectedMFE")
+```
+
 Analysis layer: `ggplot2`, `forcats`, `viridis`, `scales`.
 
 Modelling: `tidymodels`, `finetune`, `xgboost`, `future`.

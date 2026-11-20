@@ -1,7 +1,8 @@
 # =============================================================================
 # QC: Observed vs expected MFE
 # =============================================================================
-# Diagnostic for the in-house thermodynamic model (R/features/mfe_model.R):
+# Diagnostic for the expected-MFE model (RNAexpected, wrapped in
+# R/features/mfe_model.R):
 #   Expected MFE = (a · GC^b + c) · length + d,  GC as a fraction in [0, 1]
 #
 # If the model is well-calibrated, observed and expected should lie near the
@@ -102,6 +103,8 @@ complete <- df |>
 rho <- cor(complete[[score_col]], complete[[exp_col]], method = "spearman")
 rho_label <- sprintf("Spearman \u03c1 = %.3f", rho)
 
+k <- signif(RNAexpected::expected_mfe_coefficients(MFE_EXPECTED_MODEL), 3)
+
 x_lims <- quantile(complete[[score_col]], probs = c(0.01, 0.99), na.rm = TRUE)
 y_lims <- quantile(complete[[exp_col]],   probs = c(0.01, 0.99), na.rm = TRUE)
 
@@ -116,9 +119,9 @@ plot_by_gc <- ggplot(complete,
            hjust = -0.2, vjust = 2, size = 4) +
   coord_cartesian(xlim = x_lims, ylim = y_lims) +
   labs(
-    title    = paste0("Observed vs modelled MFE — ", format_col_name(region)),
-    subtitle = bquote(Modelled ~ MFE == (-0.84 ~ GC^2.35 - 0.15) %.% length + 13.56 ~
-                      ~ ~ "(GC as a fraction)"),
+    title    = paste0("Observed MFE vs predicted MFE — ", REGION_DISPLAYS[[region]]),
+    subtitle = bquote(Predicted ~ MFE == (.(k[["a"]]) ~ GC^.(k[["b"]]) ~ .(k[["c"]])) %.%
+                      length + .(k[["d"]])),
     x = format_col_name(score_col),
     y = format_col_name(exp_col),
     colour = format_col_name(gc_col)
