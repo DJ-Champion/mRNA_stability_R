@@ -368,6 +368,140 @@ load_rnaplfold <- function(species, all = FALSE) {
 }
 
 
+#' Load RNAup ncRNA avoidance at the start codon (from tools/rnaup_avoidance/,
+#' collated by 05_collate.sh -t rnaup_avoidance into `combined.tsv`).
+#'
+#' One row per transcript. The 63-nt start window (30 nt + AUG + 30 nt, folded
+#' on its own, no mRNA context) is scored by RNAup against 34 abundant human
+#' ncRNAs (20 tRNA, 1 rRNA, 1 SRP, 5 snRNA, 3 Y RNA, 4 snoRNA) and the 34
+#' energies summed; the same for 100 dinucleotide shuffles of the window gives
+#' a robust z of the native sum, (native - median) / (1.4826 * MAD).
+#'
+#' Energies are kcal/mol, more negative = stronger predicted binding. The z
+#' runs the other way in words: z > 0 = the window binds the ncRNAs LESS than
+#' its shuffles (avoidance). `G_int` is the duplex energy alone (the metric);
+#' `G_total` adds both partners' opening costs (reference only).
+#'
+#' Returns a transcript-level frame keyed on `transcript_id` (versioned Ensembl
+#' ID), region token LAST. By default only the two model columns:
+#'   rnaup_gint_zscore_start   robust z of the G_int sum (primary)
+#'   rnaup_gint_sum_start      the G_int sum itself (tracks window GC)
+#' `all = TRUE` also returns the strongest single partner (rnaup_gint_min_start),
+#' the per-family sums and z-scores (rnaup_gint_<family>_sum_start,
+#' rnaup_gint_<family>_zscore_start; family before statistic so the stems above
+#' claim only the totals), the shuffle median and raw MAD, and the same set for
+#' G_total (rnaup_gtotal_*). Not returned: the `_mean` columns (sum / 34) and
+#' the three GC columns (gc_content_start already covers the window); the
+#' window GC is kept as the "rnaup_avoidance_gc" attribute, which
+#' build_dataset() checks against gc_content_start as a join check.
+#'
+#' No gating: only full 63-nt windows (5'UTR >= 30 nt) are run, so a transcript
+#' with a shorter 5'UTR has no row, as does one whose run failed or is
+#' unfinished. short_utrs == "true" flags a short 3'UTR, not the window, and is
+#' left to the cohort filter. NA z-scores (MAD = 0) stay NA.
+#'
+#' The run parameters in the file (window, window_length, n_ncrna, n_shuffles)
+#' must be constant apart from n_shuffles, which may dip below 100 for a few
+#' genes; the loader stops otherwise and returns them as the
+#' "rnaup_avoidance_params" attribute (attached to the cache by build_dataset()).
+#' RNAup's own arguments and the ncRNA set are not in the file.
+#' @param all Return every statistic in the file, not just the model columns.
+RNAUP_AVOIDANCE_COLUMNS <- c("rnaup_gint_zscore_start", "rnaup_gint_sum_start")
+RNAUP_AVOIDANCE_WINDOW_LENGTH <- 63L
+RNAUP_AVOIDANCE_N_NCRNA <- 34L
+RNAUP_AVOIDANCE_FAMILIES <- c(trna = "trna", rrna = "rrna", srp = "srp",
+                              snrna = "snrna", y_rna = "yrna", snorna = "snorna")
+
+load_rnaup_avoidance <- function(species, all = FALSE) {
+  df <- read_if_exists(species_path(species, "rnaup_avoidance_combined.tsv"),
+                       na = c("", "NA"))
+  if (is.null(df)) return(NULL)
+  df <- lowercase_names(df) |> normalise_region()
+
+  need <- c("transcript_id", "region", "window", "window_length", "n_ncrna",
+            "n_shuffles", "avoidance_g_int_sum", "avoidance_g_int_sum_robust_z",
+            "gc_content_mrna_window")
+  if (!all(need %in% names(df))) {
+    stop("rnaup_avoidance file is missing column(s): ",
+         paste(setdiff(need, names(df)), collapse = ", "), call. = FALSE)
+  }
+  # A seqname missing from the upstream manifest is joined with empty strings.
+  if (any(is.na(df$transcript_id) | !nzchar(df$transcript_id))) {
+    stop("rnaup_avoidance: empty transcript_id (seqname missing from the manifest)",
+         call. = FALSE)
+  }
+  if (anyDuplicated(df$transcript_id)) {
+    stop("rnaup_avoidance: transcript_id is not unique", call. = FALSE)
+  }
+
+  params <- lapply(df[c("region", "window", "window_length", "n_ncrna")],
+                   function(x) unique(x[!is.na(x)]))
+  if (any(lengths(params) != 1L) ||
+      params$window_length != RNAUP_AVOIDANCE_WINDOW_LENGTH ||
+      params$n_ncrna != RNAUP_AVOIDANCE_N_NCRNA) {
+    stop("rnaup_avoidance: run parameters are not the expected constants (", paste(
+           names(params), vapply(params, paste, "", collapse = "/"),
+           sep = "=", collapse = ", "), "; expected window_length=",
+         RNAUP_AVOIDANCE_WINDOW_LENGTH, ", n_ncrna=", RNAUP_AVOIDANCE_N_NCRNA,
+         "); do not mix runs with different settings", call. = FALSE)
+  }
+  region <- params$region   # start_codon_region -> start via REGION_ALIASES
+  if (!region %in% REGIONS) {
+    stop("rnaup_avoidance: region '", region, "' has no REGION_ALIASES entry",
+         call. = FALSE)
+  }
+  n_shuf <- df$n_shuffles
+  n_shuf_mode <- as.numeric(names(which.max(table(n_shuf))))
+
+  # Upstream column -> canonical name: rnaup_<energy>[_<family>]_<stat>_<region>.
+  energies <- c(avoidance_g_int = "gint", rnaup_g_total = "gtotal")
+  map <- character()
+  for (e in names(energies)) {
+    to <- paste0("rnaup_", energies[[e]])
+    map[paste0(e, "_sum_robust_z")]    <- paste0(to, "_zscore")
+    map[paste0(e, "_sum")]             <- paste0(to, "_sum")
+    map[paste0(e, "_min")]             <- paste0(to, "_min")
+    map[paste0(e, "_sum_shuf_median")] <- paste0(to, "_shuf_median")
+    map[paste0(e, "_sum_shuf_mad")]    <- paste0(to, "_shuf_mad")
+    for (f in names(RNAUP_AVOIDANCE_FAMILIES)) {
+      fam <- RNAUP_AVOIDANCE_FAMILIES[[f]]
+      map[paste0(e, "_sum_", f)]            <- paste0(to, "_", fam, "_sum")
+      map[paste0(e, "_sum_", f, "_robust_z")] <- paste0(to, "_", fam, "_zscore")
+    }
+  }
+  map <- stats::setNames(paste0(map, "_", region), names(map))
+  map <- map[names(map) %in% names(df)]
+
+  out <- dplyr::as_tibble(df[c("transcript_id", names(map))])
+  names(out) <- c("transcript_id", unname(map))
+  if (!all) {
+    missing_cols <- setdiff(RNAUP_AVOIDANCE_COLUMNS, names(out))
+    if (length(missing_cols)) {
+      stop("rnaup_avoidance file lacks column(s): ",
+           paste(missing_cols, collapse = ", "), call. = FALSE)
+    }
+    out <- out[c("transcript_id", RNAUP_AVOIDANCE_COLUMNS)]
+  }
+
+  n_low <- sum(n_shuf < n_shuf_mode, na.rm = TRUE)
+  message("  rnaup_avoidance: ", nrow(out), " transcripts, ", ncol(out) - 1L,
+          " columns; n_shuffles ", min(n_shuf, na.rm = TRUE), "-",
+          max(n_shuf, na.rm = TRUE), " (", n_low, " rows below the mode of ",
+          n_shuf_mode, "); window=", params$window, " n_ncrna=", params$n_ncrna)
+
+  attr(out, "rnaup_avoidance_params") <- list(
+    window        = params$window,
+    window_length = as.numeric(params$window_length),
+    n_ncrna       = as.numeric(params$n_ncrna),
+    n_shuffles    = n_shuf_mode,
+    n_shuffles_min = min(n_shuf, na.rm = TRUE)
+  )
+  attr(out, "rnaup_avoidance_gc") <- stats::setNames(df$gc_content_mrna_window,
+                                                     df$transcript_id)
+  out
+}
+
+
 #' Load sequence basic metrics (Long Form)
 #' Replaces old load_length_gc and load_skews.
 load_sequence_basic <- function(species) {
