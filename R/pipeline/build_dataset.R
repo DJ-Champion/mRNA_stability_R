@@ -133,6 +133,7 @@ build_dataset <- function(species, rebuild = FALSE,
   )
   
   rnaplfold_df <- load_rnaplfold(species)   # local accessibility
+  rnaup_avoidance_df <- load_rnaup_avoidance(species)   # start-window ncRNA pairing
 
   # Transcript Level (Wide form)
   transcript_level <- list(
@@ -143,7 +144,8 @@ build_dataset <- function(species, rebuild = FALSE,
     codon_aa      = load_codon_aa_counts(species),                # REPLACEMENT
     cai           = load_cai(species),
     nte           = load_nte(species),
-    rnaplfold     = rnaplfold_df
+    rnaplfold     = rnaplfold_df,
+    rnaup_avoid   = rnaup_avoidance_df
   )
   
   halflife_df  <- load_halflife(species)
@@ -251,6 +253,24 @@ build_dataset <- function(species, rebuild = FALSE,
     attr(wide, "rnaplfold_params") <- attr(rnaplfold_df, "rnaplfold_params")
     n_hit <- sum(!is.na(wide$rnaplfold_meanlog_unpaired_u1_start))
     message("  rnaplfold: ", n_hit, " of ", nrow(wide), " transcripts with a value")
+  }
+
+  if (!is.null(rnaup_avoidance_df)) {
+    attr(wide, "rnaup_avoidance_params") <-
+      attr(rnaup_avoidance_df, "rnaup_avoidance_params")
+    # Join check: the file's window GC must be our own start-window GC. A
+    # mismatch means the seqname-derived transcript_id points at another window.
+    gc_file <- attr(rnaup_avoidance_df, "rnaup_avoidance_gc")
+    gc_ours <- wide$gc_content_start[match(names(gc_file), wide$transcript_id)]
+    n_bad <- sum(abs(gc_file - gc_ours) > 1e-3, na.rm = TRUE)
+    if (n_bad > 0) {
+      stop("rnaup_avoidance: window GC disagrees with gc_content_start for ",
+           n_bad, " transcript(s); the file's windows do not match ours", call. = FALSE)
+    }
+    n_hit <- sum(!is.na(wide$rnaup_gint_zscore_start))
+    message("  rnaup_avoidance: ", n_hit, " of ", nrow(wide),
+            " transcripts with a value (", sum(is.na(gc_ours)),
+            " file rows not in the dataset or without gc_content_start)")
   }
 
   save_snapshot(wide, species)

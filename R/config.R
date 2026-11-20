@@ -46,7 +46,10 @@ SPLITS_DIR <- file.path(DATA_ROOT, "splits")
 #
 # v19: RNAplfold model columns switched from u8 to u1
 #      (rnaplfold_meanlog_unpaired_u1_<region>).
-CACHE_VERSION <- 19L
+#
+# v20: RNAup ncRNA avoidance in the start window, rnaup_gint_zscore_start and
+#      rnaup_gint_sum_start (transcript-level, see load_rnaup_avoidance()).
+CACHE_VERSION <- 20L
 
 
 # --- Region vocabulary -------------------------------------------------------
