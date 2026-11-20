@@ -7,7 +7,8 @@
 #
 #   1. Relative difference (observed - predicted) / |predicted| against length
 #      (log x), hex-binned.
-#   2. Predicted against observed MFE, zoomed to the central 95% of each region.
+#   2. Predicted against observed MFE, each region zoomed past its long
+#      negative tail (95% of rows in view; zoomed, not filtered).
 #   3. Predicted MFE against the per-transcript dinucleotide-shuffle median
 #      (rnafold_median_*, 1,000 esl-shuffles), same layout as 2: how far a
 #      GC-and-length-only baseline is from one that also keeps dinucleotides.
@@ -81,20 +82,26 @@ theme_mfe <- theme_minimal(base_size = 13) +
     legend.position  = "right"
   )
 
-# Hex fill for all three figures: one blue, light to dark, log counts.
-density_fill <- scale_fill_gradient(low = "#C6DBEF", high = "#08306B", trans = "log10",
-                                    labels = scales::label_comma(),
-                                    name = "Transcript\ndensity")
+# Hex fill for all three figures: one blue, light to dark, log counts. `limits`
+# lets the patchwork figures share one scale, so their guides merge.
+density_fill <- function(limits = NULL) {
+  scale_fill_gradient(low = "#C6DBEF", high = "#08306B", trans = "log10",
+                      limits = limits, labels = scales::label_comma(),
+                      name = "Transcript\ndensity")
+}
+
+# Every figure zooms with coord_cartesian(): all rows are binned and the view
+# is cropped, so nothing is dropped and the hexes run to the panel edge. Hex
+# size is set from the visible range (HEX_BINS across it), not the full data
+# range, which the long tails would otherwise stretch.
 
 
 # --- Figure 1: relative difference vs length -----------------------------------
-rel_on_scale <- filter(mfe_long, !is.na(rel_observed),
-                       rel_observed >= REL_YLIM[1], rel_observed <= REL_YLIM[2])
+rel_rows  <- filter(mfe_long, !is.na(rel_observed))
+log_range <- range(log10(rel_rows$length))
 
-# Hexes are drawn from the rows inside the y range only, so the colour scale
-# describes what is on screen; the report counts the rows left out.
-plot_rel_vs_length <- ggplot(rel_on_scale, aes(x = length, y = rel_observed)) +
-  geom_hex(bins = HEX_BINS) +
+plot_rel_vs_length <- ggplot(rel_rows, aes(x = length, y = rel_observed)) +
+  geom_hex(binwidth = c(diff(log_range), diff(REL_YLIM)) / HEX_BINS) +
   geom_hline(yintercept = 0, colour = "grey20", linewidth = 0.4) +
   geom_vline(xintercept = c(SHORT_NT, LONG_NT), colour = "grey20",
              linewidth = 0.4, linetype = "22") +
@@ -103,7 +110,7 @@ plot_rel_vs_length <- ggplot(rel_on_scale, aes(x = length, y = rel_observed)) +
                 breaks = c(30, 100, 300, 1000, 4000, 30000)) +
   scale_y_continuous(labels = scales::label_percent()) +
   coord_cartesian(ylim = REL_YLIM) +
-  density_fill +
+  density_fill() +
   labs(
     title = "Observed MFE relative to predicted MFE, by region length",
     x     = "Region length (nt, log scale)",
@@ -113,41 +120,47 @@ plot_rel_vs_length <- ggplot(rel_on_scale, aes(x = length, y = rel_observed)) +
 
 
 # --- Figures 2-3: predicted against a measured MFE -----------------------------
-#' Zoom window per region: the central ZOOM_KEEP of both columns, with equal
-#' x and y limits so y = x stays the diagonal.
+#' Zoom window per region, equal on x and y so y = x stays the diagonal. MFE
+#' has one long tail, towards very negative values, so only that end is
+#' trimmed: from the lower (1 - ZOOM_KEEP) quantile of either column up to the
+#' highest value of either. The dense near-zero end is never cut.
 zoom_window <- function(data, x, y) {
-  tail <- (1 - ZOOM_KEEP) / 2
   data |>
     filter(!is.na(.data[[x]]), !is.na(.data[[y]])) |>
     group_by(region) |>
     summarise(
       n  = n(),
-      lo = min(quantile(.data[[x]], tail),     quantile(.data[[y]], tail)),
-      hi = max(quantile(.data[[x]], 1 - tail), quantile(.data[[y]], 1 - tail)),
-      n_shown = sum(between(.data[[x]], lo, hi) & between(.data[[y]], lo, hi)),
+      lo = min(quantile(.data[[x]], 1 - ZOOM_KEEP), quantile(.data[[y]], 1 - ZOOM_KEEP)),
+      hi = max(.data[[x]], .data[[y]]),
+      n_shown = sum(.data[[x]] >= lo & .data[[y]] >= lo),
       .groups = "drop"
     )
 }
 
-#' Hex-binned `y` against `x`, one panel per region, zoomed by zoom_window().
-#' Rows outside the window are not binned.
+#' Hex-binned `y` against `x`, one panel per region, each zoomed to its
+#' zoom_window(). Separate plots joined with patchwork, because facets cannot
+#' take a different coord_cartesian() each.
 mfe_scatter <- function(data, x, y, title, xlab, ylab) {
-  zoom   <- zoom_window(data, x, y)
-  shown  <- data |>
-    inner_join(zoom, by = "region") |>
-    filter(between(.data[[x]], lo, hi), between(.data[[y]], lo, hi))
-  frame  <- tidyr::pivot_longer(zoom, c(lo, hi), values_to = "v")
+  zoom <- zoom_window(data, x, y)
+  panels <- lapply(levels(data$region), function(reg) {
+    z <- filter(zoom, region == reg)
+    d <- filter(data, region == reg, !is.na(.data[[x]]), !is.na(.data[[y]]))
+    ggplot(d, aes(x = .data[[x]], y = .data[[y]])) +
+      geom_hex(binwidth = rep((z$hi - z$lo) / HEX_BINS, 2)) +
+      geom_abline(slope = 1, intercept = 0, colour = "#D55E00", linewidth = 0.5) +
+      facet_wrap(~ region) +
+      coord_cartesian(xlim = c(z$lo, z$hi), ylim = c(z$lo, z$hi)) +
+      scale_x_continuous(labels = scales::label_comma()) +
+      scale_y_continuous(labels = scales::label_comma()) +
+      labs(x = xlab, y = ylab) +
+      theme_mfe
+  })
+  max_n  <- max(vapply(panels, function(p) max(layer_data(p, 1)$count), numeric(1)))
+  panels <- lapply(panels, function(p) p + density_fill(limits = c(1, max_n)))
 
-  ggplot(shown, aes(x = .data[[x]], y = .data[[y]])) +
-    geom_blank(data = frame, aes(x = v, y = v)) +
-    geom_hex(bins = HEX_BINS) +
-    density_fill +
-    geom_abline(slope = 1, intercept = 0, colour = "#D55E00", linewidth = 0.5) +
-    facet_wrap(~ region, ncol = 2, scales = "free") +
-    scale_x_continuous(labels = scales::label_comma()) +
-    scale_y_continuous(labels = scales::label_comma()) +
-    labs(title = title, x = xlab, y = ylab) +
-    theme_mfe
+  patchwork::wrap_plots(panels, ncol = 2) +
+    patchwork::plot_layout(guides = "collect", axis_titles = "collect") +
+    patchwork::plot_annotation(title = title, theme = theme_mfe)
 }
 
 plot_obs_vs_pred <- mfe_scatter(
@@ -200,10 +213,10 @@ mfe_report <- function(path) {
     zw |>
       inner_join(st, by = "region") |>
       transmute(region,
-                `points shown` = sprintf("%s (%s)", fmt(n_shown), pct(n_shown / n)),
+                `rows in view` = sprintf("%s (%s)", fmt(n_shown), pct(n_shown / n)),
                 n = fmt(n), `axis range (kcal/mol)` = sprintf("%.0f to %.0f", lo, hi),
                 `Spearman rho` = rho, `slope (y on x)` = slope, `above y = x`) |>
-      relocate(`points shown`, .after = `axis range (kcal/mol)`)
+      relocate(`rows in view`, .after = `axis range (kcal/mol)`)
   }
 
   lines <- c(
@@ -224,19 +237,19 @@ mfe_report <- function(path) {
     "## Figure 1: relative difference vs length", "",
     "- y = (observed - predicted) / |predicted|; below 0 = more structured than predicted",
     "- x = region length, log scale; one panel per region, shared axes",
-    sprintf("- Hexagonal bins (%d across each panel); fill = transcripts per hex, log scale", HEX_BINS),
+    sprintf("- Hexagonal bins (%d across the visible range); fill = transcripts per hex, log scale", HEX_BINS),
     sprintf("- Dashed vertical lines at %s and %s nt: the model under-predicts structure below the first and extrapolates above the second",
             fmt(SHORT_NT), fmt(LONG_NT)),
-    sprintf("- y axis clipped to %s to %s; rows outside are not drawn (\"off scale\" above, almost all short 5' UTRs where predicted MFE is near 0)",
+    sprintf("- View zoomed to %s to %s on y; zoomed, not filtered: all rows are binned, and the \"off scale\" rows above (almost all short 5' UTRs where predicted MFE is near 0) fall outside the view",
             pct(REL_YLIM[1]), pct(REL_YLIM[2])),
     "- Rows with predicted MFE = 0 have no relative difference and are not drawn (\"predicted = 0\" above)",
     "- Relative rather than raw difference because random-sequence SD grows with length (~2 kcal/mol at 50 nt to ~14 at 4 kb)", "",
     "## Figure 2: predicted vs observed MFE", "",
     "- x = observed MFE, y = predicted MFE (kcal/mol); orange line y = x",
     "- Above the line = observed more negative than predicted = more structured than predicted",
-    sprintf("- Each panel shows the central %s of its region: axis range from the lower of the two %s percentiles to the higher of the two %s percentiles, equal on x and y; points outside are not drawn. Scales differ by panel",
-            pct(ZOOM_KEEP), pct((1 - ZOOM_KEEP) / 2), pct(1 - (1 - ZOOM_KEEP) / 2)),
-    sprintf("- Hexagonal bins (%d across each panel); fill = transcripts per hex, log scale", HEX_BINS),
+    sprintf("- Each panel is zoomed, not filtered: all rows are binned, and the view runs from the lower of the two %s quantiles (x or y) up to the highest value of either, equal on x and y. Only the long negative tail is outside the view (\"rows in view\" below, about %s). Scales differ by panel",
+            pct(1 - ZOOM_KEEP), pct(ZOOM_KEEP)),
+    sprintf("- Hexagonal bins (%d across the visible range of each panel); fill = transcripts per hex, log scale, one scale across panels", HEX_BINS),
     "- Statistics are on all rows, not only those shown", "",
     md(scatter_stats("observed", "predicted")), "",
     "## Figure 3: predicted MFE vs dinucleotide-shuffle median", "",
