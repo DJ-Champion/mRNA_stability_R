@@ -57,50 +57,57 @@ cmp <- tibble(
   filter(!is.na(rnafold_zscore_mrna), !is.na(rnafold_zscore_mrna_imputed),
          !is.na(rnafold_score_mrna),  !is.na(rnafold_score_mrna_imputed))
 
-rho_z  <- cor(cmp$rnafold_zscore_mrna, cmp$rnafold_zscore_mrna_imputed, method = "spearman")
-rho_sc <- cor(cmp$rnafold_score_mrna,  cmp$rnafold_score_mrna_imputed,  method = "spearman")
 
 
-# --- Plot 1: z-score — direct vs imputed -------------------------------------
-p_zscore <- ggplot(cmp, aes(x = rnafold_zscore_mrna, y = rnafold_zscore_mrna_imputed)) +
-  geom_point(alpha = 0.7, colour = "steelblue", size = 2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed",
-              colour = "firebrick", linewidth = 1) +
-  annotate("text", x = -Inf, y = Inf,
-           label = sprintf("Spearman \u03c1 = %.3f", rho_z),
-           hjust = -0.1, vjust = 1.5, size = 5) +
-  labs(
-    title = "mRNA MFE z-score — direct vs length-weighted imputation",
-    x = "Direct (mRNA folding)",
-    y = "Imputed (length-weighted region average)"
-  ) +
-  theme_minimal() +
+# --- Plots 1-2: estimated against direct, hex-binned ------------------------
+# Same look as the figures in mfe_observed_vs_predicted.R: log-count hexes,
+# y = x in orange, Spearman rho top left. Axes are equal so y = x stays the
+# diagonal; the view is zoomed past the long tails (ZOOM_KEEP of rows on each
+# axis), not filtered, so every row is still binned.
+HEX_BINS  <- 60
+ZOOM_KEEP <- 0.99
+
+theme_mfe <- theme_minimal(base_size = 13) +
   theme(
-    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
-    axis.title = element_text(size = 14),
-    axis.text  = element_text(size = 12)
+    plot.title       = element_text(size = 17, face = "bold"),
+    panel.background = element_rect(fill = "grey96", colour = NA),
+    panel.border     = element_rect(fill = NA, colour = "grey45", linewidth = 0.6),
+    panel.grid.major = element_line(colour = "grey80", linewidth = 0.4),
+    panel.grid.minor = element_line(colour = "grey88", linewidth = 0.3),
+    legend.position  = "right"
   )
 
+hex_vs_direct <- function(x, y, title, xlab, ylab) {
+  tail <- (1 - ZOOM_KEEP) / 2
+  lo   <- min(quantile(x, tail), quantile(y, tail))
+  hi   <- max(quantile(x, 1 - tail), quantile(y, 1 - tail))
+  rho  <- stats::cor(x, y, method = "spearman")
+  ggplot(tibble(x = x, y = y), aes(x = x, y = y)) +
+    geom_hex(binwidth = rep((hi - lo) / HEX_BINS, 2)) +
+    geom_abline(slope = 1, intercept = 0, colour = "#D55E00", linewidth = 0.5) +
+    annotate("text", x = -Inf, y = Inf, label = sprintf("Spearman \u03c1 = %.3f", rho),
+             hjust = -0.08, vjust = 1.6, size = 4.2) +
+    coord_cartesian(xlim = c(lo, hi), ylim = c(lo, hi)) +
+    scale_x_continuous(labels = scales::label_comma()) +
+    scale_y_continuous(labels = scales::label_comma()) +
+    scale_fill_gradient(low = "#C6DBEF", high = "#08306B", trans = "log10",
+                        labels = scales::label_comma(), name = "Transcript\ndensity") +
+    labs(title = title, x = xlab, y = ylab) +
+    theme_mfe
+}
 
-# --- Plot 2: score — direct vs imputed ---------------------------------------
-p_score <- ggplot(cmp, aes(x = rnafold_score_mrna, y = rnafold_score_mrna_imputed)) +
-  geom_point(alpha = 0.7, colour = "steelblue", size = 2) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed",
-              colour = "firebrick", linewidth = 1) +
-  annotate("text", x = -Inf, y = Inf,
-           label = sprintf("Spearman \u03c1 = %.3f", rho_sc),
-           hjust = -0.1, vjust = 1.5, size = 5) +
-  labs(
-    title = "mRNA MFE score — direct vs additive imputation",
-    x = "Direct (mRNA folding)",
-    y = "Imputed (sum of region scores)"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
-    axis.title = element_text(size = 14),
-    axis.text  = element_text(size = 12)
-  )
+p_score <- hex_vs_direct(
+  cmp$rnafold_score_mrna, cmp$rnafold_score_mrna_imputed,
+  title = "Estimated vs observed mRNA MFE",
+  xlab  = "Observed mRNA MFE (kcal/mol)",
+  ylab  = "Sum of MFE components (kcal/mol)")
+
+# plotmath labels, so the z can be italic (bold italic in the bold title)
+p_zscore <- hex_vs_direct(
+  cmp$rnafold_zscore_mrna, cmp$rnafold_zscore_mrna_imputed,
+  title = expression(bold("Estimated vs observed mRNA MFE " * bolditalic(z) * "-scores")),
+  xlab  = expression("Observed mRNA MFE " * italic(z) * "-score"),
+  ylab  = expression("Length-weighted region " * italic(z) * "-score"))
 
 
 # --- Plot 3: region MFE delta distributions ---------------------------------
@@ -135,5 +142,13 @@ if (length(delta_cols) >= 1 && "mfe_delta_mrna" %in% names(df)) {
   print(p_delta)
 }
 
-print(p_zscore)
 print(p_score)
+print(p_zscore)
+
+dir.create(file.path(OUTPUT_DIR, "plots"), showWarnings = FALSE, recursive = TRUE)
+ggplot2::ggsave(
+  file.path(OUTPUT_DIR, "plots", sprintf("mfe_mrna_direct_vs_region_sum_%s.jpg", species)),
+  plot = p_score, width = 180, height = 150, units = "mm", dpi = 300)
+ggplot2::ggsave(
+  file.path(OUTPUT_DIR, "plots", sprintf("mfe_zscore_mrna_direct_vs_weighted_%s.jpg", species)),
+  plot = p_zscore, width = 180, height = 150, units = "mm", dpi = 300)
