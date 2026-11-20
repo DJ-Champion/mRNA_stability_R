@@ -170,8 +170,8 @@ plot_obs_vs_pred <- mfe_scatter(
 
 plot_shuf_vs_pred <- mfe_scatter(
   mfe_long, x = "shuffled", y = "predicted",
-  title = "Predicted MFE vs dinucleotide-shuffle median",
-  xlab  = "Dinucleotide-shuffle median MFE (kcal/mol)", ylab = "Predicted MFE (kcal/mol)")
+  title = "Predicted MFE vs median MFE of dinucleotide shuffled sequences",
+  xlab  = "median MFE (kcal/mol)", ylab = "predicted MFE (kcal/mol)")
 
 
 # --- Report: the numbers for the figure legends --------------------------------
