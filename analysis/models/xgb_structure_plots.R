@@ -219,8 +219,10 @@ lims <- range(c(preds$observed, preds$predicted))
 
 # The stats block stays: it is data, not commentary. Kept compact — the symbols
 # are defined in the legend rather than spelled out in the panel.
+# Prediction on x, observation on y (Pineiro et al. 2008): observed is the
+# response the model is judged against. Points above y = x are under-predicted.
 p_obspred <- preds |>
-  ggplot(aes(observed, predicted)) +
+  ggplot(aes(predicted, observed)) +
   geom_abline(slope = 1, intercept = 0, colour = "grey50", linetype = "dashed") +
   geom_point(aes(colour = model), alpha = 0.25, size = 0.7, show.legend = FALSE) +
   geom_text(data = obspred_stats, inherit.aes = FALSE,
@@ -233,8 +235,8 @@ p_obspred <- preds |>
   labs(title = paste("Observed vs predicted", response_info()$label),
        subtitle = sprintf("%s held-out genes",
                           format(N_TEST, big.mark = ",")),
-       x = sprintf("Observed (%s)", response_info()$axis),
-       y = sprintf("Predicted (%s)", response_info()$axis)) +
+       x = sprintf("Predicted (%s)", response_info()$axis),
+       y = sprintf("Observed (%s)", response_info()$axis)) +
   theme_xgb()
 
 save_plot(p_obspred, "xgb_structure_observed_vs_predicted", w = 190, h = 115)

@@ -105,12 +105,14 @@ rho_label <- sprintf("Spearman \u03c1 = %.3f", rho)
 
 k <- signif(RNAexpected::expected_mfe_coefficients(MFE_EXPECTED_MODEL), 3)
 
-x_lims <- quantile(complete[[score_col]], probs = c(0.01, 0.99), na.rm = TRUE)
-y_lims <- quantile(complete[[exp_col]],   probs = c(0.01, 0.99), na.rm = TRUE)
+x_lims <- quantile(complete[[exp_col]],   probs = c(0.01, 0.99), na.rm = TRUE)
+y_lims <- quantile(complete[[score_col]], probs = c(0.01, 0.99), na.rm = TRUE)
 
 # --- Plot 1: coloured by GC ---------------------------------------------------
+# Prediction on x, observation on y (Pineiro et al. 2008), matching the
+# observed ~ expected slope in the calibration summary above.
 plot_by_gc <- ggplot(complete,
-                     aes(x = .data[[score_col]], y = .data[[exp_col]])) +
+                     aes(x = .data[[exp_col]], y = .data[[score_col]])) +
   geom_point(aes(colour = .data[[gc_col]]), alpha = 0.8, size = 1) +
   scale_colour_viridis_c(option = "plasma") +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed",
@@ -119,11 +121,11 @@ plot_by_gc <- ggplot(complete,
            hjust = -0.2, vjust = 2, size = 4) +
   coord_cartesian(xlim = x_lims, ylim = y_lims) +
   labs(
-    title    = paste0("Predicted vs observed ", REGION_DISPLAYS[[region]], " MFE"),
+    title    = paste0("Observed vs predicted ", REGION_DISPLAYS[[region]], " MFE"),
     subtitle = bquote(Predicted ~ MFE == (.(k[["a"]]) ~ GC^.(k[["b"]]) ~ .(k[["c"]])) %.%
                       length + .(k[["d"]])),
-    x = paste(format_col_name(score_col), "(kcal/mol)"),
-    y = paste(format_col_name(exp_col),   "(kcal/mol)"),
+    x = paste(format_col_name(exp_col),   "(kcal/mol)"),
+    y = paste(format_col_name(score_col), "(kcal/mol)"),
     colour = format_col_name(gc_col)
   ) +
   theme_minimal() +
