@@ -7,11 +7,14 @@
 #
 #   1. Relative difference (observed - predicted) / |predicted| against length
 #      (log x), hex-binned.
-#   2. Predicted against observed MFE, each region zoomed past its long
+#   2. Observed against predicted MFE, each region zoomed past its long
 #      negative tail (95% of rows in view; zoomed, not filtered).
-#   3. Predicted MFE against the per-transcript dinucleotide-shuffle median
-#      (rnafold_median_*, 1,000 esl-shuffles), same layout as 2: how far a
+#   3. The per-transcript dinucleotide-shuffle median (rnafold_median_*, 1,000
+#      esl-shuffles) against predicted MFE, same layout as 2: how far a
 #      GC-and-length-only baseline is from one that also keeps dinucleotides.
+#   Figures 2-3 put the prediction on x and what it is checked against on y
+#   (Pineiro et al. 2008), so the reported slope is y on x = observed on
+#   predicted.
 #
 # Figures carry no subtitles or in-plot notes, apart from the Spearman rho on
 # each panel of figures 2-3. Everything else a legend needs
@@ -167,15 +170,17 @@ mfe_scatter <- function(data, x, y, title, xlab, ylab) {
     patchwork::plot_annotation(title = title, theme = theme_mfe)
 }
 
+# Prediction on x, the value it is checked against on y (Pineiro et al. 2008).
+# Points above y = x are less structured than predicted.
 plot_obs_vs_pred <- mfe_scatter(
-  mfe_long, x = "observed", y = "predicted",
-  title = "Predicted vs observed MFE",
-  xlab  = "Observed MFE (kcal/mol)", ylab = "Predicted MFE (kcal/mol)")
+  mfe_long, x = "predicted", y = "observed",
+  title = "Observed vs predicted MFE",
+  xlab  = "Predicted MFE (kcal/mol)", ylab = "Observed MFE (kcal/mol)")
 
 plot_shuf_vs_pred <- mfe_scatter(
-  mfe_long, x = "shuffled", y = "predicted",
-  title = "Predicted MFE vs median MFE of dinucleotide shuffled sequences",
-  xlab  = "median MFE (kcal/mol)", ylab = "predicted MFE (kcal/mol)")
+  mfe_long, x = "predicted", y = "shuffled",
+  title = "Median MFE of dinucleotide shuffled sequences vs predicted MFE",
+  xlab  = "Predicted MFE (kcal/mol)", ylab = "Median shuffled MFE (kcal/mol)")
 
 
 # --- Report: the numbers for the figure legends --------------------------------
@@ -248,19 +253,19 @@ mfe_report <- function(path) {
             pct(REL_YLIM[1]), pct(REL_YLIM[2])),
     "- Rows with predicted MFE = 0 have no relative difference and are not drawn (\"predicted = 0\" above)",
     "- Relative rather than raw difference because random-sequence SD grows with length (~2 kcal/mol at 50 nt to ~14 at 4 kb)", "",
-    "## Figure 2: predicted vs observed MFE", "",
-    "- x = observed MFE, y = predicted MFE (kcal/mol); orange line y = x",
-    "- Above the line = observed more negative than predicted = more structured than predicted",
+    "## Figure 2: observed vs predicted MFE", "",
+    "- x = predicted MFE, y = observed MFE (kcal/mol); orange line y = x",
+    "- Below the line = observed more negative than predicted = more structured than predicted",
     sprintf("- Each panel is zoomed, not filtered: all rows are binned, and the view runs from the lower of the two %s quantiles (x or y) up to the highest value of either, equal on x and y. Only the long negative tail is outside the view (\"rows in view\" below, about %s). Scales differ by panel",
             pct(1 - ZOOM_KEEP), pct(ZOOM_KEEP)),
     sprintf("- Hexagonal bins (%d across the visible range of each panel); fill = transcripts per hex, log scale, one scale across panels", HEX_BINS),
     "- Statistics are on all rows, not only those shown; each panel is labelled with its Spearman rho from the table below", "",
-    md(scatter_stats("observed", "predicted")), "",
-    "## Figure 3: predicted MFE vs dinucleotide-shuffle median", "",
-    "- x = dinucleotide-shuffle median MFE, y = predicted MFE (kcal/mol); orange line y = x",
-    "- Above the line = shuffles more structured than predicted: the dinucleotide composition the GC-only model does not see (plus model error)",
+    md(scatter_stats("predicted", "observed")), "",
+    "## Figure 3: dinucleotide-shuffle median vs predicted MFE", "",
+    "- x = predicted MFE, y = dinucleotide-shuffle median MFE (kcal/mol); orange line y = x",
+    "- Below the line = shuffles more structured than predicted: the dinucleotide composition the GC-only model does not see (plus model error)",
     "- Same zoom rule and hex binning as figure 2", "",
-    md(scatter_stats("shuffled", "predicted")), "")
+    md(scatter_stats("predicted", "shuffled")), "")
   writeLines(lines, path)
 }
 

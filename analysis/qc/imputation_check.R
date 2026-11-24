@@ -59,7 +59,9 @@ cmp <- tibble(
 
 
 
-# --- Plots 1-2: estimated against direct, hex-binned ------------------------
+# --- Plots 1-2: direct against estimated, hex-binned ------------------------
+# Estimate on x, the directly folded value on y (Pineiro et al. 2008): the
+# direct value is what the estimate is judged against.
 # Same look as the figures in mfe_observed_vs_predicted.R: log-count hexes,
 # y = x in orange, Spearman rho top left. Axes are equal so y = x stays the
 # diagonal; the view is zoomed past the long tails (ZOOM_KEEP of rows on each
@@ -97,17 +99,17 @@ hex_vs_direct <- function(x, y, title, xlab, ylab) {
 }
 
 p_score <- hex_vs_direct(
-  cmp$rnafold_score_mrna, cmp$rnafold_score_mrna_imputed,
-  title = "Estimated vs observed mRNA MFE",
-  xlab  = "Observed mRNA MFE (kcal/mol)",
-  ylab  = "Sum of MFE components (kcal/mol)")
+  cmp$rnafold_score_mrna_imputed, cmp$rnafold_score_mrna,
+  title = "Observed vs estimated mRNA MFE",
+  xlab  = "Sum of MFE components (kcal/mol)",
+  ylab  = "Observed mRNA MFE (kcal/mol)")
 
 # plotmath labels, so the z can be italic (bold italic in the bold title)
 p_zscore <- hex_vs_direct(
-  cmp$rnafold_zscore_mrna, cmp$rnafold_zscore_mrna_imputed,
-  title = expression(bold("Estimated vs observed mRNA MFE " * bolditalic(z) * "-scores")),
-  xlab  = expression("Observed mRNA MFE " * italic(z) * "-score"),
-  ylab  = expression("Length-weighted region " * italic(z) * "-score"))
+  cmp$rnafold_zscore_mrna_imputed, cmp$rnafold_zscore_mrna,
+  title = expression(bold("Observed vs estimated mRNA MFE " * bolditalic(z) * "-scores")),
+  xlab  = expression("Length-weighted region " * italic(z) * "-score"),
+  ylab  = expression("Observed mRNA MFE " * italic(z) * "-score"))
 
 
 # --- Plot 3: region MFE delta distributions ---------------------------------
