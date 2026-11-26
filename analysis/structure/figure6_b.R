@@ -3,7 +3,8 @@
 # =============================================================================
 # One figure: the genes in F6B_GENES stacked under one main title, one shared
 # x-axis label ("position"), each gene with its own panel pair (own axis in nt),
-# ordered by native MFE z-score, lowest on top. Within a panel, top to bottom:
+# ordered by database mRNA MFE z-score (stored_z in shuffle_summary.tsv, which
+# figure6.R checks against the database), lowest on top. Within a panel, top to bottom:
 #   1. arcs        one arc per collapsed MFE stem (arcs_collapsed.tsv), spanning
 #                  the midpoints of its two arms, width proportional to n_bp,
 #                  coloured by class (Alu-Alu opposite / Alu-Alu same / other).
@@ -19,8 +20,8 @@
 # NOTHING IS RECOMPUTED HERE. Folding, Alu annotation, partner calls and
 # cutoffs all come from the mRNA_stability repo; this script reads, checks and
 # plots. Coordinates are 0-based half-open, 5'->3' on the spliced transcript.
-# Every input row is selected by transcript_id (the input files hold all 8
-# transcripts); the gene symbol and mRNA length come from model.tsv.
+# Every input row is selected by transcript_id (the input files hold all 6
+# Figure 6A transcripts); the gene symbol and mRNA length come from model.tsv.
 #
 # CAVEATS (also in each caption file).
 #  - The arcs are ONE predicted minimum-free-energy (MFE) structure (RNAfold).
@@ -47,7 +48,8 @@
 #
 # Usage:
 #   source("analysis/structure/figure6_b.R")   # runs when sourced at top level
-# Inputs (data/raw/ is only ever read): data/raw/figure6/structure/*.tsv
+# Inputs (data/raw/ is only ever read): data/raw/ultrafolders/structure/*.tsv,
+#   data/raw/ultrafolders/shuffle_summary.tsv
 # Outputs: plots/figure6_B_<gene>.{pdf,png,jpg}, reports/figure6_B_<gene>_caption.txt
 # =============================================================================
 
@@ -63,15 +65,15 @@ suppressPackageStartupMessages({
   library(patchwork)
 })
 
-F6B_DIR <- file.path(RAW_DIR, "figure6", "structure")
+F6B_DIR <- file.path(RAW_DIR, "ultrafolders", "structure")
 
 # One row per gene.
 #   cutoff_type / cutoff_value: "Alu paired with an opposite Alu" is
 #       "nbp" (>= N base pairs) or "frac" (>= N % of the Alu's length); >= is used.
 #   min_bp: stems with fewer base pairs are not drawn (the caption says how many).
 F6B_GENES <- data.frame(
-  gene         = c("TRUB2",             "AP1M1",             "ZNF101"),
-  transcript_id = c("ENST00000372890.6", "ENST00000291439.8", "ENST00000592502.2"),
+  gene         = c("AP1M1",             "ORAI2",             "TYRO3"),
+  transcript_id = c("ENST00000291439.8", "ENST00000495936.7", "ENST00000263798.8"),
   cutoff_type  = c("nbp",               "nbp",               "nbp"),
   cutoff_value = c(20,                  20,                  20),
   min_bp       = c(5,                   5,                   5),
@@ -208,7 +210,7 @@ f6b_blank_y <- theme(axis.text.y = element_blank(), axis.ticks.y = element_blank
 
 
 #' Panel for one gene: arcs over the transcript model with Alu arrows. The gene
-#' symbol (plus native z-score, if d$z is set) is its title; the main title and x-axis label are added by f6b_stack.
+#' symbol (plus database z-score, if d$z is set) is its title; the main title and x-axis label are added by f6b_stack.
 f6b_main <- function(d, base_size = 11) {
   cfg <- d$cfg
   L <- d$model$mrna_len
@@ -269,15 +271,15 @@ f6b_main <- function(d, base_size = 11) {
 
 #' All genes stacked under one main title with one shared x-axis label.
 f6b_stack <- function(ds, base_size = 11) {
-  # lowest (most negative) native MFE z-score on top, from Figure 6A's table
-  zs <- utils::read.delim(file.path(RAW_DIR, "figure6", "shuffle_summary.tsv"),
+  # lowest (most negative) database MFE z-score on top, from Figure 6A's table
+  zs <- utils::read.delim(file.path(RAW_DIR, "ultrafolders", "shuffle_summary.tsv"),
                           stringsAsFactors = FALSE)
-  z <- stats::setNames(zs$native_z, zs$transcript_id)
+  z <- stats::setNames(zs$stored_z, zs$transcript_id)
   tid <- vapply(ds, function(d) d$cfg$transcript_id, "")
-  if (anyNA(z[tid])) stop("native_z missing for: ", paste(names(ds)[is.na(z[tid])], collapse = ", "))
+  if (anyNA(z[tid])) stop("stored_z missing for: ", paste(names(ds)[is.na(z[tid])], collapse = ", "))
   ds <- ds[order(z[tid])]
   for (g in names(ds)) ds[[g]]$z <- unname(z[ds[[g]]$cfg$transcript_id])
-  message("Panel order (native z): ", paste(sprintf("%s %.1f", names(ds), sort(z[tid])), collapse = ", "))
+  message("Panel order (database z): ", paste(sprintf("%s %.1f", names(ds), sort(z[tid])), collapse = ", "))
   panels <- lapply(ds, f6b_main, base_size = base_size)
   xlab <- wrap_elements(full = grid::textGrob("position", gp = grid::gpar(fontsize = base_size)))
   wrap_plots(c(panels, list(xlab)), ncol = 1,
@@ -397,7 +399,7 @@ f6b_caption_group <- function(ds) {
 
   paste0(
     "Figure 6B. Ultrafolder repeat & structure architecture of ", join(genes), ". ",
-    "Transcripts are ordered by native MFE z-score, lowest at the top. ",
+    "Transcripts are ordered by mRNA MFE z-score, lowest at the top. ",
     "For each transcript, the top panel shows base pairing in a single predicted ",
     "minimum-free-energy (MFE) structure (RNAfold). Each arc represents one stem (a run of ",
     "consecutive base pairs) and joins the centres of the stem\u2019s two strands; arc width is ",
